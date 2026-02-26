@@ -1,1 +1,4 @@
-{\n  "semi": true,\n  "singleQuote": true,\n  "trailingComma": "es5"\n}
+{
+  "semi": true,
+  "singleQuote": true
+}

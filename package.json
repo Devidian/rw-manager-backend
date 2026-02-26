@@ -1,1 +1,44 @@
-{"name": "rw-manager-backend", "type": "module", "scripts": { "start": "node index.js", "dev": "nodemon index.js", "test": "jest", "lint": "eslint .", "format": "prettier --write .", "docker": "docker-compose up" }, "dependencies": { "express": "^4.17.1", "lowdb": "^1.0.0", "better-sqlite3": "^7.4.0", "properties": "^2.0.0" }, "devDependencies": { "jest": "^29.0.0", "eslint": "^8.0.0", "prettier": "^2.0.0", "supertest": "^6.0.0" }}
+{
+  "name": "rw-manager-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "yarn@4.12.0",
+  "scripts": {
+    "dev": "node --env-file=.env.local --trace-deprecation --import=./register.js src/index.ts",
+    "start": "node --env-file=.env.local dist/index.js",
+    "build": "tsc",
+    "test": "jest",
+    "prepare": "ts-patch install"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "express": "5.2.1",
+    "express-session": "^1.18.2",
+    "lowdb": "^7.0.1",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
+    "pngjs": "^7.0.0",
+    "properties-reader": "^3.0.1",
+    "typia": "^11.0.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.18.2",
+    "@types/jest": "^30.0.0",
+    "@types/node": "~24",
+    "@types/passport": "^1.0.17",
+    "@types/passport-local": "^1.0.38",
+    "@types/supertest": "^6.0.3",
+    "@types/uuid": "^11.0.0",
+    "eslint": "^10.0.0",
+    "jest": "^30.2.0",
+    "prettier": "^3.8.1",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "ts-patch": "^3.3.0",
+    "typescript": "~5.9.3"
+  }
+}
