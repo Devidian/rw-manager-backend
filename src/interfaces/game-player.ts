@@ -9,7 +9,7 @@ export interface DbPlayer {
   roty: number;
   rotz: number;
   rotw: number;
-  platform: string;
+  platform: string | number;
   permissiongroup: string;
   health: number;
   hunger: number;
@@ -18,10 +18,10 @@ export interface DbPlayer {
   temperature: number;
   dead: number;
   flying: number;
-  clothes: string; // hex-Buffer
-  primaryspawn: string; // hex-Buffer
-  secondaryspawn: string; // hex-Buffer
-  tertiaryspawn: string; // hex-Buffer
+  clothes?: string;
+  primaryspawn?: { x: number; y: number; z: number };
+  secondaryspawn?: { x: number; y: number; z: number };
+  tertiaryspawn?: { x: number; y: number; z: number };
   lastspawn: number;
   lastusedmount: number;
   lastusedvehicle: number;

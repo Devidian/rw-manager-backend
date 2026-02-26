@@ -1,6 +1,19 @@
 import { env } from 'node:process';
 
 export class AppConfig {
+  private static readonly validRoles = ['guest', 'user', 'admin'] as const;
+  private static readonly validLogLevels = [
+    'debug',
+    'info',
+    'warn',
+    'error',
+    'critical',
+    'off',
+    'verbose',
+    'all',
+  ] as const;
+  private static readonly validLogStyles = ['default', 'detailed', 'gcp'] as const;
+
   static get rootPath(): string {
     return env.SERVER_ROOT ?? '/appdata/rising-world/dedicated-server';
   }
@@ -17,10 +30,11 @@ export class AppConfig {
     return (env.FORCE_AUTH ?? 'false') === 'true';
   }
   static get defaultUserRole(): 'guest' | 'user' | 'admin' {
-    return (env.DEFAULT_USER_ROLE as any) ?? 'user';
+    const value = env.DEFAULT_USER_ROLE;
+    return AppConfig.validRoles.find((item) => item === value) ?? 'user';
   }
   static get superAdminId(): string {
-    return (env.SUPER_ADMIN_ID as any) ?? '';
+    return env.SUPER_ADMIN_ID ?? '';
   }
   static get authSessionSecret(): string {
     return env.AUTH_SESSION_SECRET ?? 'rw-manager-storage-session';
@@ -34,12 +48,14 @@ export class AppConfig {
     | 'off'
     | 'verbose'
     | 'all' {
-    return (env.LOG_LEVEL as any) ?? 'debug';
+    const value = env.LOG_LEVEL;
+    return AppConfig.validLogLevels.find((item) => item === value) ?? 'debug';
   }
   static get enableLogColors(): boolean {
     return (env.ENABLE_LOG_COLORS ?? 'false') === 'true';
   }
   static get logStyle(): 'default' | 'detailed' | 'gcp' {
-    return (env.LOG_STYLE as any) ?? 'default';
+    const value = env.LOG_STYLE;
+    return AppConfig.validLogStyles.find((item) => item === value) ?? 'default';
   }
 }

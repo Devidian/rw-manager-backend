@@ -182,9 +182,9 @@ const dto = typia.assert<CreateUserRequest>(req.body)
 ## UUID Example
 
 ```ts
-import { Pattern } from "typia"
+import { Format } from "typia"
 
-id: Pattern<"uuid">
+id: Format<"uuid">
 ```
 
 ---

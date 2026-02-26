@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import https from 'node:https';
 import http from 'node:http';
 import { defaultLogger } from './utils/logger.js';
-import api from './api/router.js';
+import api from './router/api-router.js';
 import { db } from './db/sqlite.js';
 import { AppConfig } from './utils/app-config.js';
 

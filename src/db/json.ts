@@ -2,7 +2,13 @@ import { JSONFilePreset } from 'lowdb/node';
 import { ServerConfig } from '../interfaces/server-config.js';
 import { v4 } from 'uuid';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import type { JsonDbUser, UserRole, UserState } from '../interfaces/app-user.js';
+import type {
+  JsonDbUser,
+  PrivateUser,
+  PublicUser,
+  UserRole,
+  UserState,
+} from '../interfaces/app-user.js';
 import { mkdirSync } from 'node:fs';
 
 // ensure data directory exists
@@ -15,7 +21,7 @@ export const db = await JSONFilePreset<{
 
 export async function addServer(
   label: string,
-  queryUrl: unknown,
+  queryUrl: string,
   backendUrl?: string,
   userId?: string,
   isPublic = false,
@@ -41,14 +47,17 @@ export async function removeServer(id: string) {
 
 export async function updateServer(
   id: string,
-  input: Partial<Pick<ServerConfig, 'label' | 'queryUrl' | 'backendUrl' | 'public'>>,
+  input: Partial<
+    Pick<ServerConfig, 'label' | 'queryUrl' | 'backendUrl' | 'public'>
+  >,
 ) {
   const server = db.data.servers.find((s) => s.id === id);
   if (!server) return null;
 
   if (typeof input.label === 'string') server.label = input.label;
   if (input.queryUrl !== undefined) server.queryUrl = input.queryUrl;
-  if (typeof input.backendUrl === 'string') server.backendUrl = input.backendUrl;
+  if (typeof input.backendUrl === 'string')
+    server.backendUrl = input.backendUrl;
   if (typeof input.public === 'boolean') server.public = input.public;
 
   await db.write();
@@ -57,18 +66,6 @@ export async function updateServer(
 
 function hashPassword(password: string, salt: string) {
   return scryptSync(password, salt, 64).toString('hex');
-}
-
-function safeUser(user: JsonDbUser) {
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    state: user.state,
-    role: user.role,
-    steamId: user.steamId,
-    createdAt: user.createdAt,
-  };
 }
 
 export async function createUser(
@@ -96,7 +93,7 @@ export async function createUser(
 
   db.data.users.push(user);
   await db.write();
-  return safeUser(user);
+  return toPrivateUser(user);
 }
 
 export function findUserByUsername(username: string) {
@@ -116,7 +113,7 @@ export async function setUserSteamId(id: string, steamId: string) {
   if (!user) return null;
   user.steamId = steamId;
   await db.write();
-  return safeUser(user);
+  return toPrivateUser(user);
 }
 
 export function verifyUserPassword(user: JsonDbUser, password: string) {
@@ -127,6 +124,25 @@ export function verifyUserPassword(user: JsonDbUser, password: string) {
   return timingSafeEqual(a, b);
 }
 
-export function toPublicUser(user: JsonDbUser) {
-  return safeUser(user);
+export function toPrivateUser(user: JsonDbUser): PrivateUser {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    state: user.state,
+    role: user.role,
+    steamId: user.steamId,
+    createdAt: user.createdAt,
+  };
+}
+
+export function toPublicUser(user: JsonDbUser): PublicUser {
+  return {
+    id: user.id,
+    username: user.username,
+    state: user.state,
+    role: user.role,
+    steamId: user.steamId,
+    createdAt: user.createdAt,
+  };
 }

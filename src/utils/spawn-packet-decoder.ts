@@ -58,7 +58,7 @@ export function parseSpawnPacket(buffer: Buffer): SpawnPacket {
 }
 
 export function bufferToPosition(
-  buffer: Buffer,
+  buffer: Buffer | undefined,
 ): SpawnPacket['position'] | undefined {
   if (!buffer) return undefined;
   return parseSpawnPacket(buffer).position;

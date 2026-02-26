@@ -3,9 +3,9 @@ import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppConfig } from '../utils/app-config.js';
 import { ServerConfig } from '../utils/server-config.js';
+import type { DbPlayer } from '../interfaces/game-player.js';
 import {
   bufferToPosition,
-  parseSpawnPacket,
 } from '../utils/spawn-packet-decoder.js';
 
 class RWSQLite {
@@ -39,10 +39,14 @@ class RWSQLite {
       throw new Error('Player database not initialized');
     }
     const stmt = this.playerDb.prepare('SELECT * FROM player');
-    return stmt.all().map((row: any) => ({
+    return (stmt.all() as Array<DbPlayer & {
+      clothes?: Buffer;
+      primaryspawn?: Buffer;
+      secondaryspawn?: Buffer;
+      tertiaryspawn?: Buffer;
+    }>).map((row) => ({
       ...row,
-      platform:
-        { 1: 'Standalone', 2: 'Steam' }[row.platform as number] ?? row.platform,
+      platform: { 1: 'Standalone', 2: 'Steam' }[Number(row.platform)] ?? row.platform,
       clothes: row.clothes?.toString('hex'),
       primaryspawn: bufferToPosition(row.primaryspawn),
       secondaryspawn: bufferToPosition(row.secondaryspawn),

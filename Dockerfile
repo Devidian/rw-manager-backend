@@ -10,6 +10,7 @@ RUN yarn install --immutable
 COPY tsconfig.json .
 COPY src ./src
 
+RUN yarn typia setup --manager yarn
 RUN yarn build
 
 # --- Runtime Image ---
