@@ -1,0 +1,91 @@
+[meta]
+repository = "rw-manager-backend"
+repository_type = "typescript-backend"
+standalone = true
+root_orchestration_optional = true
+
+[models]
+planner = "gpt-5.2"
+architecture_review = "gpt-5.5"
+api_guardian = "gpt-5.4"
+implementer = "gpt-5.3-codex"
+reviewer = "gpt-5.4"
+governance_review = "gpt-5.2"
+test_runner = "gpt-5.4-mini"
+release_guardian = "gpt-5.4"
+migration_review = "gpt-5.4"
+
+[agents.planner]
+task_classes = ["feature", "bugfix", "migration", "release", "refactor", "infrastructure"]
+context = ["AGENTS.md", "PLANS.md", "README.md", "docs/active/*", "docs/roadmaps/*"]
+
+[agents.architecture-review]
+task_classes = ["feature", "refactor", "infrastructure", "migration"]
+context = ["AGENTS.md", "package.json", "src/**", "docs/policies/*"]
+must_detect = ["layer violations", "business logic in handlers", "DTO/domain leakage", "unnecessary dependencies", "backend/frontend ownership drift"]
+
+[agents.api-guardian]
+task_classes = ["feature", "bugfix", "migration"]
+context = ["src/router/**", "src/handler/**", "src/dto/**", "src/validator/**", "docs/policies/*"]
+
+[agents.implementer]
+task_classes = ["feature", "bugfix", "refactor", "infrastructure"]
+context = ["AGENTS.md", "package.json", "src/**", "tests/**", "docs/active/*"]
+
+[agents.reviewer]
+task_classes = ["feature", "bugfix", "refactor", "migration", "infrastructure"]
+context = ["AGENTS.md", "README.md", "package.json", "src/**", "tests/**", "docs/policies/*"]
+
+[agents.governance-review]
+task_classes = ["infrastructure", "release", "refactor"]
+context = ["AGENTS.md", "PLANS.md", "docs/policies/*", ".codex/agents.toml", ".codex/skills/*"]
+
+[agents.test-runner]
+task_classes = ["feature", "bugfix", "migration", "release"]
+context = ["package.json", "tests/**", "docs/active/*", ".codex/skills/repository-skills.md"]
+
+[agents.release-guardian]
+task_classes = ["release"]
+context = [".github/workflows/*", "package.json", "Dockerfile", "CHANGELOG.md", "docs/policies/*"]
+
+[agents.migration-review]
+task_classes = ["migration", "infrastructure"]
+context = ["src/db/**", "deployment-example.local/**", "docs/active/*", "docs/policies/*"]
+
+[task_classes.feature]
+sequence = ["planner", "architecture-review", "api-guardian", "implementer", "test-runner", "reviewer"]
+required_validations = ["build", "tests", "api-contract-review"]
+escalation_triggers = ["new API route", "new dependency", "persistence change", "runtime config change"]
+
+[task_classes.bugfix]
+sequence = ["planner", "implementer", "test-runner", "reviewer"]
+required_validations = ["build", "regression-test-or-manual-check"]
+escalation_triggers = ["API compatibility risk", "persistence risk"]
+
+[task_classes.migration]
+sequence = ["planner", "migration-review", "architecture-review", "implementer", "test-runner", "reviewer"]
+required_validations = ["build", "migration-path-review", "rollback-review"]
+escalation_triggers = ["database migration", "config migration", "backward compatibility risk"]
+
+[task_classes.release]
+sequence = ["release-guardian", "test-runner", "governance-review"]
+required_validations = ["build", "tests", "docker-review", "changelog-check"]
+escalation_triggers = ["workflow change", "runtime version change", "Docker behavior change"]
+
+[task_classes.refactor]
+sequence = ["planner", "architecture-review", "implementer", "test-runner", "reviewer"]
+required_validations = ["build", "tests", "behavioral-equivalence-review"]
+escalation_triggers = ["layering change", "public API change"]
+
+[task_classes.infrastructure]
+sequence = ["planner", "architecture-review", "governance-review", "implementer", "test-runner", "reviewer"]
+required_validations = ["build", "standalone-repository-check"]
+escalation_triggers = ["new tooling requirement", "root dependency risk"]
+
+[escalation]
+new_dependency = "architecture-review"
+api_contract_change = "api-guardian"
+schema_or_storage_change = "migration-review"
+release_workflow_change = "release-guardian"
+policy_or_agent_change = "governance-review"
+root_orchestration_dependency = "governance-review"

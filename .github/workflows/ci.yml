@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Prepare typia transform
+        run: yarn typia:setup
+
+      - name: Build project
+        run: yarn build
+
+      - name: Run tests with coverage
+        run: yarn test:coverage --runInBand
+
+      - name: Build Docker image
+        run: docker build -t rw-manager-backend:ci .

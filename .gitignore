@@ -12,6 +12,8 @@ node_modules/
 # Build output
 /dist/
 /build/
+/coverage/
+/.yarn/install-state.gz
 
 # Local env files
 .env

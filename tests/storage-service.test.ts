@@ -1,0 +1,470 @@
+import { jest } from '@jest/globals';
+
+interface StoredServer {
+  id: string;
+  label: string;
+  queryUrl: string | Record<string, unknown>;
+  backendUrl?: string;
+  public: boolean;
+  userId?: string;
+  createdAt: Date;
+}
+
+interface StoredUser {
+  id: string;
+  username: string;
+  state: 'new' | 'verified' | 'closed';
+  role: 'guest' | 'user' | 'admin';
+  steamId?: string;
+  createdAt: Date;
+}
+
+const state = {
+  servers: [] as StoredServer[],
+  users: [] as StoredUser[],
+};
+
+const addServerMock = jest.fn();
+const removeServerMock = jest.fn<() => Promise<void>>().mockResolvedValue();
+const updateServerMock = jest.fn();
+const mapServerToDtoMock = jest.fn();
+const mapPublicUserToDtoMock = jest.fn();
+const canAdminServerMock = jest.fn();
+const fetchBackendAdminsMock = jest.fn();
+const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
+
+jest.unstable_mockModule('../src/db/json.js', () => ({
+  addServer: addServerMock,
+  db: {
+    data: state,
+    write: writeMock,
+  },
+  removeServer: removeServerMock,
+  updateServer: updateServerMock,
+}));
+
+jest.unstable_mockModule('../src/mapper/server-mapper.js', () => ({
+  mapServerToDto: mapServerToDtoMock,
+}));
+
+jest.unstable_mockModule('../src/mapper/user-mapper.js', () => ({
+  mapPublicUserToDto: mapPublicUserToDtoMock,
+}));
+
+jest.unstable_mockModule('../src/service/can-admin-server-service.js', () => ({
+  canAdminServer: canAdminServerMock,
+  fetchBackendAdmins: fetchBackendAdminsMock,
+}));
+
+const storageService = await import('../src/service/storage-service.js');
+
+function createServerRecord(overrides: Partial<StoredServer> = {}): StoredServer {
+  return {
+    id: 'server-1',
+    label: 'Server',
+    queryUrl: 'https://query.example.com',
+    backendUrl: 'https://backend.example.com',
+    public: false,
+    userId: 'user-1',
+    createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function createUserRecord(overrides: Partial<StoredUser> = {}): StoredUser {
+  return {
+    id: 'user-1',
+    username: 'alice',
+    state: 'verified',
+    role: 'user',
+    steamId: 'steam-1',
+    createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in snapshot)) {
+      delete process.env[key];
+    }
+  }
+  Object.assign(process.env, snapshot);
+}
+
+describe('storage-service', () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    restoreEnv(originalEnv);
+    process.env.ENABLE_AUTH = 'false';
+    process.env.SUPER_ADMIN_ID = 'steam-admin';
+    state.servers = [];
+    state.users = [];
+    addServerMock.mockReset();
+    removeServerMock.mockClear();
+    updateServerMock.mockReset();
+    mapServerToDtoMock.mockReset().mockImplementation((server: StoredServer) => ({
+      id: server.id,
+      label: server.label,
+    }));
+    mapPublicUserToDtoMock.mockReset().mockImplementation((user: StoredUser) => ({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      state: user.state,
+      steamId: user.steamId,
+      createdAt: user.createdAt.toISOString(),
+    }));
+    canAdminServerMock.mockReset();
+    fetchBackendAdminsMock.mockReset();
+    writeMock.mockClear();
+    global.fetch = originalFetch;
+  });
+
+  afterAll(() => {
+    restoreEnv(originalEnv);
+    global.fetch = originalFetch;
+  });
+
+  test('listServers returns all servers without auth and filtered servers with auth', () => {
+    state.servers = [
+      createServerRecord({ id: 'a', public: false, userId: 'user-1' }),
+      createServerRecord({ id: 'b', public: true, userId: 'user-2' }),
+      createServerRecord({ id: 'c', public: false, userId: 'user-2' }),
+    ];
+
+    expect(storageService.listServers({ userId: 'user-1' })).toEqual([
+      { id: 'a', label: 'Server' },
+      { id: 'b', label: 'Server' },
+      { id: 'c', label: 'Server' },
+    ]);
+
+    process.env.ENABLE_AUTH = 'true';
+    expect(storageService.listServers({ userId: 'user-1' })).toEqual([
+      { id: 'a', label: 'Server' },
+      { id: 'b', label: 'Server' },
+    ]);
+  });
+
+  test('createServer validates required fields and duplicate query urls', async () => {
+    await expect(
+      storageService.createServer(
+        { label: '', queryUrl: '' },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('LABEL_QUERY_URL_REQUIRED');
+
+    state.servers = [createServerRecord()];
+    await expect(
+      storageService.createServer(
+        { label: 'Server', queryUrl: 'https://query.example.com' },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('QUERY_URL_EXISTS');
+  });
+
+  test('createServer handles backend verification branches and returns mapped servers', async () => {
+    process.env.ENABLE_AUTH = 'true';
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: 'Query Name' }),
+    }) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce(null);
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: 'https://backend.example.com/',
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('FAILED_VERIFY_BACKEND_ADMINS');
+
+    fetchBackendAdminsMock.mockResolvedValueOnce(['other-steam']);
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: 'https://backend.example.com/',
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('NOT_BACKEND_ADMIN');
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({}),
+    }) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: 'https://backend.example.com/',
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('QUERY_URL_NAME_REQUIRED');
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({}),
+      }) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: 'https://backend.example.com/',
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('FAILED_VERIFY_BACKEND_CONFIG');
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Different Name' }),
+      }) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: 'https://backend.example.com/',
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('QUERY_URL_NAME_MISMATCH');
+
+    const created = createServerRecord({ id: 'server-9' });
+    addServerMock.mockResolvedValueOnce(created);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      }) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: ' https://backend.example.com/ ',
+          public: true,
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).resolves.toEqual({ id: 'server-9', label: 'Server' });
+
+    expect(addServerMock).toHaveBeenCalledWith(
+      'Server',
+      'https://query.example.com',
+      'https://backend.example.com/',
+      'user-1',
+      true,
+    );
+
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    addServerMock.mockResolvedValueOnce(createServerRecord({ id: 'server-10' }));
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: circular as Record<string, unknown>,
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).resolves.toEqual({ id: 'server-10', label: 'Server' });
+
+    process.env.ENABLE_AUTH = 'true';
+    global.fetch = jest.fn().mockRejectedValue(new Error('offline')) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+    await expect(
+      storageService.createServer(
+        {
+          label: 'Server',
+          queryUrl: 'https://query.example.com',
+          backendUrl: 'https://backend.example.com/',
+        },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('QUERY_URL_NAME_REQUIRED');
+  });
+
+  test('patchServer validates ownership, duplicates, backend checks, and missing updates', async () => {
+    process.env.ENABLE_AUTH = 'true';
+    await expect(
+      storageService.patchServer(
+        'missing',
+        {},
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('SERVER_NOT_FOUND');
+
+    state.servers = [
+      createServerRecord({ id: 'server-1', userId: 'user-1', queryUrl: 'https://one' }),
+      createServerRecord({ id: 'server-2', userId: 'user-1', queryUrl: 'https://two' }),
+    ];
+    canAdminServerMock.mockResolvedValueOnce(false);
+    await expect(
+      storageService.patchServer(
+        'server-2',
+        {},
+        { userId: 'other-user', userSteamId: 'steam-2' },
+      ),
+    ).rejects.toThrow('SERVER_NOT_FOUND');
+
+    await expect(
+      storageService.patchServer(
+        'server-1',
+        { queryUrl: 'https://two' },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('QUERY_URL_EXISTS');
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      }) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+    updateServerMock.mockResolvedValueOnce(null);
+    await expect(
+      storageService.patchServer(
+        'server-1',
+        { backendUrl: 'https://backend.example.com/' },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('SERVER_NOT_FOUND');
+
+    const updated = createServerRecord({ id: 'server-1', label: 'Updated' });
+    updateServerMock.mockResolvedValueOnce(updated);
+    await expect(
+      storageService.patchServer(
+        'server-1',
+        { label: 'Updated' },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).resolves.toEqual({ id: 'server-1', label: 'Updated' });
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Query Name' }),
+      })
+      .mockRejectedValueOnce(new Error('offline')) as typeof fetch;
+    fetchBackendAdminsMock.mockResolvedValueOnce([]);
+    await expect(
+      storageService.patchServer(
+        'server-1',
+        { queryUrl: 'https://query.example.com', backendUrl: 'https://backend.example.com/' },
+        { userId: 'user-1', userSteamId: 'steam-1' },
+      ),
+    ).rejects.toThrow('FAILED_VERIFY_BACKEND_CONFIG');
+  });
+
+  test('deleteServer requires access and deletes matching servers', async () => {
+    await expect(
+      storageService.deleteServer('missing', { userId: 'user-1', userSteamId: 'steam-1' }),
+    ).rejects.toThrow('SERVER_NOT_FOUND');
+
+    state.servers = [createServerRecord({ id: 'server-1', userId: 'user-2' })];
+    canAdminServerMock.mockResolvedValueOnce(true);
+    await expect(
+      storageService.deleteServer('server-1', {
+        userId: 'user-1',
+        userSteamId: 'steam-1',
+      }),
+    ).resolves.toBeUndefined();
+    expect(removeServerMock).toHaveBeenCalledWith('server-1');
+  });
+
+  test('user management helpers enforce super admin permissions and validate patch values', async () => {
+    state.users = [
+      createUserRecord({ id: 'user-1', steamId: 'steam-admin' }),
+      createUserRecord({ id: 'user-2', username: 'bob', role: 'guest' }),
+    ];
+
+    expect(() => storageService.listUsers('wrong')).toThrow('FORBIDDEN');
+    expect(storageService.listUsers('steam-admin')).toHaveLength(2);
+
+    await expect(
+      storageService.patchUser('wrong', 'user-2', {}),
+    ).rejects.toThrow('FORBIDDEN');
+    await expect(
+      storageService.patchUser('steam-admin', 'user-2', {
+        state: 'bad' as 'new',
+      }),
+    ).rejects.toThrow('STATE_INVALID');
+    await expect(
+      storageService.patchUser('steam-admin', 'user-2', {
+        role: 'bad' as 'user',
+      }),
+    ).rejects.toThrow('ROLE_INVALID');
+    await expect(
+      storageService.patchUser('steam-admin', 'missing', { role: 'admin' }),
+    ).rejects.toThrow('USER_NOT_FOUND');
+
+    await expect(
+      storageService.patchUser('steam-admin', 'user-2', {
+        role: 'admin',
+        state: 'closed',
+      }),
+    ).resolves.toMatchObject({
+      id: 'user-2',
+      username: 'bob',
+      role: 'admin',
+      state: 'closed',
+    });
+
+    await expect(
+      storageService.deleteStorageUser('wrong', 'user-1', 'user-2'),
+    ).rejects.toThrow('FORBIDDEN');
+    await expect(
+      storageService.deleteStorageUser('steam-admin', 'user-1', 'user-1'),
+    ).rejects.toThrow('CANNOT_DELETE_SELF');
+    await expect(
+      storageService.deleteStorageUser('steam-admin', 'user-1', 'missing'),
+    ).rejects.toThrow('USER_NOT_FOUND');
+
+    state.servers = [{ ...createServerRecord({ userId: 'user-2' }) }];
+    await expect(
+      storageService.deleteStorageUser('steam-admin', 'user-1', 'user-2'),
+    ).resolves.toBeUndefined();
+    expect(state.users.map((user) => user.id)).toEqual(['user-1']);
+    expect(state.servers).toEqual([]);
+  });
+});

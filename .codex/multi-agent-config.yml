@@ -1,0 +1,109 @@
+version: 1
+project: rw-manager-backend
+default_agent: coordinator
+
+agents:
+  coordinator:
+    role: Lead coordinator
+    purpose: Break down work, assign specialized agents, and enforce AGENTS.md compliance.
+    responsibilities:
+      - Validate task scope against architecture rules.
+      - Route persistence work to the persistence agent.
+      - Route HTTP contract work to the api agent.
+      - Route release and CI work to the release agent.
+      - Consolidate final changes and verify cross-file consistency.
+    checks:
+      - AGENTS.md compliance
+      - Cross-layer dependency direction
+      - English code and documentation output
+
+  architect:
+    role: Architecture guard
+    purpose: Protect layering, naming, DTO usage, and adapter boundaries.
+    responsibilities:
+      - Review new modules for correct placement under src/.
+      - Prevent handler or router logic from leaking into services or db modules.
+      - Ensure lowdb remains replaceable behind db-facing modules.
+      - Check that utilities do not become business-logic containers.
+    checks:
+      - folder structure
+      - import direction
+      - no inline reusable interfaces
+      - no any
+
+  api:
+    role: Express and DTO specialist
+    purpose: Own handlers, routers, DTOs, and typia validation.
+    responsibilities:
+      - Define request and response DTOs.
+      - Add typia assertions at HTTP boundaries when appropriate.
+      - Keep Express 5 usage inside router and handler layers.
+      - Normalize typed error responses from handler catches.
+    checks:
+      - DTO coverage
+      - typia usage
+      - response typing
+      - handler-service separation
+
+  persistence:
+    role: Storage specialist
+    purpose: Own lowdb adapters, sqlite readers, and properties-based config loading.
+    responsibilities:
+      - Keep application persistence isolated in src/db.
+      - Preserve future adapter swap capability for the app database.
+      - Isolate better-sqlite3 access for Rising World data reads.
+      - Use properties-reader for server and plugin settings.
+    checks:
+      - db layer isolation
+      - adapter replaceability
+      - no direct persistence logic in handlers
+      - typed persistence contracts
+
+  quality:
+    role: Test and verification specialist
+    purpose: Protect regressions through build, test, and Docker verification.
+    responsibilities:
+      - Update or add tests for behavior changes.
+      - Verify TypeScript build and automated tests.
+      - Verify Docker build compatibility for deployable changes.
+      - Review changelog impact for user-visible changes.
+    checks:
+      - yarn build
+      - yarn test
+      - docker build
+      - changelog update need
+
+  release:
+    role: Release automation specialist
+    purpose: Own CI, release PRs, SemVer, changelog automation, and Docker Hub publishing.
+    responsibilities:
+      - Maintain GitHub Actions workflows.
+      - Keep release-please configuration aligned with Conventional Commits.
+      - Publish semver-tagged Docker images from GitHub releases.
+      - Ensure Dockerfile and release automation stay in sync.
+    checks:
+      - conventional commits compatibility
+      - semver tagging
+      - changelog generation
+      - Docker Hub publish flow
+
+workflows:
+  feature_change:
+    steps:
+      - coordinator
+      - architect
+      - api
+      - persistence
+      - quality
+
+  release_change:
+    steps:
+      - coordinator
+      - release
+      - quality
+
+  refactor:
+    steps:
+      - coordinator
+      - architect
+      - quality
