@@ -16,6 +16,7 @@ RUN corepack yarn build
 FROM node:24-slim
 
 WORKDIR /app
+ENV APP_DATA_ROOT=/appdata/rwman
 
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn

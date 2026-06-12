@@ -10,14 +10,16 @@ import type {
   UserState,
 } from '../interfaces/app-user.js';
 import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { AppConfig } from '../utils/app-config.js';
 
 // ensure data directory exists
-mkdirSync('/appdata/rwman', { recursive: true });
+mkdirSync(AppConfig.dataRoot, { recursive: true });
 
 export const db = await JSONFilePreset<{
   servers: ServerConfig[];
   users: JsonDbUser[];
-}>('/appdata/rwman/data.json', { servers: [], users: [] });
+}>(path.join(AppConfig.dataRoot, 'data.json'), { servers: [], users: [] });
 
 export async function addServer(
   label: string,

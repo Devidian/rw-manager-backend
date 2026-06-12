@@ -1,4 +1,5 @@
 import { AppConfig } from '../src/utils/app-config.js';
+import path from 'node:path';
 
 function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
   for (const key of Object.keys(process.env)) {
@@ -20,6 +21,7 @@ describe('AppConfig', () => {
     restoreEnv({});
 
     expect(AppConfig.rootPath).toBe('/appdata/rising-world/dedicated-server');
+    expect(AppConfig.dataRoot).toBe(path.resolve('data'));
     expect(AppConfig.enableStorage).toBe(false);
     expect(AppConfig.enableData).toBe(false);
     expect(AppConfig.enableAuth).toBe(false);
@@ -38,6 +40,7 @@ describe('AppConfig', () => {
 
   test('reads valid environment overrides and ignores invalid enum values', () => {
     process.env.SERVER_ROOT = '/srv/rw';
+    process.env.APP_DATA_ROOT = '/srv/rwman';
     process.env.ENABLE_STORAGE = 'true';
     process.env.ENABLE_DATA = 'true';
     process.env.ENABLE_AUTH = 'true';
@@ -54,6 +57,7 @@ describe('AppConfig', () => {
     process.env.LOG_STYLE = 'gcp';
 
     expect(AppConfig.rootPath).toBe('/srv/rw');
+    expect(AppConfig.dataRoot).toBe('/srv/rwman');
     expect(AppConfig.enableStorage).toBe(true);
     expect(AppConfig.enableData).toBe(true);
     expect(AppConfig.enableAuth).toBe(true);

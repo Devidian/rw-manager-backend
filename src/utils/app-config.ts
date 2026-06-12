@@ -1,4 +1,5 @@
 import { env } from 'node:process';
+import { resolve } from 'node:path';
 
 export class AppConfig {
   private static readonly validRoles = ['guest', 'user', 'admin'] as const;
@@ -16,6 +17,9 @@ export class AppConfig {
 
   static get rootPath(): string {
     return env.SERVER_ROOT ?? '/appdata/rising-world/dedicated-server';
+  }
+  static get dataRoot(): string {
+    return env.APP_DATA_ROOT ?? resolve('data');
   }
   static get enableStorage(): boolean {
     return (env.ENABLE_STORAGE ?? 'false') === 'true';

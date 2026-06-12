@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import path from 'node:path';
 
 interface JsonDbUserRecord {
   id: string;
@@ -74,7 +75,7 @@ describe('db/json', () => {
   });
 
   test('creates the application data directory on module load', () => {
-    expect(mkdirSyncMock).toHaveBeenCalledWith('/appdata/rwman', {
+    expect(mkdirSyncMock).toHaveBeenCalledWith(path.resolve('data'), {
       recursive: true,
     });
   });

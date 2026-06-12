@@ -56,6 +56,7 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
+      APP_DATA_ROOT: /appdata/rwman
       SERVER_ROOT: /appdata/rising-world/dedicated-server
       ENABLE_DATA: true
       ENABLE_MAP_RENDERER: false
@@ -87,6 +88,7 @@ services:
     container_name: rw-manager-backend-prod
     environment:
       NODE_ENV: production
+      APP_DATA_ROOT: /appdata/rwman
       SERVER_ROOT: /appdata/rising-world/dedicated-server
       ENABLE_DATA: true
       ENABLE_MAP_RENDERER: false
@@ -131,7 +133,8 @@ services:
 
 ## Notes
 
-* Application data is stored under `/appdata/rwman`.
+* Application data is stored under `APP_DATA_ROOT`. It defaults to `./data`
+  outside containers and `/appdata/rwman` in the published Docker image.
 * The complete Rising World dedicated server root is expected at `SERVER_ROOT`;
   mounting only selected world data does not expose plugin inventory or maps.
 * Ignored local deployment files are intentionally not treated as maintained repository examples.
