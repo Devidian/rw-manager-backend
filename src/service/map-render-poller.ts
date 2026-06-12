@@ -14,7 +14,7 @@ export interface MapRenderPollResult {
   unchanged: number;
 }
 
-const RENDERER_VERSION = 'semantic-palette-v1';
+const RENDERER_VERSION = 'semantic-palette-v2';
 
 export class MapRenderPoller {
   private timer: NodeJS.Timeout | undefined;

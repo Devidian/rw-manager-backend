@@ -200,4 +200,7 @@ for backend startup.
   and wood colors; broader biome fidelity remains a rollout validation
 - Renderer output hashes include a renderer version so palette changes rebuild
   existing source chunks once after deployment.
+- Terrain at or below the Rising World sea level `Y=92` renders as water.
+- Observed LOD surface texture IDs `100` through `112` use vegetation colors;
+  they are not interpreted as same-numbered construction materials.
   item.

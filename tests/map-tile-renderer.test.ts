@@ -10,9 +10,12 @@ describe('map tile renderer', () => {
     expect(textureColor(0)).toEqual([27, 88, 108, 255]);
     expect(textureColor(17)).toEqual([210, 183, 111, 255]);
     expect(textureColor(41)).toEqual([82, 118, 59, 255]);
-    expect(textureColor(107)).toEqual([100, 65, 33, 255]);
+    expect(textureColor(107)).toEqual([133, 133, 83, 255]);
+    expect(textureColor(112)).toEqual([105, 117, 72, 255]);
     expect(textureColor(212)).toEqual([119, 120, 117, 255]);
     expect(textureColor(75)).toEqual([122, 116, 104, 255]);
+    expect(textureColor(17, 92)).toEqual([73, 111, 115, 255]);
+    expect(textureColor(17, 92.01)).toEqual([210, 183, 111, 255]);
   });
 
   test('renders signed native tiles with positive Z upward, transparency, pyramid, and schema-5 metadata', async () => {
@@ -70,11 +73,15 @@ describe('map tile renderer', () => {
 });
 
 function chunk(chunkX: number, chunkZ: number, texture: number): MapSourceChunk {
+  const heights = Buffer.alloc(4096);
+  for (let index = 0; index < 1024; index += 1) {
+    heights.writeFloatLE(100, index * Float32Array.BYTES_PER_ELEMENT);
+  }
   return {
     schemaVersion: 1,
     chunkX,
     chunkZ,
-    heights: Buffer.alloc(4096),
+    heights,
     textures: Buffer.alloc(1024, texture),
     updatedAtMs: 1,
     contentHash: texture.toString(16).padStart(64, '0'),

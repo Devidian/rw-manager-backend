@@ -80,7 +80,11 @@ function renderChunk(
 ): void {
   for (let localZ = 0; localZ < CHUNK_SIZE; localZ += 1) {
     for (let localX = 0; localX < CHUNK_SIZE; localX += 1) {
-      const color = textureColor(chunk.textures[localZ * CHUNK_SIZE + localX]);
+      const sourceIndex = localZ * CHUNK_SIZE + localX;
+      const color = textureColor(
+        chunk.textures[sourceIndex],
+        chunk.heights.readFloatLE(sourceIndex * Float32Array.BYTES_PER_ELEMENT),
+      );
       const worldPixelX = offsetX * CHUNK_PIXELS + localX * PIXELS_PER_BLOCK;
       const worldPixelZ = offsetZ * CHUNK_PIXELS + localZ * PIXELS_PER_BLOCK;
       for (let pixelZ = 0; pixelZ < PIXELS_PER_BLOCK; pixelZ += 1) {

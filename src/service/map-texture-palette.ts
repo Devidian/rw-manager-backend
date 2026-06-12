@@ -55,10 +55,22 @@ const naturalColors: Record<number, MapColor> = {
 };
 
 const fallback = color('#7a7468');
+const water = color('#496f73');
 
-export function textureColor(textureId: number): MapColor {
+const lodSurfaceColors: Record<number, MapColor> = {
+  100: color('#6f7548'),
+  105: color('#77784b'),
+  107: color('#858553'),
+  110: color('#686d46'),
+  112: color('#697548'),
+};
+
+export function textureColor(textureId: number, height?: number): MapColor {
+  if (height !== undefined && height <= 92) return water;
   const natural = naturalColors[textureId];
   if (natural) return natural;
+  const lodSurface = lodSurfaceColors[textureId];
+  if (lodSurface) return lodSurface;
   if (textureId >= 100 && textureId < 200) {
     return vary(color('#765333'), textureId, 18);
   }
