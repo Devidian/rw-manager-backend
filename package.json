@@ -10,7 +10,7 @@
     "dev": "node --env-file=.env.local --trace-deprecation --import=./register.js src/index.ts",
     "start": "node --env-file=.env.local dist/index.js",
     "typia:setup": "ts-patch install",
-    "build": "tsc",
+    "build": "tspc",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.cjs",
     "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.cjs --coverage",
     "smoke:map-render": "node scripts/map-render-runtime-smoke.mjs",
