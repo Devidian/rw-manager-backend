@@ -2,14 +2,14 @@
   "name": "rw-manager-backend",
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "yarn@4.12.0",
+  "packageManager": "yarn@4.16.0",
   "engines": {
     "node": "24.x"
   },
   "scripts": {
     "dev": "node --env-file=.env.local --trace-deprecation --import=./register.js src/index.ts",
     "start": "node --env-file=.env.local dist/index.js",
-    "typia:setup": "yarn typia setup --manager yarn",
+    "typia:setup": "ts-patch install",
     "build": "tsc",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.cjs",
     "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.cjs --coverage",

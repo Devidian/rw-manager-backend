@@ -18,22 +18,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: yarn
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Activate stable Yarn
+        run: |
+          corepack enable
+          corepack yarn --version
 
       - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Prepare typia transform
-        run: yarn typia:setup
+        run: corepack yarn install --immutable
 
       - name: Build project
-        run: yarn build
+        run: corepack yarn build
 
       - name: Run tests with coverage
-        run: yarn test:coverage --runInBand
+        run: corepack yarn test:coverage --runInBand
 
       - name: Build Docker image
         run: docker build -t rw-manager-backend:ci .

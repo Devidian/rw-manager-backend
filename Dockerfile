@@ -5,13 +5,12 @@ WORKDIR /app
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 RUN corepack enable
-RUN yarn install --immutable
+RUN corepack yarn install --immutable
 
 COPY tsconfig.json .
 COPY src ./src
 
-RUN yarn typia setup --manager yarn
-RUN yarn build
+RUN corepack yarn build
 
 # --- Runtime Image ---
 FROM node:24-slim
@@ -21,7 +20,7 @@ WORKDIR /app
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 RUN corepack enable
-RUN yarn workspaces focus --production
+RUN corepack yarn workspaces focus --production
 
 COPY --from=builder /app/dist ./dist
 

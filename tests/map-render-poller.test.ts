@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import type { MapRenderState } from '../src/interfaces/map-render-state.js';
 import type { MapSourceChunk } from '../src/interfaces/map-source-chunk.js';
 import { MapRenderPoller } from '../src/service/map-render-poller.js';
@@ -75,6 +76,38 @@ describe('map render poller', () => {
 
     expect(sourceClosed).toBe(1);
     expect(stateClosed).toBe(1);
+  });
+
+  test('does not overlap polls and schedules non-overlapping runtime polling', async () => {
+    jest.useFakeTimers();
+    let finishRender: (() => void) | undefined;
+    let hasChunk = true;
+    const closed: string[] = [];
+    const poller = new MapRenderPoller(
+      'New World',
+      { listChunks: () => hasChunk ? [chunk(0, 0, 100, 'a')] : [], close: () => closed.push('source') },
+      {
+        getWorldState: () => new Map(),
+        markObserved() {},
+        markRenderedBatch() {},
+        close: () => closed.push('state'),
+      },
+      { render: () => new Promise<void>((resolve) => { finishRender = resolve; }) },
+      1000,
+    );
+
+    const first = poller.pollOnce();
+    await expect(poller.pollOnce()).resolves.toEqual({ candidates: 0, rendered: 0, unchanged: 0 });
+    finishRender?.();
+    await first;
+
+    hasChunk = false;
+    poller.start();
+    poller.start();
+    await jest.advanceTimersByTimeAsync(0);
+    poller.stop();
+    expect(closed).toEqual(['source', 'state']);
+    jest.useRealTimers();
   });
 });
 

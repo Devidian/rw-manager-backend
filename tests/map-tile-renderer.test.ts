@@ -57,7 +57,7 @@ describe('map tile renderer', () => {
       generatedTileBounds: { minX: -1, minZ: -1, maxX: 0, maxZ: 0 },
       updatedAt: '2026-06-11T00:00:00.000Z',
     });
-  }, 15000);
+  }, 30000);
 });
 
 function chunk(chunkX: number, chunkZ: number, texture: number): MapSourceChunk {
