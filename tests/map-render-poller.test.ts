@@ -166,5 +166,5 @@ function renderState(
 }
 
 function renderedHash(hashCharacter: string): string {
-  return `semantic-palette-v2:${hashCharacter.repeat(64)}`;
+  return `semantic-palette-v3:${hashCharacter.repeat(64)}`;
 }

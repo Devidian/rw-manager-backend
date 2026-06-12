@@ -12,7 +12,10 @@ describe('map tile renderer', () => {
     expect(textureColor(41)).toEqual([82, 118, 59, 255]);
     expect(textureColor(107)).toEqual([133, 133, 83, 255]);
     expect(textureColor(112)).toEqual([105, 117, 72, 255]);
-    expect(textureColor(212)).toEqual([119, 120, 117, 255]);
+    expect(textureColor(109)).toEqual([95, 102, 66, 255]);
+    expect(textureColor(111)).toEqual([100, 103, 67, 255]);
+    expect(textureColor(205)).toEqual([205, 214, 213, 255]);
+    expect(textureColor(212)).toEqual([202, 215, 212, 255]);
     expect(textureColor(75)).toEqual([122, 116, 104, 255]);
     expect(textureColor(17, 92)).toEqual([73, 111, 115, 255]);
     expect(textureColor(17, 92.01)).toEqual([210, 183, 111, 255]);

@@ -56,6 +56,8 @@ const naturalColors: Record<number, MapColor> = {
 
 const fallback = color('#7a7468');
 const water = color('#496f73');
+const grassOverlay = color('#68754a');
+const snowOverlay = color('#dbe8ea');
 
 const lodSurfaceColors: Record<number, MapColor> = {
   100: color('#6f7548'),
@@ -72,10 +74,10 @@ export function textureColor(textureId: number, height?: number): MapColor {
   const lodSurface = lodSurfaceColors[textureId];
   if (lodSurface) return lodSurface;
   if (textureId >= 100 && textureId < 200) {
-    return vary(color('#765333'), textureId, 18);
+    return overlayColor(textureId - 100, grassOverlay, 0.65);
   }
   if (textureId >= 200) {
-    return vary(color('#777875'), textureId, 14);
+    return overlayColor(textureId - 200, snowOverlay, 0.88);
   }
   return fallback;
 }
@@ -89,16 +91,16 @@ function color(hex: `#${string}`): MapColor {
   ];
 }
 
-function vary(base: MapColor, id: number, range: number): MapColor {
-  const offset = ((id * 37) % (range * 2 + 1)) - range;
+function overlayColor(baseTextureId: number, overlay: MapColor, weight: number): MapColor {
+  const base = naturalColors[baseTextureId] ?? fallback;
   return [
-    clamp(base[0] + offset),
-    clamp(base[1] + offset),
-    clamp(base[2] + offset),
+    blend(base[0], overlay[0], weight),
+    blend(base[1], overlay[1], weight),
+    blend(base[2], overlay[2], weight),
     base[3],
   ];
 }
 
-function clamp(value: number): number {
-  return Math.max(0, Math.min(255, value));
+function blend(base: number, overlay: number, weight: number): number {
+  return Math.round(base * (1 - weight) + overlay * weight);
 }
