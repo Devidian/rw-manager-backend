@@ -6,6 +6,15 @@ import type { MapSourceChunk } from '../src/interfaces/map-source-chunk.js';
 import { MapTileRenderer, textureColor } from '../src/service/map-tile-renderer.js';
 
 describe('map tile renderer', () => {
+  test('uses semantic terrain, wood, and stone map colors', () => {
+    expect(textureColor(0)).toEqual([27, 88, 108, 255]);
+    expect(textureColor(17)).toEqual([210, 183, 111, 255]);
+    expect(textureColor(41)).toEqual([82, 118, 59, 255]);
+    expect(textureColor(107)).toEqual([100, 65, 33, 255]);
+    expect(textureColor(212)).toEqual([119, 120, 117, 255]);
+    expect(textureColor(75)).toEqual([122, 116, 104, 255]);
+  });
+
   test('renders signed native tiles with positive Z upward, transparency, pyramid, and schema-5 metadata', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-renderer-'));
     const chunks = [

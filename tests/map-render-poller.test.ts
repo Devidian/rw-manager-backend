@@ -9,7 +9,7 @@ describe('map render poller', () => {
     const observed: Array<[number, number, number]> = [];
     const markedRendered: Array<[number, number, number, string, number]> = [];
     const state = new Map<`${number},${number}`, MapRenderState>([
-      ['1,1', renderState(1, 1, 50, 'b'.repeat(64))],
+      ['1,1', renderState(1, 1, 50, renderedHash('b'))],
     ]);
     const poller = new MapRenderPoller(
       'New World',
@@ -35,7 +35,31 @@ describe('map render poller', () => {
     });
     expect(rendered).toEqual([[chunk(0, 0, 100, 'a')]]);
     expect(observed).toEqual([[1, 1, 100]]);
-    expect(markedRendered).toEqual([[0, 0, 100, 'a'.repeat(64), 5000]]);
+    expect(markedRendered).toEqual([[0, 0, 100, renderedHash('a'), 5000]]);
+  });
+
+  test('rerenders existing chunks when the renderer version changes', async () => {
+    const rendered: MapSourceChunk[][] = [];
+    const sourceChunk = chunk(0, 0, 100, 'a');
+    const poller = new MapRenderPoller(
+      'New World',
+      { listChunks: () => [sourceChunk], close() {} },
+      {
+        getWorldState: () =>
+          new Map([['0,0', renderState(0, 0, 100, sourceChunk.contentHash)]]),
+        markObserved() {},
+        markRenderedBatch() {},
+        close() {},
+      },
+      { render: async (_world, chunks) => rendered.push(chunks) },
+    );
+
+    await expect(poller.pollOnce()).resolves.toEqual({
+      candidates: 1,
+      rendered: 1,
+      unchanged: 0,
+    });
+    expect(rendered).toEqual([[sourceChunk]]);
   });
 
   test('does not advance changed state when rendering fails', async () => {
@@ -139,4 +163,8 @@ function renderState(
     renderedHash,
     renderedAtMs: 1,
   };
+}
+
+function renderedHash(hashCharacter: string): string {
+  return `semantic-palette-v1:${hashCharacter.repeat(64)}`;
 }

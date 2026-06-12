@@ -14,6 +14,8 @@ export interface MapRenderPollResult {
   unchanged: number;
 }
 
+const RENDERER_VERSION = 'semantic-palette-v1';
+
 export class MapRenderPoller {
   private timer: NodeJS.Timeout | undefined;
   private running = false;
@@ -36,13 +38,19 @@ export class MapRenderPoller {
       const state = this.state.getWorldState(this.worldName);
       const candidates = this.source
         .listChunks()
-        .filter((chunk) => chunk.updatedAtMs > (state.get(key(chunk))?.sourceUpdatedAtMs ?? 0))
+        .filter((chunk) => {
+          const rendered = state.get(key(chunk));
+          return (
+            chunk.updatedAtMs > (rendered?.sourceUpdatedAtMs ?? 0) ||
+            rendered?.renderedHash !== renderHash(chunk)
+          );
+        })
         .slice(0, this.batchSize);
       const changed = candidates.filter(
-        (chunk) => state.get(key(chunk))?.renderedHash !== chunk.contentHash,
+        (chunk) => state.get(key(chunk))?.renderedHash !== renderHash(chunk),
       );
       const unchanged = candidates.filter(
-        (chunk) => state.get(key(chunk))?.renderedHash === chunk.contentHash,
+        (chunk) => state.get(key(chunk))?.renderedHash === renderHash(chunk),
       );
 
       for (const chunk of unchanged) {
@@ -57,7 +65,7 @@ export class MapRenderPoller {
             chunkX: chunk.chunkX,
             chunkZ: chunk.chunkZ,
             sourceUpdatedAtMs: chunk.updatedAtMs,
-            renderedHash: chunk.contentHash,
+            renderedHash: renderHash(chunk),
           })),
           renderedAtMs,
         );
@@ -99,4 +107,8 @@ export class MapRenderPoller {
 
 function key(chunk: MapSourceChunk): `${number},${number}` {
   return `${chunk.chunkX},${chunk.chunkZ}`;
+}
+
+function renderHash(chunk: MapSourceChunk): string {
+  return `${RENDERER_VERSION}:${chunk.contentHash}`;
 }

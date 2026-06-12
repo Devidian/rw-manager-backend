@@ -7,6 +7,7 @@ import { defaultLogger } from '../utils/logger.js';
 import type { MapRenderProcessor } from './map-render-poller.js';
 import type { MapSourceReader } from './map-source-service.js';
 import { toWorldKey } from './map-service.js';
+import { textureColor, type MapColor } from './map-texture-palette.js';
 
 const TILE_SIZE = 256;
 const CHUNK_SIZE = 32;
@@ -69,13 +70,7 @@ export class MapTileRenderer implements MapRenderProcessor {
   }
 }
 
-export function textureColor(textureId: number): [number, number, number, number] {
-  const hue = (textureId * 137.508) % 360;
-  const saturation = 0.38 + ((textureId * 17) % 25) / 100;
-  const lightness = 0.32 + ((textureId * 29) % 28) / 100;
-  const [red, green, blue] = hslToRgb(hue, saturation, lightness);
-  return [red, green, blue, 255];
-}
+export { textureColor } from './map-texture-palette.js';
 
 function renderChunk(
   image: PNG,
@@ -221,7 +216,7 @@ function floorDiv(value: number, divisor: number): number {
   return Math.floor(value / divisor);
 }
 
-function setPixel(image: PNG, x: number, y: number, color: [number, number, number, number]): void {
+function setPixel(image: PNG, x: number, y: number, color: MapColor): void {
   const index = (y * image.width + x) * 4;
   image.data[index] = color[0];
   image.data[index + 1] = color[1];
@@ -233,21 +228,6 @@ function copyPixel(source: PNG, sourceX: number, sourceY: number, target: PNG, t
   const sourceIndex = (sourceY * source.width + sourceX) * 4;
   const targetIndex = (targetY * target.width + targetX) * 4;
   source.data.copy(target.data, targetIndex, sourceIndex, sourceIndex + 4);
-}
-
-function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
-  const section = hue / 60;
-  const second = chroma * (1 - Math.abs((section % 2) - 1));
-  const [red, green, blue] =
-    section < 1 ? [chroma, second, 0] :
-    section < 2 ? [second, chroma, 0] :
-    section < 3 ? [0, chroma, second] :
-    section < 4 ? [0, second, chroma] :
-    section < 5 ? [second, 0, chroma] :
-    [chroma, 0, second];
-  const match = lightness - chroma / 2;
-  return [red, green, blue].map((value) => Math.round((value + match) * 255)) as [number, number, number];
 }
 
 function isMissing(error: unknown): boolean {

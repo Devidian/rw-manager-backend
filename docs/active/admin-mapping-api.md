@@ -194,6 +194,10 @@ for backend startup.
 - Missing Rising World roots, `server.properties`, worlds, player databases,
   plugin directories, and Admin Utils map sources are treated as optional
   unavailable capabilities and do not prevent backend startup.
-- The unavailable V1 palette source was replaced by a stable deterministic
-  texture-ID palette. Visual palette fidelity remains a rollout validation
+- The unavailable V1 palette source was replaced by a stable semantic palette
+  derived from the client `definitions.db` natural, wood, and stone texture
+  groups. The provided 9-chunk runtime copy renders plausible desert terrain
+  and wood colors; broader biome fidelity remains a rollout validation
+- Renderer output hashes include a renderer version so palette changes rebuild
+  existing source chunks once after deployment.
   item.
