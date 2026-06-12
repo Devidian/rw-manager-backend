@@ -6,11 +6,18 @@ import { defaultLogger } from './utils/logger.js';
 import api from './router/api-router.js';
 import { db } from './db/sqlite.js';
 import { AppConfig } from './utils/app-config.js';
+import { startMapRenderer } from './service/map-render-runtime.js';
 
 const main = () => {
   const app = express();
   const database = db;
   database.initialize();
+  const mapRenderer = startMapRenderer();
+  if (mapRenderer) {
+    const stopMapRenderer = () => mapRenderer.stop();
+    process.once('SIGINT', stopMapRenderer);
+    process.once('SIGTERM', stopMapRenderer);
+  }
 
   app.use(express.json());
 

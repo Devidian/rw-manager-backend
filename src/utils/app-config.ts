@@ -29,6 +29,18 @@ export class AppConfig {
   static get forceAuth(): boolean {
     return (env.FORCE_AUTH ?? 'false') === 'true';
   }
+  static get enableMapRenderer(): boolean {
+    return (env.ENABLE_MAP_RENDERER ?? 'false') === 'true';
+  }
+  static get mapTileRoot(): string | undefined {
+    return env.MAP_TILE_ROOT;
+  }
+  static get mapRenderIntervalMs(): number {
+    return AppConfig.boundedInteger(env.MAP_RENDER_INTERVAL_MS, 30000, 1000, Number.MAX_SAFE_INTEGER);
+  }
+  static get mapRenderBatchSize(): number {
+    return AppConfig.boundedInteger(env.MAP_RENDER_BATCH_SIZE, 256, 1, 4096);
+  }
   static get defaultUserRole(): 'guest' | 'user' | 'admin' {
     const value = env.DEFAULT_USER_ROLE;
     return AppConfig.validRoles.find((item) => item === value) ?? 'user';
@@ -57,5 +69,18 @@ export class AppConfig {
   static get logStyle(): 'default' | 'detailed' | 'gcp' {
     const value = env.LOG_STYLE;
     return AppConfig.validLogStyles.find((item) => item === value) ?? 'default';
+  }
+
+  private static boundedInteger(
+    value: string | undefined,
+    fallback: number,
+    minimum: number,
+    maximum: number,
+  ): number {
+    if (value === undefined) return fallback;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum
+      ? parsed
+      : fallback;
   }
 }

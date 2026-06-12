@@ -2,6 +2,36 @@
 
 Backend API for Rising World server management with TypeScript, Express 5, lowdb, and SQLite integration.
 
+## Server Data API
+
+When `ENABLE_DATA=true`, the backend exposes read-only server data including:
+
+```text
+GET /api/data/server/plugins
+GET /api/data/server/map
+GET /api/data/server/map/tiles/:worldKey/:z/:x/:y.png
+```
+
+The opt-in map renderer reads Admin Utils `map_chunks_v1` records from the
+active world database beneath `SERVER_ROOT`, publishes schema-5 PNG tiles
+beneath the writable absolute `MAP_TILE_ROOT`, and serves only that
+backend-owned output.
+
+```text
+ENABLE_MAP_RENDERER=false
+MAP_TILE_ROOT=/appdata/rwman/map-tiles
+MAP_RENDER_INTERVAL_MS=30000
+MAP_RENDER_BATCH_SIZE=256
+```
+
+Validate a built renderer against a copied Admin Utils world database before
+enabling it:
+
+```text
+yarn build
+yarn smoke:map-render -- "/path/to/New World.db"
+```
+
 ## Runtime Baseline
 
 * Node.js 24 LTS
@@ -23,6 +53,8 @@ services:
       NODE_ENV: production
       SERVER_ROOT: /appdata/rising-world/dedicated-server
       ENABLE_DATA: true
+      ENABLE_MAP_RENDERER: false
+      MAP_TILE_ROOT: /appdata/rwman/map-tiles
       ENABLE_STORAGE: true
       ENABLE_AUTH: false
       FORCE_AUTH: false
@@ -52,6 +84,8 @@ services:
       NODE_ENV: production
       SERVER_ROOT: /appdata/rising-world/dedicated-server
       ENABLE_DATA: true
+      ENABLE_MAP_RENDERER: false
+      MAP_TILE_ROOT: /appdata/rwman/map-tiles
       ENABLE_STORAGE: true
       ENABLE_AUTH: true
       FORCE_AUTH: true
@@ -93,5 +127,6 @@ services:
 ## Notes
 
 * Application data is stored under `/appdata/rwman`.
-* The Rising World dedicated server root is expected at `SERVER_ROOT`.
+* The complete Rising World dedicated server root is expected at `SERVER_ROOT`;
+  mounting only selected world data does not expose plugin inventory or maps.
 * Ignored local deployment files are intentionally not treated as maintained repository examples.

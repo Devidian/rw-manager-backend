@@ -13,6 +13,7 @@
     "build": "tsc",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.cjs",
     "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.config.cjs --coverage",
+    "smoke:map-render": "node scripts/map-render-runtime-smoke.mjs",
     "prepare": "ts-patch install"
   },
   "dependencies": {
@@ -20,21 +21,19 @@
     "express": "5.2.1",
     "express-session": "^1.18.2",
     "lowdb": "^7.0.1",
-    "lz4": "^0.6.5",
-    "lz4-napi": "^2.9.0",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pngjs": "^7.0.0",
     "properties-reader": "^3.0.1",
     "typia": "^11.0.3",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
     "@types/jest": "^30.0.0",
-    "@types/lz4": "^0",
     "@types/node": "~24",
     "@types/passport": "^1.0.17",
     "@types/passport-local": "^1.0.38",
