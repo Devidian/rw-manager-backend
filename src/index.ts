@@ -11,7 +11,9 @@ import { startMapRenderer } from './service/map-render-runtime.js';
 const main = () => {
   const app = express();
   const database = db;
-  database.initialize();
+  if (AppConfig.enableData && !database.initializeIfAvailable()) {
+    defaultLogger.debug('Rising World player database unavailable; player data API disabled');
+  }
   const mapRenderer = startMapRenderer();
   if (mapRenderer) {
     const stopMapRenderer = () => mapRenderer.stop();

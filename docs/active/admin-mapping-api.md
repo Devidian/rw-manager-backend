@@ -191,6 +191,9 @@ for backend startup.
 - The reproducible `smoke:map-render` command renders a provided source copy,
   validates schema-5/native output, reopens source and state, and confirms
   `0` restart candidates for already rendered rows.
+- Missing Rising World roots, `server.properties`, worlds, player databases,
+  plugin directories, and Admin Utils map sources are treated as optional
+  unavailable capabilities and do not prevent backend startup.
 - The unavailable V1 palette source was replaced by a stable deterministic
   texture-ID palette. Visual palette fidelity remains a rollout validation
   item.

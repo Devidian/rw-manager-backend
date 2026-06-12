@@ -44,6 +44,15 @@ describe('map service', () => {
     ).resolves.toBeNull();
   });
 
+  test('returns unavailable when no Rising World server configuration exists', async () => {
+    const tileRoot = await mkdtemp(path.join(os.tmpdir(), 'rw-map-no-server-'));
+    const previousRoot = process.env.SERVER_ROOT;
+    process.env.SERVER_ROOT = path.join(tileRoot, 'missing-server');
+    await expect(getServerMap(tileRoot)).resolves.toEqual({ available: false });
+    if (previousRoot === undefined) delete process.env.SERVER_ROOT;
+    else process.env.SERVER_ROOT = previousRoot;
+  });
+
   test('returns validated schema-5 metadata with the backend tile URL', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-valid-'));
     const mapRoot = await createMapRoot(root);

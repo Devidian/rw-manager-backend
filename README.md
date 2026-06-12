@@ -17,6 +17,11 @@ active world database beneath `SERVER_ROOT`, publishes schema-5 PNG tiles
 beneath the writable absolute `MAP_TILE_ROOT`, and serves only that
 backend-owned output.
 
+The backend does not require a Rising World installation to start. Missing
+server configuration, worlds, player database, plugin directory, or Admin
+Utils map source disable only the corresponding optional data and rendering
+features.
+
 ```text
 ENABLE_MAP_RENDERER=false
 MAP_TILE_ROOT=/appdata/rwman/map-tiles

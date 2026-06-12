@@ -1,9 +1,10 @@
 import Database from 'better-sqlite3';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppConfig } from '../utils/app-config.js';
 import { ServerConfig } from '../utils/server-config.js';
 import type { DbPlayer } from '../interfaces/game-player.js';
+import { defaultLogger } from '../utils/logger.js';
 import {
   bufferToPosition,
 } from '../utils/spawn-packet-decoder.js';
@@ -32,6 +33,25 @@ class RWSQLite {
       `${this.rootPath}/Worlds/${currentWorld}/Player.db`,
     );
     this.playerDb = new Database(playerDbPath);
+  }
+
+  initializeIfAvailable(): boolean {
+    try {
+      const configPath = resolve(`${this.rootPath}/server.properties`);
+      const worldsPath = resolve(`${this.rootPath}/Worlds`);
+      if (!existsSync(configPath) || !existsSync(worldsPath)) return false;
+
+      const currentWorld = this.worldName;
+      const playerDbPath = resolve(
+        `${this.rootPath}/Worlds/${currentWorld}/Player.db`,
+      );
+      if (!existsSync(playerDbPath)) return false;
+      this.playerDb = new Database(playerDbPath, { readonly: true });
+      return true;
+    } catch (error) {
+      defaultLogger.warn('Rising World player database unavailable:', error);
+      return false;
+    }
   }
 
   getPlayers() {

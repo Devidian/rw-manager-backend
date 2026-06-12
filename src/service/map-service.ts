@@ -32,7 +32,14 @@ export async function getServerMap(
   worldName?: string,
 ): Promise<GetServerMapResponse> {
   if (!tileRoot || !path.isAbsolute(tileRoot)) return { available: false };
-  const activeWorldName = worldName ?? ServerConfig.getWorldName(AppConfig.rootPath);
+  let activeWorldName = worldName;
+  if (!activeWorldName) {
+    try {
+      activeWorldName = ServerConfig.getWorldName(AppConfig.rootPath);
+    } catch {
+      return { available: false };
+    }
+  }
   const worldKey = toWorldKey(activeWorldName);
   const worldRoot = mapWorldRoot(tileRoot, worldKey);
   let json: string;

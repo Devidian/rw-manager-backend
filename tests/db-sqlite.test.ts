@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 
 const readdirSyncMock = jest.fn<(path: string) => string[]>();
+const existsSyncMock = jest.fn<(path: string) => boolean>();
 const resolveMock = jest.fn<(path: string) => string>();
 const getWorldNameMock = jest.fn<(rootPath?: string) => string>();
 const bufferToPositionMock = jest.fn<(value: Buffer | undefined) => unknown>();
@@ -8,6 +9,7 @@ const databasePrepareMock = jest.fn<(query: string) => { all: () => unknown[] }>
 const databaseConstructorMock = jest.fn<(path: string) => { prepare: typeof databasePrepareMock }>();
 
 jest.unstable_mockModule('node:fs', () => ({
+  existsSync: existsSyncMock,
   readdirSync: readdirSyncMock,
 }));
 
@@ -50,6 +52,7 @@ describe('db/sqlite', () => {
     restoreEnv(originalEnv);
     process.env.SERVER_ROOT = '/srv/rw';
     readdirSyncMock.mockReset();
+    existsSyncMock.mockReset().mockReturnValue(true);
     resolveMock.mockImplementation((value: string) => value);
     getWorldNameMock.mockReset().mockReturnValue('world-1');
     bufferToPositionMock.mockReset()
@@ -90,6 +93,25 @@ describe('db/sqlite', () => {
     readdirSyncMock.mockReturnValue(['other-world']);
 
     expect(() => db.initialize()).toThrow('World world-1 does not exist');
+  });
+
+  test('optional initialization tolerates missing server assets and opens an existing player database read-only', async () => {
+    const { db } = await loadDbModule();
+    existsSyncMock.mockReturnValue(false);
+    expect(db.initializeIfAvailable()).toBe(false);
+    expect(databaseConstructorMock).not.toHaveBeenCalled();
+
+    existsSyncMock.mockReturnValue(true);
+    expect(db.initializeIfAvailable()).toBe(true);
+    expect(databaseConstructorMock).toHaveBeenCalledWith(
+      '/srv/rw/Worlds/world-1/Player.db',
+      { readonly: true },
+    );
+
+    getWorldNameMock.mockImplementation(() => {
+      throw new Error('invalid server config');
+    });
+    expect(db.initializeIfAvailable()).toBe(false);
   });
 
   test('getPlayers requires initialization and maps sqlite rows', async () => {
