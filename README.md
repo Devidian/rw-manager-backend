@@ -10,6 +10,10 @@ When `ENABLE_DATA=true`, the backend exposes read-only server data including:
 GET /api/data/server/plugins
 GET /api/data/server/map
 GET /api/data/server/map/tiles/:worldKey/:z/:x/:y.png
+GET /api/data/server/map/layers
+GET /api/data/server/map/layers/claims
+GET /api/data/server/map/layers/players
+GET /api/data/server/map/layers/marketplaces/:areaId/offers
 ```
 
 The opt-in map renderer reads Admin Utils `map_chunks_v1` records from the
@@ -27,7 +31,14 @@ ENABLE_MAP_RENDERER=false
 MAP_TILE_ROOT=/appdata/rwman/map-tiles
 MAP_RENDER_INTERVAL_MS=30000
 MAP_RENDER_BATCH_SIZE=256
+MAP_RECENT_PLAYER_DAYS=7
+MAP_PLAYERLIST_URL=http://127.0.0.1:4254/playerlist
 ```
+
+Map layer APIs discover Land Claim, Marketplace, and Shop by their valid
+plugin manifests, then read the active world's game/plugin SQLite databases
+read-only. `MAP_PLAYERLIST_URL` is optional; configure the full live
+`playerlist` endpoint to distinguish online players authoritatively.
 
 Validate a built renderer against a copied Admin Utils world database before
 enabling it:

@@ -7,3 +7,4 @@ Each task must include objective, ownership, dependencies, risks, validation str
 ## Current Tasks
 
 - [Admin Mapping And Plugin Inventory API](admin-mapping-api.md)
+- [Online Map Layers Backend API](online-map-layers-api.md)

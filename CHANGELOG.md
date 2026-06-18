@@ -50,6 +50,9 @@ The format follows Common Changelog principles and the project uses Semantic Ver
 * Opt-in schema-5 map renderer with read-only Admin Utils source polling,
   backend-owned rendering state, native `2x2` chunk tiles, incremental parent
   pyramid, and atomic backend-local output.
+* Read-only schema-1 map layer APIs for sectors, Land Claim areas, claim
+  sales, Marketplace/Shop area flags, local offers, and privacy-filtered
+  player positions.
 
 ### Changed
 
