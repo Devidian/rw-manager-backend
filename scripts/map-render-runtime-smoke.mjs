@@ -8,7 +8,7 @@ import { MapTileRenderer } from '../dist/service/map-tile-renderer.js';
 
 const sourceArgument = process.argv.slice(2).find((argument) => argument !== '--');
 if (!sourceArgument) {
-  console.error('Usage: npm run smoke:map-render -- /path/to/<world>.db');
+  console.error('Usage: yarn smoke:map-render -- /path/to/<world>.db');
   process.exit(1);
 }
 
@@ -36,8 +36,8 @@ try {
   );
   source.close();
 
-  const first = await pollOnce(serverRoot, tileRoot, worldName);
-  if (first.rendered === 0) throw new Error('Initial poll rendered no chunks');
+  const initial = await drainSource(serverRoot, tileRoot, worldName);
+  if (initial.rendered === 0) throw new Error('Initial polls rendered no chunks');
 
   const metadataPath = path.join(tileRoot, worldKey(worldName), 'metadata.json');
   const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
@@ -55,7 +55,8 @@ try {
 
   console.log(JSON.stringify({
     worldName,
-    renderedChunks: first.rendered,
+    renderedChunks: initial.rendered,
+    renderBatches: initial.batches,
     nativeTileCount: expectedNativeTiles.size,
     generatedChunkBounds: metadata.generatedChunkBounds,
     generatedTileBounds: metadata.generatedTileBounds,
@@ -63,6 +64,19 @@ try {
   }));
 } finally {
   await rm(runtimeRoot, { recursive: true, force: true });
+}
+
+async function drainSource(serverRoot, tileRoot, worldName) {
+  const total = { batches: 0, candidates: 0, rendered: 0, unchanged: 0 };
+  for (let batch = 0; batch < 10000; batch += 1) {
+    const result = await pollOnce(serverRoot, tileRoot, worldName);
+    if (result.candidates === 0) return total;
+    total.batches += 1;
+    total.candidates += result.candidates;
+    total.rendered += result.rendered;
+    total.unchanged += result.unchanged;
+  }
+  throw new Error('Initial rendering did not drain source candidates');
 }
 
 async function pollOnce(serverRoot, tileRoot, worldName) {

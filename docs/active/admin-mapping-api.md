@@ -156,7 +156,7 @@ Keep plugin inventory routes and tests unless separately changed.
 - [x] Existing plugin inventory behavior remains valid.
 - [x] `yarn build`
 - [x] `yarn test`
-- [ ] Docker deployment smoke verifies source mounts, writable output/state
+- [x] Docker deployment smoke verifies source mounts, writable output/state
   paths, periodic rendering, and API delivery.
 
 ## Risks
@@ -191,13 +191,23 @@ for backend startup.
 - The reproducible `smoke:map-render` command renders a provided source copy,
   validates schema-5/native output, reopens source and state, and confirms
   `0` restart candidates for already rendered rows.
+- The smoke drains source backlogs across multiple configured-size batches
+  before checking restart idempotence. The June 12, 2026 synchronized
+  development-world copy rendered all 258 chunks across 2 batches into 95
+  native tiles and then reported `0` restart candidates.
+- Live deployment validation confirmed 258 synchronized source/render-state
+  rows, `0` pending candidates, periodic rendering in batches of 256 and 2,
+  schema-5 API delivery, missing-tile `404`, and transparent missing-chunk
+  output. A controlled backend restart left metadata unchanged and
+  reprocessed no rows.
 - Missing Rising World roots, `server.properties`, worlds, player databases,
   plugin directories, and Admin Utils map sources are treated as optional
   unavailable capabilities and do not prevent backend startup.
 - The unavailable V1 palette source was replaced by a stable semantic palette
   derived from the client `definitions.db` natural, wood, and stone texture
-  groups. The provided 9-chunk runtime copy renders plausible desert terrain
-  and wood colors; broader biome fidelity remains a rollout validation
+  groups. Visual comparison against the currently explored development-world
+  area found the colors acceptable; broader terrain coverage remains
+  observational follow-up.
 - Renderer output hashes include a renderer version so palette changes rebuild
   existing source chunks once after deployment.
 - Terrain at or below `Y=91` renders as water. Runtime comparison showed that
