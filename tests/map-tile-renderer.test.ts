@@ -17,8 +17,8 @@ describe('map tile renderer', () => {
     expect(textureColor(205)).toEqual([205, 214, 213, 255]);
     expect(textureColor(212)).toEqual([202, 215, 212, 255]);
     expect(textureColor(75)).toEqual([122, 116, 104, 255]);
-    expect(textureColor(17, 91)).toEqual([73, 111, 115, 255]);
-    expect(textureColor(17, 91.01)).toEqual([210, 183, 111, 255]);
+    expect(textureColor(17, 90)).toEqual([73, 111, 115, 255]);
+    expect(textureColor(17, 90.01)).toEqual([210, 183, 111, 255]);
   });
 
   test('renders signed native tiles with positive Z upward, transparency, pyramid, and schema-5 metadata', async () => {
