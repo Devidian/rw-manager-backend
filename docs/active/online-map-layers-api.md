@@ -140,14 +140,15 @@ Add one validated setting:
 
 ```text
 MAP_RECENT_PLAYER_DAYS=7
-MAP_PLAYERLIST_URL=http://127.0.0.1:<query-port>/playerlist
 ```
 
 - integer, minimum `1`, with a documented upper bound
 - controls recent versus long-term offline classification
 - does not affect online detection
-- `MAP_PLAYERLIST_URL` is optional but required for authoritative green online
-  markers; it must point to the live Rising World `playerlist` endpoint
+
+The backend does not own a global player-list URL. The frontend already polls
+each configured server's own `queryUrl/playerlist`; it joins those UIDs with
+the backend's `Player.db` positions.
 
 Prefer short TTL caches per layer over continuous background polling unless
 runtime measurements prove a poller is required. Cache keys must include active
@@ -232,9 +233,18 @@ databases remain untouched.
 - Plugin sources are discovered by valid manifest name and opened read-only.
 - Land Claim settings, owner resolution, configured colors, active sales,
   Marketplace/Shop flags, and local offers are covered by sanitized fixtures.
-- Player classification supports `MAP_RECENT_PLAYER_DAYS` and optional
-  authoritative online UID loading through `MAP_PLAYERLIST_URL`.
+- Player classification supports `MAP_RECENT_PLAYER_DAYS`; authoritative
+  online UIDs come from each frontend server entry's existing player-list
+  request.
 - Long-term offline rows are emitted only for verified backend admin tokens.
 - Build, 97 automated tests, and global coverage thresholds pass.
 - Remaining delivery gates are deployed schema compatibility, busy/locked
   SQLite behavior, live player-list UID matching, and Docker/runtime smoke.
+
+## Runtime Corrections
+
+- Live comparison showed the initial 32-chunk/1024-block sector assumption was
+  eight times too small on each axis. Schema-1 capabilities now report 256
+  chunks and 8192 blocks per sector.
+- The terrain renderer water threshold is reduced from `Y=92` to `Y=91`, and
+  renderer version `semantic-palette-v4` forces existing chunks to rebuild.

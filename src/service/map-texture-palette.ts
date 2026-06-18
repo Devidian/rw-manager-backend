@@ -68,7 +68,7 @@ const lodSurfaceColors: Record<number, MapColor> = {
 };
 
 export function textureColor(textureId: number, height?: number): MapColor {
-  if (height !== undefined && height <= 92) return water;
+  if (height !== undefined && height <= 91) return water;
   const natural = naturalColors[textureId];
   if (natural) return natural;
   const lodSurface = lodSurfaceColors[textureId];

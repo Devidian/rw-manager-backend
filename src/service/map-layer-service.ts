@@ -17,8 +17,8 @@ const LAND_CLAIM_NAME = 'OZ - Land Claim';
 const MARKETPLACE_NAME = 'OZ - Marketplace';
 const SHOP_NAME = 'OZ - Shop';
 const CHUNK_SIZE_BLOCKS = 32;
-const SECTOR_SIZE_CHUNKS = 32;
-const SECTOR_SIZE_BLOCKS = 1024;
+const SECTOR_SIZE_CHUNKS = 256;
+const SECTOR_SIZE_BLOCKS = 8192;
 
 interface LayerContext {
   rootPath: string;
@@ -110,7 +110,6 @@ export async function getMapLayerCapabilities(
     marketplace,
     shop,
     players,
-    onlinePlayers: players && Boolean(AppConfig.mapPlayerListUrl),
   };
 }
 
@@ -252,7 +251,6 @@ export async function getMapPlayers(
   if (!hasColumns(playerPath, 'player', ['id', 'uid', 'name', 'posx', 'posz', 'lastseen'])) {
     return null;
   }
-  const onlineUids = await fetchOnlineUids(AppConfig.mapPlayerListUrl);
   const threshold = Math.floor(now.getTime() / 1000) - AppConfig.mapRecentPlayerDays * 86400;
   const database = openReadonly(playerPath);
   try {
@@ -263,15 +261,14 @@ export async function getMapPlayers(
     `).all() as PlayerRow[];
     return rows.flatMap((row): MapPlayer[] => {
       if (!Number.isFinite(row.posx) || !Number.isFinite(row.posz)) return [];
-      const online = onlineUids.has(normalizeUid(row.uid));
       const recent = row.lastseen >= threshold;
-      if (!online && !recent && !includeLongTerm) return [];
+      if (!recent && !includeLongTerm) return [];
       return [{
         id: row.uid || String(row.id),
         name: row.name,
         x: row.posx,
         z: row.posz,
-        state: online ? 'online' : recent ? 'recent-offline' : 'long-term-offline',
+        state: recent ? 'recent-offline' : 'long-term-offline',
         lastSeen: epochSeconds(row.lastseen) ?? new Date(0).toISOString(),
       }];
     });
@@ -490,29 +487,4 @@ function epochSeconds(value: number): string | undefined {
 
 function epochMillis(value: number): string {
   return new Date(value).toISOString();
-}
-
-async function fetchOnlineUids(url: string | undefined): Promise<Set<string>> {
-  if (!url) return new Set();
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return new Set();
-    const payload = await response.json() as { players?: unknown };
-    if (!Array.isArray(payload.players)) return new Set();
-    return new Set(payload.players.flatMap((player): string[] => {
-      if (
-        player !== null &&
-        typeof player === 'object' &&
-        'uid' in player &&
-        typeof player.uid === 'string'
-      ) return [normalizeUid(player.uid)];
-      return [];
-    }));
-  } catch {
-    return new Set();
-  }
-}
-
-function normalizeUid(value: string): string {
-  return value.trim().toLowerCase();
 }

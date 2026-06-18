@@ -48,10 +48,6 @@ export class AppConfig {
   static get mapRecentPlayerDays(): number {
     return AppConfig.boundedInteger(env.MAP_RECENT_PLAYER_DAYS, 7, 1, 3650);
   }
-  static get mapPlayerListUrl(): string | undefined {
-    const value = env.MAP_PLAYERLIST_URL?.trim();
-    return value ? value : undefined;
-  }
   static get defaultUserRole(): 'guest' | 'user' | 'admin' {
     const value = env.DEFAULT_USER_ROLE;
     return AppConfig.validRoles.find((item) => item === value) ?? 'user';

@@ -32,13 +32,12 @@ MAP_TILE_ROOT=/appdata/rwman/map-tiles
 MAP_RENDER_INTERVAL_MS=30000
 MAP_RENDER_BATCH_SIZE=256
 MAP_RECENT_PLAYER_DAYS=7
-MAP_PLAYERLIST_URL=http://127.0.0.1:4254/playerlist
 ```
 
 Map layer APIs discover Land Claim, Marketplace, and Shop by their valid
 plugin manifests, then read the active world's game/plugin SQLite databases
-read-only. `MAP_PLAYERLIST_URL` is optional; configure the full live
-`playerlist` endpoint to distinguish online players authoritatively.
+read-only. Online status is joined in the frontend from each configured
+server's existing `playerlist` response.
 
 Validate a built renderer against a copied Admin Utils world database before
 enabling it:

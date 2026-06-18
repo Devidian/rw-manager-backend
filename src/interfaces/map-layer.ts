@@ -1,16 +1,15 @@
 export interface MapLayerCapabilities {
   schemaVersion: 1;
   worldName: string;
-  sectorSizeChunks: 32;
+  sectorSizeChunks: 256;
   chunkSizeBlocks: 32;
-  sectorSizeBlocks: 1024;
+  sectorSizeBlocks: 8192;
   recentPlayerDays: number;
   claims: boolean;
   claimSales: boolean;
   marketplace: boolean;
   shop: boolean;
   players: boolean;
-  onlinePlayers: boolean;
 }
 
 export interface MapClaim {

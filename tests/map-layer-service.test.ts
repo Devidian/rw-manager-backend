@@ -24,16 +24,15 @@ describe('map layer service', () => {
     await expect(getMapLayerCapabilities(root)).resolves.toEqual({
       schemaVersion: 1,
       worldName: 'Test World',
-      sectorSizeChunks: 32,
+      sectorSizeChunks: 256,
       chunkSizeBlocks: 32,
-      sectorSizeBlocks: 1024,
+      sectorSizeBlocks: 8192,
       recentPlayerDays: 7,
       claims: false,
       claimSales: false,
       marketplace: false,
       shop: false,
       players: true,
-      onlinePlayers: false,
     });
     await expect(getMapClaims(root)).resolves.toBeNull();
   });
@@ -229,31 +228,26 @@ describe('map layer service', () => {
     await expect(getMapMarketplaceOffers(999, root)).resolves.toEqual([]);
   });
 
-  test('filters long-term players unless explicitly authorized and detects online UIDs', async () => {
+  test('filters long-term players unless explicitly authorized', async () => {
     const root = await createWorld();
     process.env.MAP_RECENT_PLAYER_DAYS = '7';
-    process.env.MAP_PLAYERLIST_URL = 'http://server/playerlist';
-    jest.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-      new Response(JSON.stringify({ players: [{ uid: 'ONLINE-UID' }] }), { status: 200 }),
-    );
     const now = new Date('2026-06-18T12:00:00.000Z');
 
     const publicPlayers = await getMapPlayers(false, root, now);
     expect(publicPlayers?.map(({ id, state }) => ({ id, state }))).toEqual([
-      { id: 'online-uid', state: 'online' },
       { id: 'owner-uid', state: 'recent-offline' },
       { id: 'recent-uid', state: 'recent-offline' },
     ]);
     const adminPlayers = await getMapPlayers(true, root, now);
     expect(adminPlayers?.map(({ id, state }) => ({ id, state }))).toEqual([
       { id: 'long-uid', state: 'long-term-offline' },
-      { id: 'online-uid', state: 'online' },
+      { id: 'online-uid', state: 'long-term-offline' },
       { id: 'owner-uid', state: 'recent-offline' },
       { id: 'recent-uid', state: 'recent-offline' },
     ]);
   });
 
-  test('handles missing player schemas, invalid positions, and unavailable player lists', async () => {
+  test('handles missing player schemas, invalid positions, and empty UIDs', async () => {
     const missingRoot = await createWorld();
     const missing = new Database(path.join(missingRoot, 'Worlds', 'Test World', 'Player.db'));
     missing.exec('DROP TABLE player');
@@ -270,8 +264,6 @@ describe('map layer service', () => {
     ).run(21, 'invalid-position', 'Invalid', Number.NaN, 20, 0);
     players.close();
 
-    process.env.MAP_PLAYERLIST_URL = 'http://server/playerlist';
-    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
     const result = await getMapPlayers(true, root, new Date('2026-06-18T12:00:00Z'));
     expect(result).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -282,9 +274,6 @@ describe('map layer service', () => {
     ]));
     expect(result?.some((player) => player.id === 'invalid-position')).toBe(false);
 
-    jest.mocked(globalThis.fetch).mockResolvedValue(
-      new Response(JSON.stringify({ players: [{ uid: 123 }, null] }), { status: 200 }),
-    );
     await expect(getMapPlayers(false, root)).resolves.toEqual(
       expect.not.arrayContaining([expect.objectContaining({ id: 'long-uid' })]),
     );
