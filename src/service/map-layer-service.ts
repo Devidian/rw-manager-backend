@@ -4,6 +4,7 @@ import path from 'node:path';
 import { propertiesReader } from 'properties-reader';
 import type {
   MapClaim,
+  MapGpsMarker,
   MapLayerCapabilities,
   MapMarketplaceOffer,
   MapPlayer,
@@ -16,6 +17,7 @@ import { listInstalledPlugins } from './plugin-inventory-service.js';
 const LAND_CLAIM_NAME = 'OZ - Land Claim';
 const MARKETPLACE_NAME = 'OZ - Marketplace';
 const SHOP_NAME = 'OZ - Shop';
+const GPS_NAME = 'OZ - GPS';
 const CHUNK_SIZE_BLOCKS = 32;
 const SECTOR_SIZE_CHUNKS = 256;
 const SECTOR_SIZE_BLOCKS = 8192;
@@ -27,6 +29,7 @@ interface LayerContext {
   landClaim?: PluginSource;
   marketplace?: PluginSource;
   shop?: PluginSource;
+  gps?: PluginSource;
 }
 
 interface PluginSource {
@@ -65,6 +68,17 @@ interface PlayerRow {
   lastseen: number;
 }
 
+interface GpsMarkerRow {
+  id: number;
+  name: string;
+  pos_x: number;
+  pos_y: number;
+  pos_z: number;
+  icon: string;
+  color: number;
+  created_at: number;
+}
+
 export async function getMapLayerCapabilities(
   rootPath: string = AppConfig.rootPath,
 ): Promise<MapLayerCapabilities> {
@@ -97,6 +111,7 @@ export async function getMapLayerCapabilities(
     context.shop &&
     hasColumns(context.shop.databasePath, 'shop_zones', ['area_id']),
   );
+  const gpsGlobalMarkers = hasGpsGlobalMarkerSource(context);
 
   return {
     schemaVersion: 1,
@@ -110,6 +125,7 @@ export async function getMapLayerCapabilities(
     marketplace,
     shop,
     players,
+    gpsGlobalMarkers,
   };
 }
 
@@ -277,6 +293,51 @@ export async function getMapPlayers(
   }
 }
 
+export async function getMapGpsGlobalMarkers(
+  rootPath: string = AppConfig.rootPath,
+): Promise<MapGpsMarker[] | null> {
+  const context = await createContext(rootPath);
+  if (!hasGpsGlobalMarkerSource(context) || !context.gps) return null;
+  const database = openReadonly(context.gps.databasePath);
+  try {
+    if (!tableHasColumns(database, 'marker', [
+      'id', 'type', 'created_at', 'pos_x', 'pos_y', 'pos_z', 'name', 'icon', 'color',
+    ])) return null;
+    const rows = database.prepare(`
+      SELECT id, name, pos_x, pos_y, pos_z, icon, color, created_at
+      FROM marker
+      WHERE type = 'GLOBAL'
+      ORDER BY created_at DESC, id DESC
+    `).all() as GpsMarkerRow[];
+    return rows.flatMap((row): MapGpsMarker[] => {
+      if (
+        !Number.isSafeInteger(row.id) ||
+        row.id <= 0 ||
+        typeof row.name !== 'string' ||
+        typeof row.icon !== 'string' ||
+        !Number.isFinite(row.pos_x) ||
+        !Number.isFinite(row.pos_y) ||
+        !Number.isFinite(row.pos_z) ||
+        !Number.isFinite(row.color) ||
+        !Number.isSafeInteger(row.created_at) ||
+        row.created_at <= 0
+      ) return [];
+      return [{
+        id: row.id,
+        name: row.name,
+        x: row.pos_x,
+        y: row.pos_y,
+        z: row.pos_z,
+        icon: row.icon,
+        color: packedIntRgba(row.color),
+        createdAt: epochMillis(row.created_at),
+      }];
+    });
+  } finally {
+    database.close();
+  }
+}
+
 async function createContext(rootPath: string): Promise<LayerContext> {
   const worldName = ServerConfig.getWorldName(rootPath);
   const plugins = await listInstalledPlugins(rootPath);
@@ -287,6 +348,7 @@ async function createContext(rootPath: string): Promise<LayerContext> {
     landClaim: pluginSource(rootPath, worldName, plugins, LAND_CLAIM_NAME),
     marketplace: pluginSource(rootPath, worldName, plugins, MARKETPLACE_NAME),
     shop: pluginSource(rootPath, worldName, plugins, SHOP_NAME),
+    gps: pluginSource(rootPath, worldName, plugins, GPS_NAME),
   };
 }
 
@@ -324,6 +386,12 @@ function hasColumns(databasePath: string, table: string, columns: string[]): boo
   } finally {
     database.close();
   }
+}
+
+function hasGpsGlobalMarkerSource(context: LayerContext): boolean {
+  return Boolean(context.gps && hasColumns(context.gps.databasePath, 'marker', [
+    'id', 'type', 'created_at', 'pos_x', 'pos_y', 'pos_z', 'name', 'icon', 'color',
+  ]));
 }
 
 function tableHasColumns(
@@ -408,6 +476,11 @@ function packedRgba(value: string, fallback: string): string {
   const normalized = value.trim().replace(/^0x/i, '');
   const fallbackNormalized = fallback.replace(/^0x/i, '');
   return `#${/^[0-9a-fA-F]{8}$/.test(normalized) ? normalized : fallbackNormalized}`.toUpperCase();
+}
+
+function packedIntRgba(value: number): string {
+  const unsigned = value >>> 0;
+  return `#${unsigned.toString(16).padStart(8, '0')}`.toUpperCase();
 }
 
 function readOwnerNames(

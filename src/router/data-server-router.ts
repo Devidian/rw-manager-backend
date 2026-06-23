@@ -9,6 +9,9 @@ import { getServerMapTileHandler } from '../handler/get-server-map-tile-handler.
 import { getMapLayerCapabilitiesHandler } from '../handler/get-map-layer-capabilities-handler.js';
 import { getMapClaimsHandler } from '../handler/get-map-claims-handler.js';
 import { getMapPlayersHandler } from '../handler/get-map-players-handler.js';
+import {
+  getMapGpsGlobalMarkersHandler,
+} from '../handler/get-map-gps-global-markers-handler.js';
 import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-offers-handler.js';
 
 const dataServerRouter = Router();
@@ -21,6 +24,7 @@ dataServerRouter.get('/server/map', getServerMapHandler);
 dataServerRouter.get('/server/map/layers', getMapLayerCapabilitiesHandler);
 dataServerRouter.get('/server/map/layers/claims', getMapClaimsHandler);
 dataServerRouter.get('/server/map/layers/players', getMapPlayersHandler);
+dataServerRouter.get('/server/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
 dataServerRouter.get(
   '/server/map/layers/marketplaces/:areaId/offers',
   getMapMarketplaceOffersHandler,

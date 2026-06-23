@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   getMapClaims,
+  getMapGpsGlobalMarkers,
   getMapLayerCapabilities,
   getMapMarketplaceOffers,
   getMapPlayers,
@@ -33,6 +34,7 @@ describe('map layer service', () => {
       marketplace: false,
       shop: false,
       players: true,
+      gpsGlobalMarkers: false,
     });
     await expect(getMapClaims(root)).resolves.toBeNull();
   });
@@ -154,6 +156,76 @@ describe('map layer service', () => {
         createdAt: '2023-11-14T22:13:20.000Z',
       },
     ]);
+  });
+
+  test('reports and returns GPS global markers when the GPS plugin schema is available', async () => {
+    const root = await createWorld();
+    await createPlugin(root, 'GPSRuntime', 'OZ - GPS');
+    const gps = new Database(path.join(root, 'Plugins', 'GPSRuntime', 'Test World.db'));
+    gps.exec(`
+      CREATE TABLE marker (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_id INTEGER NOT NULL,
+        type VARCHAR(16) NOT NULL,
+        group_name TEXT,
+        created_at BIGINT NOT NULL,
+        pos_x REAL NOT NULL,
+        pos_y REAL NOT NULL,
+        pos_z REAL NOT NULL,
+        name TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        color INTEGER NOT NULL,
+        cost INTEGER NOT NULL
+      );
+      INSERT INTO marker VALUES
+        (1, 7, 'PRIVATE', NULL, 1700000000000, 1, 2, 3, 'Private', 'private-icon', -1, 0),
+        (2, 7, 'GLOBAL', NULL, 1700000000001, -32.5, 64, 96.25, 'Spawn', 'global-icon', -1, 0),
+        (3, 7, 'GLOBAL', NULL, 1700000000002, 10, 20, -30, 'Market', 'market-icon', 305419896, 0);
+    `);
+    gps.close();
+
+    await expect(getMapLayerCapabilities(root)).resolves.toEqual(
+      expect.objectContaining({ gpsGlobalMarkers: true }),
+    );
+    await expect(getMapGpsGlobalMarkers(root)).resolves.toEqual([
+      {
+        id: 3,
+        name: 'Market',
+        x: 10,
+        y: 20,
+        z: -30,
+        icon: 'market-icon',
+        color: '#12345678',
+        createdAt: '2023-11-14T22:13:20.002Z',
+      },
+      {
+        id: 2,
+        name: 'Spawn',
+        x: -32.5,
+        y: 64,
+        z: 96.25,
+        icon: 'global-icon',
+        color: '#FFFFFFFF',
+        createdAt: '2023-11-14T22:13:20.001Z',
+      },
+    ]);
+  });
+
+  test('returns unavailable GPS markers for missing or incompatible GPS schemas', async () => {
+    const missingRoot = await createWorld();
+    await expect(getMapGpsGlobalMarkers(missingRoot)).resolves.toBeNull();
+
+    const incompatibleRoot = await createWorld();
+    await createPlugin(incompatibleRoot, 'GPSRuntime', 'OZ - GPS');
+    const incompatible = new Database(
+      path.join(incompatibleRoot, 'Plugins', 'GPSRuntime', 'Test World.db'),
+    );
+    incompatible.exec('CREATE TABLE marker (id INTEGER PRIMARY KEY, type TEXT)');
+    incompatible.close();
+    await expect(getMapGpsGlobalMarkers(incompatibleRoot)).resolves.toBeNull();
+    await expect(getMapLayerCapabilities(incompatibleRoot)).resolves.toEqual(
+      expect.objectContaining({ gpsGlobalMarkers: false }),
+    );
   });
 
   test('rejects incompatible claim schemas and filters malformed areas safely', async () => {

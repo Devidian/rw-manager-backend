@@ -10,6 +10,7 @@ export interface MapLayerCapabilities {
   marketplace: boolean;
   shop: boolean;
   players: boolean;
+  gpsGlobalMarkers: boolean;
 }
 
 export interface MapClaim {
@@ -37,6 +38,17 @@ export interface MapPlayer {
   z: number;
   state: 'online' | 'recent-offline' | 'long-term-offline';
   lastSeen: string;
+}
+
+export interface MapGpsMarker {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  icon: string;
+  color: string;
+  createdAt: string;
 }
 
 export interface MapMarketplaceOffer {
