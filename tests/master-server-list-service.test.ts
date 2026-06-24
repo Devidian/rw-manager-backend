@@ -85,7 +85,7 @@ describe('master-server-list-service', () => {
         json: async () => ({
           shortname: 'Short Server',
           contact: '76561198000000000',
-          description: '@mapUrl:[https://map.example.com/]',
+          description: 'Welcome @mapUrl: [ https://map.example.com/ ]',
         }),
       }) as typeof fetch;
     global.fetch = fetchMock;
@@ -112,7 +112,7 @@ describe('master-server-list-service', () => {
       info: {
         shortname: 'Short Server',
         contact: '76561198000000000',
-        description: '@mapUrl:[https://map.example.com/]',
+        description: 'Welcome @mapUrl: [ https://map.example.com/ ]',
       },
       public: true,
     });
@@ -285,6 +285,42 @@ describe('master-server-list-service', () => {
       queryDataUpdatedAt: expect.any(Date),
     });
     expect(writeMock).toHaveBeenCalled();
+  });
+
+  test('refreshAllServerQueryData accepts bare mapUrl markers and updates changed shortnames', async () => {
+    state.servers = [
+      {
+        id: 'server-1',
+        label: 'Old Shortname',
+        queryUrl: 'http://server-1.example',
+        queryDataUpdatedAt: 'invalid-date',
+        public: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: 5 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          shortname: 'New Shortname',
+          description: '@mapUrl:https://map.example.com/',
+        }),
+      }) as typeof fetch;
+
+    await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({
+      fetched: 1,
+      refreshed: 1,
+    });
+    expect(state.servers[0]).toMatchObject({
+      label: 'New Shortname',
+      mapUrl: 'https://map.example.com/',
+      backendUrl: 'https://map.example.com/',
+    });
   });
 
   test('startMasterServerListSync respects storage config and can be stopped', () => {

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import typia from 'typia';
 import type { MasterServerListRefreshResponse } from '../dto/master-server-list-refresh-response.js';
 import type { RequestWithUser } from '../interfaces/request-with-user.js';
-import { refreshAllServerQueryData } from '../service/master-server-list-service.js';
+import { refreshMasterServerList } from '../service/master-server-list-service.js';
 import { AppConfig } from '../utils/app-config.js';
 
 export async function refreshServerQueryDataHandler(req: Request, res: Response) {
@@ -13,7 +13,7 @@ export async function refreshServerQueryDataHandler(req: Request, res: Response)
     }
 
     const response: MasterServerListRefreshResponse = {
-      result: await refreshAllServerQueryData(),
+      result: await refreshMasterServerList({ refreshQueryData: true }),
     };
     return res.json(typia.assert<MasterServerListRefreshResponse>(response));
   } catch (error) {

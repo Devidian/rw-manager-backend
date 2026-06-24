@@ -6,7 +6,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
-const MAP_URL_PATTERN = /@mapUrl:\[([^\]]+)]/i;
+const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 
 export interface MasterServerListSyncResult {
   fetched: number;
@@ -41,7 +41,7 @@ function mapUrlFromInfo(info: unknown): string | undefined {
   const match = description?.match(MAP_URL_PATTERN);
   if (!match) return undefined;
   try {
-    return new URL(match[1]).toString();
+    return new URL(match[1] ?? match[2]).toString();
   } catch {
     return undefined;
   }

@@ -1,13 +1,13 @@
 import { jest } from '@jest/globals';
 import type { Request, Response } from 'express';
 
-const refreshAllServerQueryDataMock = jest.fn<() => Promise<unknown>>();
+const refreshMasterServerListMock = jest.fn<(options?: { refreshQueryData?: boolean }) => Promise<unknown>>();
 
 jest.unstable_mockModule('typia', () => ({
   default: { assert: (value: unknown) => value },
 }));
 jest.unstable_mockModule('../src/service/master-server-list-service.js', () => ({
-  refreshAllServerQueryData: refreshAllServerQueryDataMock,
+  refreshMasterServerList: refreshMasterServerListMock,
 }));
 
 const { refreshServerQueryDataHandler } = await import(
@@ -29,7 +29,7 @@ describe('refresh-server-query-data-handler', () => {
   beforeEach(() => {
     restoreEnv(originalEnv);
     process.env.SUPER_ADMIN_ID = 'steam-admin';
-    refreshAllServerQueryDataMock.mockReset().mockResolvedValue({ updated: 1 });
+    refreshMasterServerListMock.mockReset().mockResolvedValue({ updated: 1 });
   });
 
   afterAll(() => {
@@ -40,7 +40,7 @@ describe('refresh-server-query-data-handler', () => {
     const missingUserResponse = createResponse();
     await refreshServerQueryDataHandler(request(), missingUserResponse.res);
     expect(missingUserResponse.status).toHaveBeenCalledWith(403);
-    expect(refreshAllServerQueryDataMock).not.toHaveBeenCalled();
+    expect(refreshMasterServerListMock).not.toHaveBeenCalled();
 
     const regularUserResponse = createResponse();
     await refreshServerQueryDataHandler(
@@ -48,26 +48,26 @@ describe('refresh-server-query-data-handler', () => {
       regularUserResponse.res,
     );
     expect(regularUserResponse.status).toHaveBeenCalledWith(403);
-    expect(refreshAllServerQueryDataMock).not.toHaveBeenCalled();
+    expect(refreshMasterServerListMock).not.toHaveBeenCalled();
   });
 
   test('allows the configured superadmin to refresh query data', async () => {
     const response = createResponse();
     await refreshServerQueryDataHandler(request({ steamId: 'steam-admin' }), response.res);
 
-    expect(refreshAllServerQueryDataMock).toHaveBeenCalledTimes(1);
+    expect(refreshMasterServerListMock).toHaveBeenCalledWith({ refreshQueryData: true });
     expect(response.json).toHaveBeenCalledWith({ result: { updated: 1 } });
   });
 
   test('maps refresh failures to 400 responses', async () => {
-    refreshAllServerQueryDataMock.mockRejectedValueOnce(new Error('refresh failed'));
+    refreshMasterServerListMock.mockRejectedValueOnce(new Error('refresh failed'));
     const response = createResponse();
     await refreshServerQueryDataHandler(request({ steamId: 'steam-admin' }), response.res);
 
     expect(response.status).toHaveBeenCalledWith(400);
     expect(response.json).toHaveBeenCalledWith({ error: 'refresh failed' });
 
-    refreshAllServerQueryDataMock.mockRejectedValueOnce('unknown');
+    refreshMasterServerListMock.mockRejectedValueOnce('unknown');
     const unknownResponse = createResponse();
     await refreshServerQueryDataHandler(request({ steamId: 'steam-admin' }), unknownResponse.res);
 
