@@ -1,6 +1,9 @@
 import { db } from '../db/json.js';
 import type { ServerLiveStatusResponse } from '../dto/server-live-status-response.js';
+import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
+
+const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 
 interface CacheEntry {
   expiresAt: number;
@@ -37,6 +40,44 @@ function playersFromPayload(payload: unknown): unknown[] | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const players = (payload as { players?: unknown }).players;
   return Array.isArray(players) ? players : undefined;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function mapUrlFromInfo(info: unknown): string | undefined {
+  if (!info || typeof info !== 'object') return undefined;
+  const description = stringOrUndefined((info as { description?: unknown }).description);
+  const match = description?.match(MAP_URL_PATTERN);
+  if (!match) return undefined;
+  try {
+    return new URL(match[1] ?? match[2]).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatusResponse): Promise<void> {
+  let changed = false;
+
+  if (response.queryData !== undefined) {
+    server.data = response.queryData;
+    changed = true;
+  }
+
+  if (response.infoData !== undefined) {
+    server.info = response.infoData;
+    server.label = stringOrUndefined((response.infoData as { shortname?: unknown }).shortname) ?? server.label;
+    server.mapUrl = mapUrlFromInfo(response.infoData) ?? server.mapUrl;
+    server.backendUrl = server.mapUrl ?? server.backendUrl;
+    changed = true;
+  }
+
+  if (changed) {
+    server.queryDataUpdatedAt = new Date(response.lastChecked);
+    await db.write();
+  }
 }
 
 async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusResponse> {
@@ -79,7 +120,8 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
   if (existing) return existing;
 
   const request = fetchLiveStatus(server.queryUrl)
-    .then((response) => {
+    .then(async (response) => {
+      await persistLiveStatus(server, response);
       cache.set(serverId, {
         expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs,
         response,

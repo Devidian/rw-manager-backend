@@ -4,6 +4,11 @@ interface StoredServer {
   id: string;
   label: string;
   queryUrl: string;
+  mapUrl?: string;
+  backendUrl?: string;
+  data?: unknown;
+  info?: unknown;
+  queryDataUpdatedAt?: Date | string;
   public: boolean;
   createdAt: Date | string;
 }
@@ -11,10 +16,12 @@ interface StoredServer {
 const state = {
   servers: [] as StoredServer[],
 };
+const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 
 jest.unstable_mockModule('../src/db/json.js', () => ({
   db: {
     data: state,
+    write: writeMock,
   },
 }));
 
@@ -46,6 +53,7 @@ describe('server-live-status-service', () => {
         createdAt: new Date().toISOString(),
       },
     ];
+    writeMock.mockClear();
     service.clearServerLiveStatusCache();
     global.fetch = originalFetch;
   });
@@ -59,14 +67,22 @@ describe('server-live-status-service', () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 1 }))
-      .mockResolvedValueOnce(response({ contact: 'admin' }))
+      .mockResolvedValueOnce(response({
+        shortname: 'Updated Shortname',
+        contact: 'admin',
+        description: '@mapUrl:https://gs1.omega-zirkel.de/main.backend/',
+      }))
       .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'online',
       queryData: { name: 'Server', playercount: 1 },
-      infoData: { contact: 'admin' },
+      infoData: {
+        shortname: 'Updated Shortname',
+        contact: 'admin',
+        description: '@mapUrl:https://gs1.omega-zirkel.de/main.backend/',
+      },
       onlinePlayers: [{ uid: 'player-1' }],
       lastChecked: expect.any(String),
     });
@@ -76,6 +92,19 @@ describe('server-live-status-service', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example/info', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/playerlist', expect.any(Object));
+    expect(state.servers[0]).toMatchObject({
+      label: 'Updated Shortname',
+      mapUrl: 'https://gs1.omega-zirkel.de/main.backend/',
+      backendUrl: 'https://gs1.omega-zirkel.de/main.backend/',
+      data: { name: 'Server', playercount: 1 },
+      info: {
+        shortname: 'Updated Shortname',
+        contact: 'admin',
+        description: '@mapUrl:https://gs1.omega-zirkel.de/main.backend/',
+      },
+      queryDataUpdatedAt: expect.any(Date),
+    });
+    expect(writeMock).toHaveBeenCalledTimes(1);
   });
 
   test('coalesces concurrent requests for the same server', async () => {
