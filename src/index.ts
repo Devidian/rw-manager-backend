@@ -7,6 +7,7 @@ import api from './router/api-router.js';
 import { db } from './db/sqlite.js';
 import { AppConfig } from './utils/app-config.js';
 import { startMapRenderer } from './service/map-render-runtime.js';
+import { startMasterServerListSync } from './service/master-server-list-service.js';
 
 const main = () => {
   const app = express();
@@ -19,6 +20,12 @@ const main = () => {
     const stopMapRenderer = () => mapRenderer.stop();
     process.once('SIGINT', stopMapRenderer);
     process.once('SIGTERM', stopMapRenderer);
+  }
+  const masterServerListSync = startMasterServerListSync();
+  if (masterServerListSync) {
+    const stopMasterServerListSync = () => masterServerListSync.stop();
+    process.once('SIGINT', stopMasterServerListSync);
+    process.once('SIGTERM', stopMasterServerListSync);
   }
 
   app.use(express.json());

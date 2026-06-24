@@ -88,6 +88,7 @@ export async function createUser(
     state,
     role,
     steamId,
+    pinnedServers: [],
     passwordHash,
     salt,
     createdAt: new Date(),
@@ -134,6 +135,7 @@ export function toPrivateUser(user: JsonDbUser): PrivateUser {
     state: user.state,
     role: user.role,
     steamId: user.steamId,
+    pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
     createdAt: user.createdAt,
   };
 }
@@ -145,6 +147,7 @@ export function toPublicUser(user: JsonDbUser): PublicUser {
     state: user.state,
     role: user.role,
     steamId: user.steamId,
+    pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
     createdAt: user.createdAt,
   };
 }

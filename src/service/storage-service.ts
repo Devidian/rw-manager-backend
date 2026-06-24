@@ -105,15 +105,8 @@ function assertServerWriteAccess(
 }
 
 export function listServers(context: StorageRequestContext): ServerDto[] {
-  if (!AppConfig.enableAuth) {
-    return db.data.servers.map(mapServerToDto);
-  }
-  return db.data.servers
-    .filter(
-      (server) =>
-        server.public || (!!context.userId && server.userId === context.userId),
-    )
-    .map(mapServerToDto);
+  void context;
+  return db.data.servers.map(mapServerToDto);
 }
 
 export async function createServer(
@@ -229,8 +222,59 @@ function toPublicUser(user: (typeof db.data.users)[number]): PublicUser {
     state: user.state,
     role: user.role,
     steamId: user.steamId,
+    pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
     createdAt: user.createdAt,
   };
+}
+
+export async function pinServer(
+  serverId: string,
+  context: StorageRequestContext,
+): Promise<PublicUserDto> {
+  if (!context.userId) {
+    throw new Error('UNAUTHORIZED');
+  }
+
+  const server = db.data.servers.find((entry) => entry.id === serverId);
+  if (!server) {
+    throw new Error('SERVER_NOT_FOUND');
+  }
+
+  const user = db.data.users.find((entry) => entry.id === context.userId);
+  if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  user.pinnedServers = Array.isArray(user.pinnedServers)
+    ? user.pinnedServers
+    : [];
+  if (!user.pinnedServers.includes(serverId)) {
+    user.pinnedServers.push(serverId);
+    await db.write();
+  }
+
+  return mapPublicUserToDto(toPublicUser(user));
+}
+
+export async function unpinServer(
+  serverId: string,
+  context: StorageRequestContext,
+): Promise<PublicUserDto> {
+  if (!context.userId) {
+    throw new Error('UNAUTHORIZED');
+  }
+
+  const user = db.data.users.find((entry) => entry.id === context.userId);
+  if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  user.pinnedServers = Array.isArray(user.pinnedServers)
+    ? user.pinnedServers.filter((entry) => entry !== serverId)
+    : [];
+  await db.write();
+
+  return mapPublicUserToDto(toPublicUser(user));
 }
 
 export function listUsers(currentSteamId: string): PublicUserDto[] {

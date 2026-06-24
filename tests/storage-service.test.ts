@@ -16,6 +16,7 @@ interface StoredUser {
   state: 'new' | 'verified' | 'closed';
   role: 'guest' | 'user' | 'admin';
   steamId?: string;
+  pinnedServers?: string[];
   createdAt: Date;
 }
 
@@ -115,6 +116,7 @@ describe('storage-service', () => {
       role: user.role,
       state: user.state,
       steamId: user.steamId,
+      pinnedServers: user.pinnedServers ?? [],
       createdAt: user.createdAt.toISOString(),
     }));
     canAdminServerMock.mockReset();
@@ -128,23 +130,18 @@ describe('storage-service', () => {
     global.fetch = originalFetch;
   });
 
-  test('listServers returns all servers without auth and filtered servers with auth', () => {
+  test('listServers returns the shared server list independent of auth ownership', () => {
     state.servers = [
       createServerRecord({ id: 'a', public: false, userId: 'user-1' }),
       createServerRecord({ id: 'b', public: true, userId: 'user-2' }),
       createServerRecord({ id: 'c', public: false, userId: 'user-2' }),
     ];
 
-    expect(storageService.listServers({ userId: 'user-1' })).toEqual([
-      { id: 'a', label: 'Server' },
-      { id: 'b', label: 'Server' },
-      { id: 'c', label: 'Server' },
-    ]);
-
     process.env.ENABLE_AUTH = 'true';
     expect(storageService.listServers({ userId: 'user-1' })).toEqual([
       { id: 'a', label: 'Server' },
       { id: 'b', label: 'Server' },
+      { id: 'c', label: 'Server' },
     ]);
   });
 
@@ -163,6 +160,54 @@ describe('storage-service', () => {
         { userId: 'user-1', userSteamId: 'steam-1' },
       ),
     ).rejects.toThrow('QUERY_URL_EXISTS');
+  });
+
+  test('pinServer and unpinServer update the current user pinned server list', async () => {
+    state.servers = [createServerRecord({ id: 'server-1' })];
+    state.users = [createUserRecord({ id: 'user-1' })];
+
+    await expect(
+      storageService.pinServer('server-1', {
+        userId: 'user-1',
+        userSteamId: 'steam-1',
+      }),
+    ).resolves.toMatchObject({
+      id: 'user-1',
+      pinnedServers: ['server-1'],
+    });
+    expect(state.users[0].pinnedServers).toEqual(['server-1']);
+
+    await storageService.pinServer('server-1', {
+      userId: 'user-1',
+      userSteamId: 'steam-1',
+    });
+    expect(state.users[0].pinnedServers).toEqual(['server-1']);
+
+    await expect(
+      storageService.unpinServer('server-1', {
+        userId: 'user-1',
+        userSteamId: 'steam-1',
+      }),
+    ).resolves.toMatchObject({
+      id: 'user-1',
+      pinnedServers: [],
+    });
+    expect(state.users[0].pinnedServers).toEqual([]);
+  });
+
+  test('pinServer validates auth, server existence, and user existence', async () => {
+    await expect(
+      storageService.pinServer('server-1', {}),
+    ).rejects.toThrow('UNAUTHORIZED');
+
+    await expect(
+      storageService.pinServer('server-1', { userId: 'user-1' }),
+    ).rejects.toThrow('SERVER_NOT_FOUND');
+
+    state.servers = [createServerRecord({ id: 'server-1' })];
+    await expect(
+      storageService.pinServer('server-1', { userId: 'user-1' }),
+    ).rejects.toThrow('USER_NOT_FOUND');
   });
 
   test('createServer handles backend verification branches and returns mapped servers', async () => {

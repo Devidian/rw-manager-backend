@@ -10,6 +10,7 @@ export function mapPublicUserToDto(user: PublicUser): PublicUserDto {
     state: user.state,
     role: user.role,
     steamId: user.steamId,
+    pinnedServers: user.pinnedServers,
     createdAt: mapDateTimeString(user.createdAt) as PublicUserDto['createdAt'],
   };
 }

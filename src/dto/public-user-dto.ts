@@ -7,5 +7,6 @@ export interface PublicUserDto {
   state: UserState;
   role: UserRole;
   steamId?: string | undefined;
+  pinnedServers: string[];
   createdAt: string & Format<'date-time'>;
 }

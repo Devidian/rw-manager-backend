@@ -48,6 +48,25 @@ export class AppConfig {
   static get mapRecentPlayerDays(): number {
     return AppConfig.boundedInteger(env.MAP_RECENT_PLAYER_DAYS, 7, 1, 3650);
   }
+  static get masterServerListUrl(): string {
+    return env.MASTER_SERVER_LIST_URL ?? 'https://api.rising-world.net/v5/serverlist';
+  }
+  static get masterServerListRefreshIntervalMs(): number {
+    return AppConfig.boundedInteger(
+      env.MASTER_SERVER_LIST_REFRESH_INTERVAL_MS,
+      300000,
+      60000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+  static get serverQueryRefreshIntervalMs(): number {
+    return AppConfig.boundedInteger(
+      env.SERVER_QUERY_REFRESH_INTERVAL_MS,
+      86400000,
+      60000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
   static get defaultUserRole(): 'guest' | 'user' | 'admin' {
     const value = env.DEFAULT_USER_ROLE;
     return AppConfig.validRoles.find((item) => item === value) ?? 'user';

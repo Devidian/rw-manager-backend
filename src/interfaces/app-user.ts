@@ -10,6 +10,7 @@ export interface PublicUser {
   state: UserState;
   role: UserRole;
   steamId?: string;
+  pinnedServers: string[];
   createdAt: Date;
 }
 

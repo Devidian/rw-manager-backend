@@ -34,6 +34,40 @@ MAP_RENDER_BATCH_SIZE=256
 MAP_RECENT_PLAYER_DAYS=7
 ```
 
+## Storage Server List
+
+When `ENABLE_STORAGE=true`, the backend refreshes the public Rising World
+master server list and stores the merged server records under
+`APP_DATA_ROOT/data.json`. The master-list `steamid` is used as the stable
+server id for imported servers. Imported records keep compatibility fields
+such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
+`adminUid`, `firstSeen`, `lastSeen`, `data`, and `info` fields.
+
+```text
+MASTER_SERVER_LIST_URL=https://api.rising-world.net/v5/serverlist
+MASTER_SERVER_LIST_REFRESH_INTERVAL_MS=300000
+SERVER_QUERY_REFRESH_INTERVAL_MS=86400000
+```
+
+The backend derives `queryUrl` as `http://<ip>:<port - 1>`. Query `data` and
+`info` are refreshed automatically no more often than
+`SERVER_QUERY_REFRESH_INTERVAL_MS`. If `info.contact` is a valid Steam ID it is
+stored as `adminUid`. During the transition, `@mapUrl:[url]` inside
+`info.description` is stored as `mapUrl`.
+
+Authenticated users can pin and unpin servers:
+
+```text
+POST /api/storage/server/:id/pin
+DELETE /api/storage/server/:id/pin
+```
+
+Superadmins can force-refresh stored query `data` and `info`:
+
+```text
+POST /api/storage/server/refresh-query-data
+```
+
 Map layer APIs discover Land Claim, Marketplace, and Shop by their valid
 plugin manifests, then read the active world's game/plugin SQLite databases
 read-only. Online status is joined in the frontend from each configured

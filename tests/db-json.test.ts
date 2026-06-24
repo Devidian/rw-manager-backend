@@ -8,6 +8,7 @@ interface JsonDbUserRecord {
   state: 'new' | 'verified' | 'closed';
   role: 'guest' | 'user' | 'admin';
   steamId?: string;
+  pinnedServers?: string[];
   passwordHash: string;
   salt: string;
   createdAt: Date;
@@ -145,6 +146,7 @@ describe('db/json', () => {
       state: 'verified',
       role: 'admin',
       steamId: 'steam-1',
+      pinnedServers: [],
       createdAt: expect.any(Date),
     });
 
@@ -180,6 +182,7 @@ describe('db/json', () => {
       state: 'new',
       role: 'user',
       steamId: 'steam-1',
+      pinnedServers: [],
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     });
   });
@@ -225,6 +228,7 @@ describe('db/json', () => {
       state: 'new',
       role: 'user',
       steamId: 'steam-1',
+      pinnedServers: [],
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     });
     expect(jsonDb.toPublicUser(user)).toEqual({
@@ -233,6 +237,7 @@ describe('db/json', () => {
       state: 'new',
       role: 'user',
       steamId: 'steam-1',
+      pinnedServers: [],
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     });
   });

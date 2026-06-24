@@ -8,6 +8,9 @@ import { deleteServerHandler } from '../handler/delete-server-handler.js';
 import { listUsersHandler } from '../handler/list-users-handler.js';
 import { updateStorageUserHandler } from '../handler/update-storage-user-handler.js';
 import { deleteStorageUserHandler } from '../handler/delete-storage-user-handler.js';
+import { pinServerHandler } from '../handler/pin-server-handler.js';
+import { unpinServerHandler } from '../handler/unpin-server-handler.js';
+import { refreshServerQueryDataHandler } from '../handler/refresh-server-query-data-handler.js';
 
 const storageRouter = Router();
 
@@ -18,6 +21,9 @@ const requireServerWriteAuth = AppConfig.enableAuth ? requireAuth : noAuth;
 
 storageRouter.get('/server', requireServerGetAuth, listServersHandler);
 storageRouter.post('/server', requireServerWriteAuth, createServerHandler);
+storageRouter.post('/server/refresh-query-data', requireAuth, refreshServerQueryDataHandler);
+storageRouter.post('/server/:id/pin', requireServerWriteAuth, pinServerHandler);
+storageRouter.delete('/server/:id/pin', requireServerWriteAuth, unpinServerHandler);
 storageRouter.patch('/server/:id', requireServerWriteAuth, updateServerHandler);
 storageRouter.delete('/server/:id', requireServerWriteAuth, deleteServerHandler);
 
