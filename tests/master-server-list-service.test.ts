@@ -149,4 +149,148 @@ describe('master-server-list-service', () => {
       queryUrl: 'http://127.0.0.1:4254',
     });
   });
+
+  test('refreshMasterServerList tolerates invalid master responses and entries', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: false,
+      text: async () => '',
+    }) as typeof fetch;
+
+    await expect(service.refreshMasterServerList()).resolves.toEqual({
+      fetched: 0,
+      inserted: 0,
+      updated: 0,
+      refreshed: 0,
+    });
+    expect(state.servers).toEqual([]);
+
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => '{"successful":true,"data":[{"steamid":"bad","ip":"127.0.0.1","port":4255},{"steamid":"76561198000000000","ip":"127.0.0.1","port":1},{"steamid":"76561198000000001","ip":"127.0.0.1","port":4255,"name":"Valid"}]}',
+    }) as typeof fetch;
+
+    await expect(service.refreshMasterServerList()).resolves.toMatchObject({
+      fetched: 3,
+      inserted: 1,
+      updated: 0,
+    });
+    expect(state.servers).toHaveLength(1);
+    expect(state.servers[0]).toMatchObject({
+      id: '76561198000000001',
+      label: 'Valid',
+    });
+  });
+
+  test('refreshMasterServerList handles malformed master JSON and query fetch failures', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => '{not-json',
+    }) as typeof fetch;
+
+    await expect(service.refreshMasterServerList()).resolves.toEqual({
+      fetched: 0,
+      inserted: 0,
+      updated: 0,
+      refreshed: 0,
+    });
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          '{"successful":true,"data":[{"steamid":"76561198000000002","ip":"127.0.0.1","port":4255,"mods":"bad","password":"bad","whitelist":"bad","gm":"bad"}]}',
+      })
+      .mockRejectedValueOnce(new Error('query failed'))
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({}),
+      }) as typeof fetch;
+
+    await expect(
+      service.refreshMasterServerList({ refreshQueryData: true }),
+    ).resolves.toMatchObject({
+      fetched: 1,
+      inserted: 1,
+      refreshed: 0,
+    });
+    expect(state.servers[0]).toMatchObject({
+      id: '76561198000000002',
+      queryDataUpdatedAt: expect.any(Date),
+    });
+    expect(state.servers[0].mods).toBeUndefined();
+    expect(state.servers[0].password).toBeUndefined();
+    expect(state.servers[0].whitelist).toBeUndefined();
+    expect(state.servers[0].gm).toBeUndefined();
+  });
+
+  test('refreshAllServerQueryData refreshes stale servers and preserves existing metadata on invalid info', async () => {
+    state.servers = [
+      {
+        id: 'server-1',
+        label: 'Server 1',
+        queryUrl: 'http://server-1.example',
+        adminUid: '76561198000000000',
+        mapUrl: 'https://old-map.example/',
+        backendUrl: 'https://old-map.example/',
+        queryDataUpdatedAt: 'invalid-date',
+        public: true,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'server-2',
+        label: 'Server 2',
+        queryUrl: '',
+        public: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: 5 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          contact: 'not-a-steam-id',
+          description: '@mapUrl:[not-a-url]',
+        }),
+      }) as typeof fetch;
+
+    await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({
+      fetched: 2,
+      inserted: 0,
+      updated: 0,
+      refreshed: 1,
+    });
+    expect(state.servers[0]).toMatchObject({
+      data: { players: 5 },
+      adminUid: '76561198000000000',
+      mapUrl: 'https://old-map.example/',
+      backendUrl: 'https://old-map.example/',
+      queryDataUpdatedAt: expect.any(Date),
+    });
+    expect(writeMock).toHaveBeenCalled();
+  });
+
+  test('startMasterServerListSync respects storage config and can be stopped', () => {
+    jest.useFakeTimers();
+    process.env.ENABLE_STORAGE = 'false';
+    expect(service.startMasterServerListSync()).toBeNull();
+
+    process.env.ENABLE_STORAGE = 'true';
+    process.env.MASTER_SERVER_LIST_REFRESH_INTERVAL_MS = '60000';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '{"successful":true,"data":[]}',
+    }) as typeof fetch;
+
+    const sync = service.startMasterServerListSync();
+    expect(sync).not.toBeNull();
+
+    sync?.stop();
+    jest.useRealTimers();
+  });
 });
