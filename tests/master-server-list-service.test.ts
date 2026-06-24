@@ -19,7 +19,7 @@ interface StoredServer {
 
 const state = {
   servers: [] as StoredServer[],
-  users: [],
+  users: [] as Array<{ pinnedServers?: string[] }>,
 };
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const errorMock = jest.fn();
@@ -83,6 +83,7 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          shortname: 'Short Server',
           contact: '76561198000000000',
           description: '@mapUrl:[https://map.example.com/]',
         }),
@@ -99,15 +100,17 @@ describe('master-server-list-service', () => {
     });
 
     expect(state.servers[0]).toMatchObject({
-      id: '90285195499304980',
+      id: 'server-f8e7fa9ca73fd4b4943db61a',
       steamId: '90285195499304980',
-      label: 'Server',
+      name: 'Server',
+      label: 'Short Server',
       queryUrl: 'http://127.0.0.1:4254',
       mapUrl: 'https://map.example.com/',
       backendUrl: 'https://map.example.com/',
       adminUid: '76561198000000000',
       data: { players: 3 },
       info: {
+        shortname: 'Short Server',
         contact: '76561198000000000',
         description: '@mapUrl:[https://map.example.com/]',
       },
@@ -128,6 +131,7 @@ describe('master-server-list-service', () => {
         createdAt: new Date().toISOString(),
       },
     ];
+    state.users = [{ pinnedServers: ['90285195499304980'] }];
     global.fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       text: async () =>
@@ -145,9 +149,12 @@ describe('master-server-list-service', () => {
 
     expect(state.servers).toHaveLength(1);
     expect(state.servers[0]).toMatchObject({
-      label: 'New',
+      id: 'server-f8e7fa9ca73fd4b4943db61a',
+      name: 'New',
+      label: 'Old',
       queryUrl: 'http://127.0.0.1:4254',
     });
+    expect(state.users[0].pinnedServers).toEqual(['server-f8e7fa9ca73fd4b4943db61a']);
   });
 
   test('refreshMasterServerList tolerates invalid master responses and entries', async () => {
@@ -172,12 +179,14 @@ describe('master-server-list-service', () => {
     await expect(service.refreshMasterServerList()).resolves.toMatchObject({
       fetched: 3,
       inserted: 1,
-      updated: 0,
+      updated: 1,
     });
     expect(state.servers).toHaveLength(1);
     expect(state.servers[0]).toMatchObject({
-      id: '76561198000000001',
-      label: 'Valid',
+      id: 'server-f8e7fa9ca73fd4b4943db61a',
+      steamId: '76561198000000001',
+      name: 'Valid',
+      label: 'server-f8e7fa9ca73fd4b4943db61a',
     });
   });
 
@@ -215,7 +224,8 @@ describe('master-server-list-service', () => {
       refreshed: 0,
     });
     expect(state.servers[0]).toMatchObject({
-      id: '76561198000000002',
+      id: 'server-f8e7fa9ca73fd4b4943db61a',
+      steamId: '76561198000000002',
       queryDataUpdatedAt: expect.any(Date),
     });
     expect(state.servers[0].mods).toBeUndefined();
@@ -254,6 +264,7 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          shortname: 'Short Server 1',
           contact: 'not-a-steam-id',
           description: '@mapUrl:[not-a-url]',
         }),
@@ -267,6 +278,7 @@ describe('master-server-list-service', () => {
     });
     expect(state.servers[0]).toMatchObject({
       data: { players: 5 },
+      label: 'Short Server 1',
       adminUid: '76561198000000000',
       mapUrl: 'https://old-map.example/',
       backendUrl: 'https://old-map.example/',

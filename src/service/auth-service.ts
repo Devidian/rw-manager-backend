@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, scryptSync } from 'node:crypto';
 import {
   createUser,
   db,
@@ -199,4 +199,23 @@ export async function deleteSelf(userId: string): Promise<void> {
   db.data.users = db.data.users.filter((entry) => entry.id !== userId);
   db.data.servers = db.data.servers.filter((entry) => entry.userId !== userId);
   await db.write();
+}
+
+function hashApiToken(token: string, salt: string): string {
+  return scryptSync(token, salt, 64).toString('hex');
+}
+
+export async function generateApiToken(userId: string): Promise<string> {
+  const user = db.data.users.find((entry) => entry.id === userId);
+  if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  const token = randomBytes(32).toString('base64url');
+  const salt = randomBytes(16).toString('hex');
+  user.apiTokenSalt = salt;
+  user.apiTokenHash = hashApiToken(token, salt);
+  user.apiTokenCreatedAt = new Date();
+  await db.write();
+  return token;
 }

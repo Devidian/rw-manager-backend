@@ -9,6 +9,7 @@ import { validateUserHandler } from '../handler/validate-user-handler.js';
 import { updateSelfHandler } from '../handler/update-self-handler.js';
 import { deleteSelfHandler } from '../handler/delete-self-handler.js';
 import { logoutHandler } from '../handler/logout-handler.js';
+import { generateApiTokenHandler } from '../handler/generate-api-token-handler.js';
 
 const authRouter = Router();
 
@@ -20,6 +21,7 @@ authRouter.post('/steam', steamLoginHandler);
 authRouter.get('/validate', requireAuth, validateUserHandler);
 authRouter.patch('/self', requireAuth, updateSelfHandler);
 authRouter.delete('/self', requireAuth, deleteSelfHandler);
+authRouter.post('/api-token', requireAuth, generateApiTokenHandler);
 authRouter.post('/logout', logoutHandler);
 
 export default authRouter;

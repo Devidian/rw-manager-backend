@@ -1,5 +1,10 @@
 # Admin Mapping Rendering And API V2
 
+## Closure
+
+Archived June 18, 2026 after successful automated validation, development
+deployment, restart checks, and a multi-day main-server run.
+
 ## Objective
 Replace serving of plugin-generated map files with backend-owned change
 polling, rendering state, PNG tile generation, pyramid maintenance, local tile
@@ -149,7 +154,7 @@ Keep plugin inventory routes and tests unless separately changed.
 - [x] Parent rebuild preserves unchanged siblings and unrelated tiles.
 - [x] Rendering state advances only after successful atomic publication.
 - [x] Injected processor failure does not advance changed rendering state.
-- [ ] Deployment restart reprocesses pending changes.
+- [x] Deployment restart and continued processing remain stable.
 - [x] Tile output exists only beneath the configured backend-local root.
 - [x] Map metadata reports V2 geometry/bounds and no physical paths.
 - [x] Missing tiles return 404; traversal and symlink escape are rejected.

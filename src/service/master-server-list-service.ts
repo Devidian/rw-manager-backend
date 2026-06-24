@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { db } from '../db/json.js';
 import type { MasterServerListEntry, MasterServerListResponse } from '../interfaces/master-server-list.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
@@ -51,11 +52,33 @@ function adminUidFromInfo(info: unknown): string | undefined {
   return steamIdOrUndefined((info as { contact?: unknown }).contact);
 }
 
+function labelFromInfo(info: unknown): string | undefined {
+  if (!info || typeof info !== 'object') return undefined;
+  return stringOrUndefined((info as { shortname?: unknown }).shortname);
+}
+
 function queryUrlFor(entry: MasterServerListEntry): string | undefined {
   const ip = stringOrUndefined(entry.ip);
   const port = numberOrUndefined(entry.port);
   if (!ip || port === undefined || port <= 1) return undefined;
   return `http://${ip}:${port - 1}`;
+}
+
+function serverIdFor(entry: MasterServerListEntry): string | undefined {
+  const ip = stringOrUndefined(entry.ip);
+  const port = numberOrUndefined(entry.port);
+  if (!ip || port === undefined || port <= 0) return undefined;
+  const hash = createHash('sha256').update(`${ip}:${port}`).digest('hex').slice(0, 24);
+  return `server-${hash}`;
+}
+
+function replacePinnedServerId(previousId: string, nextId: string): void {
+  if (previousId === nextId) return;
+  for (const user of db.data.users) {
+    if (!Array.isArray(user.pinnedServers)) continue;
+    const pinned = new Set(user.pinnedServers.map((entry) => entry === previousId ? nextId : entry));
+    user.pinnedServers = [...pinned];
+  }
 }
 
 function shouldRefreshQueryData(server: ServerConfig, now: Date): boolean {
@@ -99,6 +122,7 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   if (data !== undefined) server.data = data;
   if (info !== undefined) {
     server.info = info;
+    server.label = labelFromInfo(info) ?? server.label;
     server.adminUid = adminUidFromInfo(info) ?? server.adminUid;
     server.mapUrl = mapUrlFromInfo(info) ?? server.mapUrl;
     server.backendUrl = server.mapUrl ?? server.backendUrl;
@@ -116,7 +140,6 @@ function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, no
   server.addr = stringOrUndefined(entry.addr) ?? server.addr;
   server.version = stringOrUndefined(entry.version) ?? server.version;
   server.name = name ?? server.name;
-  server.label = name ?? server.label;
   server.ip = stringOrUndefined(entry.ip) ?? server.ip;
   server.port = numberOrUndefined(entry.port) ?? server.port;
   server.region = stringOrUndefined(entry.region) ?? server.region;
@@ -144,16 +167,19 @@ export async function refreshMasterServerList(options: {
   for (const entry of entries) {
     const steamId = steamIdOrUndefined(entry.steamid);
     const queryUrl = queryUrlFor(entry);
-    if (!steamId || !queryUrl) continue;
+    const serverId = serverIdFor(entry);
+    if (!serverId || !queryUrl) continue;
 
     let server = db.data.servers.find(
-      (candidate) => candidate.steamId === steamId || candidate.id === steamId,
+      (candidate) =>
+        candidate.id === serverId ||
+        (steamId !== undefined && (candidate.steamId === steamId || candidate.id === steamId)),
     );
     if (!server) {
       server = {
-        id: steamId,
+        id: serverId,
         steamId,
-        label: stringOrUndefined(entry.name) ?? steamId,
+        label: serverId,
         queryUrl,
         public: true,
         createdAt: now,
@@ -163,6 +189,8 @@ export async function refreshMasterServerList(options: {
       db.data.servers.push(server);
       inserted += 1;
     } else {
+      replacePinnedServerId(server.id, serverId);
+      server.id = serverId;
       updated += 1;
     }
 

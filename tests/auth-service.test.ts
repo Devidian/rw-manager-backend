@@ -7,6 +7,9 @@ interface MutableDbUser {
   state: 'new' | 'verified' | 'closed';
   role: 'guest' | 'user' | 'admin';
   steamId?: string;
+  apiTokenHash?: string;
+  apiTokenSalt?: string;
+  apiTokenCreatedAt?: Date;
   createdAt: Date;
 }
 
@@ -307,6 +310,22 @@ describe('auth-service', () => {
     await expect(authService.deleteSelf('user-1')).resolves.toBeUndefined();
     expect(state.users).toEqual([]);
     expect(state.servers).toEqual([{ userId: 'user-2' }]);
+  });
+
+  test('generateApiToken returns a one-time token and stores only hash metadata', async () => {
+    state.users = [createUserRecord()];
+
+    await expect(authService.generateApiToken('missing')).rejects.toThrow('USER_NOT_FOUND');
+    const token = await authService.generateApiToken('user-1');
+
+    expect(token).toEqual(expect.any(String));
+    expect(token.length).toBeGreaterThan(30);
+    expect(state.users[0].apiTokenHash).toEqual(expect.any(String));
+    expect(state.users[0].apiTokenSalt).toEqual(expect.any(String));
+    expect(state.users[0].apiTokenCreatedAt).toEqual(expect.any(Date));
+    expect(state.users[0].apiTokenHash).not.toBe(token);
+    expect(state.users[0].apiTokenSalt).not.toBe(token);
+    expect(writeMock).toHaveBeenCalled();
   });
 
   test('steamSignIn reuses existing users and creates new users with role and state defaults', async () => {

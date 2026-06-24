@@ -24,5 +24,8 @@ export interface JsonDbUser extends PrivateUser {
   id: string & Format<'uuid'>;
   passwordHash: string;
   salt: string;
+  apiTokenHash?: string;
+  apiTokenSalt?: string;
+  apiTokenCreatedAt?: Date;
   createdAt: Date;
 }

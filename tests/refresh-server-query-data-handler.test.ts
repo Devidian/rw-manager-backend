@@ -58,6 +58,22 @@ describe('refresh-server-query-data-handler', () => {
     expect(refreshAllServerQueryDataMock).toHaveBeenCalledTimes(1);
     expect(response.json).toHaveBeenCalledWith({ result: { updated: 1 } });
   });
+
+  test('maps refresh failures to 400 responses', async () => {
+    refreshAllServerQueryDataMock.mockRejectedValueOnce(new Error('refresh failed'));
+    const response = createResponse();
+    await refreshServerQueryDataHandler(request({ steamId: 'steam-admin' }), response.res);
+
+    expect(response.status).toHaveBeenCalledWith(400);
+    expect(response.json).toHaveBeenCalledWith({ error: 'refresh failed' });
+
+    refreshAllServerQueryDataMock.mockRejectedValueOnce('unknown');
+    const unknownResponse = createResponse();
+    await refreshServerQueryDataHandler(request({ steamId: 'steam-admin' }), unknownResponse.res);
+
+    expect(unknownResponse.status).toHaveBeenCalledWith(400);
+    expect(unknownResponse.json).toHaveBeenCalledWith({ error: 'UNKNOWN_ERROR' });
+  });
 });
 
 function request(user?: { steamId: string }) {

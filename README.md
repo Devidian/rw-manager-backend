@@ -47,6 +47,8 @@ such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 MASTER_SERVER_LIST_URL=https://api.rising-world.net/v5/serverlist
 MASTER_SERVER_LIST_REFRESH_INTERVAL_MS=300000
 SERVER_QUERY_REFRESH_INTERVAL_MS=86400000
+LIVE_QUERY_PROXY_CACHE_TTL_MS=5000
+LIVE_QUERY_PROXY_TIMEOUT_MS=8000
 ```
 
 The backend derives `queryUrl` as `http://<ip>:<port - 1>`. Query `data` and
@@ -54,6 +56,19 @@ The backend derives `queryUrl` as `http://<ip>:<port - 1>`. Query `data` and
 `SERVER_QUERY_REFRESH_INTERVAL_MS`. If `info.contact` is a valid Steam ID it is
 stored as `adminUid`. During the transition, `@mapUrl:[url]` inside
 `info.description` is stored as `mapUrl`.
+
+The frontend must not call the HTTP-only Rising World query server directly
+from an HTTPS deployment. Live status requests are proxied through the manager
+backend and cached briefly per server:
+
+```text
+GET /api/storage/server/:id/live
+```
+
+This route fetches `queryUrl`, `queryUrl + /info`, and
+`queryUrl + /playerlist` server-side, coalesces concurrent requests, and uses
+`LIVE_QUERY_PROXY_CACHE_TTL_MS` to avoid repeated load when multiple users open
+the same server page or list.
 
 Authenticated users can pin and unpin servers:
 
@@ -70,8 +85,7 @@ POST /api/storage/server/refresh-query-data
 
 Map layer APIs discover Land Claim, Marketplace, and Shop by their valid
 plugin manifests, then read the active world's game/plugin SQLite databases
-read-only. Online status is joined in the frontend from each configured
-server's existing `playerlist` response.
+read-only.
 
 Validate a built renderer against a copied Admin Utils world database before
 enabling it:

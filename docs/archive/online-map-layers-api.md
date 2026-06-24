@@ -1,5 +1,10 @@
 # Online Map Layers Backend API
 
+## Closure
+
+Archived June 18, 2026 after live schema, sector, player refresh, optional
+plugin, claim, Shop, Marketplace, and local-offer validation.
+
 ## Objective
 
 Provide validated, read-only, capability-based APIs for sector geometry,

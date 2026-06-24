@@ -67,6 +67,22 @@ export class AppConfig {
       Number.MAX_SAFE_INTEGER,
     );
   }
+  static get liveQueryProxyCacheTtlMs(): number {
+    return AppConfig.boundedInteger(
+      env.LIVE_QUERY_PROXY_CACHE_TTL_MS,
+      5000,
+      1000,
+      60000,
+    );
+  }
+  static get liveQueryProxyTimeoutMs(): number {
+    return AppConfig.boundedInteger(
+      env.LIVE_QUERY_PROXY_TIMEOUT_MS,
+      8000,
+      1000,
+      30000,
+    );
+  }
   static get defaultUserRole(): 'guest' | 'user' | 'admin' {
     const value = env.DEFAULT_USER_ROLE;
     return AppConfig.validRoles.find((item) => item === value) ?? 'user';
