@@ -2,6 +2,12 @@ import type { ServerDto } from '../dto/server-dto.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { mapDateTimeString } from './date-time-mapper.js';
 
+function mapServerStatus(server: ServerConfig): ServerDto['status'] {
+  if (server.status) return server.status;
+  if (server.data !== undefined) return 'online';
+  return 'unknown';
+}
+
 export function mapServerToDto(server: ServerConfig): ServerDto {
   return {
     id: server.id,
@@ -23,7 +29,7 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     backendUrl: (server.backendUrl ?? server.mapUrl) as ServerDto['backendUrl'],
     data: server.data,
     info: server.info,
-    status: server.status,
+    status: mapServerStatus(server),
     queryData: server.data,
     infoData: server.info,
     onlinePlayers: server.onlinePlayers,

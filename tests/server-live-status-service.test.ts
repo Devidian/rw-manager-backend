@@ -8,7 +8,7 @@ interface StoredServer {
   backendUrl?: string;
   data?: unknown;
   info?: unknown;
-  status?: 'online' | 'offline';
+  status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
   lastChecked?: Date | string;
   errorMessage?: string;

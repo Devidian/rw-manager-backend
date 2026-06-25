@@ -92,9 +92,33 @@ describe('pure utils and mappers', () => {
       label: 'Primary Server',
       queryUrl: 'https://query.example.com',
       backendUrl: 'https://backend.example.com',
+      status: 'unknown',
       public: true,
       userId: 'user-1',
       createdAt: '2024-01-01T00:00:00.000Z',
+    });
+  });
+
+  test('mapServerToDto includes cached live status fields', () => {
+    const server: ServerConfig = {
+      id: 'server-1',
+      label: 'Primary Server',
+      queryUrl: 'https://query.example.com',
+      data: { playercount: 2 },
+      info: { shortname: 'Primary' },
+      onlinePlayers: [{ uid: 'player-1' }],
+      lastChecked: new Date('2024-01-01T00:00:00.000Z'),
+      errorMessage: undefined,
+      public: true,
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    };
+
+    expect(mapServerToDto(server)).toMatchObject({
+      status: 'online',
+      queryData: { playercount: 2 },
+      infoData: { shortname: 'Primary' },
+      onlinePlayers: [{ uid: 'player-1' }],
+      lastChecked: '2024-01-01T00:00:00.000Z',
     });
   });
 

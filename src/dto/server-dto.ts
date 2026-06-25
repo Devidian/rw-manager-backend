@@ -20,7 +20,7 @@ export interface ServerDto {
   backendUrl?: (string & Format<'url'>) | undefined;
   data?: unknown;
   info?: unknown;
-  status?: 'online' | 'offline' | undefined;
+  status: 'online' | 'offline' | 'unknown';
   queryData?: unknown;
   infoData?: unknown;
   onlinePlayers?: unknown[] | undefined;

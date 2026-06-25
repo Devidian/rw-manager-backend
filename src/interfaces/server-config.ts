@@ -18,7 +18,7 @@ export interface ServerConfig {
   backendUrl?: string; // Deprecated alias for mapUrl during frontend migration.
   data?: unknown;
   info?: unknown;
-  status?: 'online' | 'offline';
+  status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
   lastChecked?: Date | string;
   errorMessage?: string;
