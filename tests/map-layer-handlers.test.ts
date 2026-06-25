@@ -105,6 +105,10 @@ describe('map layer handlers', () => {
     expect(response.status).toHaveBeenLastCalledWith(500);
     expect(response.json).toHaveBeenLastCalledWith({ error: 'capability failed' });
 
+    getMapLayerCapabilitiesMock.mockRejectedValue('unknown');
+    await getMapLayerCapabilitiesHandler(request(), response.res);
+    expect(response.json).toHaveBeenLastCalledWith({ error: 'UNKNOWN_ERROR' });
+
     getMapClaimsMock.mockRejectedValue('unknown');
     await getMapClaimsHandler(request(), response.res);
     expect(response.json).toHaveBeenLastCalledWith({ error: 'UNKNOWN_ERROR' });

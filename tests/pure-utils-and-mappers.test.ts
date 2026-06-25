@@ -122,6 +122,29 @@ describe('pure utils and mappers', () => {
     });
   });
 
+  test('mapServerToDto preserves explicit status and optional date fields', () => {
+    const server: ServerConfig = {
+      id: 'server-2',
+      label: 'Secondary Server',
+      mapUrl: 'https://map.example.com',
+      status: 'offline',
+      firstSeen: new Date('2024-01-02T00:00:00.000Z'),
+      lastSeen: new Date('2024-01-03T00:00:00.000Z'),
+      queryDataUpdatedAt: new Date('2024-01-04T00:00:00.000Z'),
+      public: false,
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    };
+
+    expect(mapServerToDto(server)).toMatchObject({
+      status: 'offline',
+      mapUrl: 'https://map.example.com',
+      backendUrl: 'https://map.example.com',
+      firstSeen: '2024-01-02T00:00:00.000Z',
+      lastSeen: '2024-01-03T00:00:00.000Z',
+      queryDataUpdatedAt: '2024-01-04T00:00:00.000Z',
+    });
+  });
+
   test('normalizeSteamId accepts trimmed uint64 values and rejects invalid input', () => {
     expect(normalizeSteamId(' 76561198000000000 ')).toBe(
       '76561198000000000',

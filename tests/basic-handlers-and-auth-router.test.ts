@@ -85,6 +85,13 @@ describe('basic handlers and auth router guard', () => {
     expect(configResponse.status).toHaveBeenCalledWith(400);
     expect(configResponse.json).toHaveBeenCalledWith({ error: 'UNKNOWN_ERROR' });
 
+    getServerConfigMock.mockImplementationOnce(() => {
+      throw new Error('config failed');
+    });
+    const errorConfigResponse = createResponse();
+    getServerConfigHandler(request(), errorConfigResponse.res);
+    expect(errorConfigResponse.json).toHaveBeenCalledWith({ error: 'config failed' });
+
     getServerAdminListMock.mockImplementationOnce(() => {
       throw new Error('admins failed');
     });
