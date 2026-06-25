@@ -68,7 +68,10 @@ GET /api/storage/server/:id/live
 This route fetches `queryUrl`, `queryUrl + /info`, and
 `queryUrl + /playerlist` server-side, coalesces concurrent requests, and uses
 `LIVE_QUERY_PROXY_CACHE_TTL_MS` to avoid repeated load when multiple users open
-the same server page or list.
+the same server page or list. Periodic query refreshes store the same live
+fields (`status`, `queryData`, `infoData`, `onlinePlayers`, `lastChecked`, and
+`errorMessage`) on the server record, so `GET /api/storage/server` can include
+the latest known status without triggering another live request.
 
 Authenticated users can pin and unpin servers:
 

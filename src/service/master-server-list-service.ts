@@ -57,6 +57,12 @@ function labelFromInfo(info: unknown): string | undefined {
   return stringOrUndefined((info as { shortname?: unknown }).shortname);
 }
 
+function playersFromPayload(payload: unknown): unknown[] | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const players = (payload as { players?: unknown }).players;
+  return Array.isArray(players) ? players : undefined;
+}
+
 function queryUrlFor(entry: MasterServerListEntry): string | undefined {
   const ip = stringOrUndefined(entry.ip);
   const port = numberOrUndefined(entry.port);
@@ -88,13 +94,13 @@ function shouldRefreshQueryData(server: ServerConfig, now: Date): boolean {
   return now.getTime() - previous >= AppConfig.serverQueryRefreshIntervalMs;
 }
 
-async function fetchJson(url: string): Promise<unknown | undefined> {
+async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   try {
     const response = await fetch(url);
-    if (!response.ok) return undefined;
-    return await response.json();
+    if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+    return { ok: true, data: await response.json() };
   } catch {
-    return undefined;
+    return { ok: false, error: 'FETCH_FAILED' };
   }
 }
 
@@ -114,21 +120,26 @@ async function fetchMasterServerList(): Promise<MasterServerListResponse | undef
 async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolean> {
   if (!server.queryUrl || !shouldRefreshQueryData(server, now)) return false;
 
-  const [data, info] = await Promise.all([
+  const [data, info, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
     fetchJson(new URL('info', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
 
-  if (data !== undefined) server.data = data;
-  if (info !== undefined) {
-    server.info = info;
-    server.label = labelFromInfo(info) ?? server.label;
-    server.adminUid = adminUidFromInfo(info) ?? server.adminUid;
-    server.mapUrl = mapUrlFromInfo(info) ?? server.mapUrl;
+  server.status = data.ok ? 'online' : 'offline';
+  server.lastChecked = now;
+  server.errorMessage = data.ok ? undefined : data.error;
+  if (data.ok) server.data = data.data;
+  if (info.ok) {
+    server.info = info.data;
+    server.label = labelFromInfo(info.data) ?? server.label;
+    server.adminUid = adminUidFromInfo(info.data) ?? server.adminUid;
+    server.mapUrl = mapUrlFromInfo(info.data) ?? server.mapUrl;
     server.backendUrl = server.mapUrl ?? server.backendUrl;
   }
+  server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
   server.queryDataUpdatedAt = now;
-  return data !== undefined || info !== undefined;
+  return data.ok || info.ok || playerlist.ok;
 }
 
 function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, now: Date): void {

@@ -23,6 +23,14 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     backendUrl: (server.backendUrl ?? server.mapUrl) as ServerDto['backendUrl'],
     data: server.data,
     info: server.info,
+    status: server.status,
+    queryData: server.data,
+    infoData: server.info,
+    onlinePlayers: server.onlinePlayers,
+    lastChecked: server.lastChecked
+      ? mapDateTimeString(server.lastChecked) as ServerDto['lastChecked']
+      : undefined,
+    errorMessage: server.errorMessage,
     firstSeen: server.firstSeen
       ? mapDateTimeString(server.firstSeen) as ServerDto['firstSeen']
       : undefined,

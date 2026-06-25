@@ -10,6 +10,10 @@ interface StoredServer {
   adminUid?: string;
   data?: unknown;
   info?: unknown;
+  status?: 'online' | 'offline';
+  onlinePlayers?: unknown[];
+  lastChecked?: Date | string;
+  errorMessage?: string;
   firstSeen?: Date | string;
   lastSeen?: Date | string;
   queryDataUpdatedAt?: Date | string;
@@ -87,6 +91,10 @@ describe('master-server-list-service', () => {
           contact: '76561198000000000',
           description: 'Welcome @mapUrl: [ https://map.example.com/ ]',
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: [{ uid: 'player-1' }] }),
       }) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -107,6 +115,9 @@ describe('master-server-list-service', () => {
       queryUrl: 'http://127.0.0.1:4254',
       mapUrl: 'https://map.example.com/',
       backendUrl: 'https://map.example.com/',
+      status: 'online',
+      onlinePlayers: [{ uid: 'player-1' }],
+      lastChecked: expect.any(Date),
       adminUid: '76561198000000000',
       data: { players: 3 },
       info: {
@@ -214,6 +225,10 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: false,
         json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({}),
       }) as typeof fetch;
 
     await expect(
@@ -226,6 +241,8 @@ describe('master-server-list-service', () => {
     expect(state.servers[0]).toMatchObject({
       id: 'server-f8e7fa9ca73fd4b4943db61a',
       steamId: '76561198000000002',
+      status: 'offline',
+      errorMessage: 'FETCH_FAILED',
       queryDataUpdatedAt: expect.any(Date),
     });
     expect(state.servers[0].mods).toBeUndefined();
@@ -268,6 +285,10 @@ describe('master-server-list-service', () => {
           contact: 'not-a-steam-id',
           description: '@mapUrl:[not-a-url]',
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: [{ uid: 'player-5' }] }),
       }) as typeof fetch;
 
     await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({
@@ -278,6 +299,8 @@ describe('master-server-list-service', () => {
     });
     expect(state.servers[0]).toMatchObject({
       data: { players: 5 },
+      status: 'online',
+      onlinePlayers: [{ uid: 'player-5' }],
       label: 'Short Server 1',
       adminUid: '76561198000000000',
       mapUrl: 'https://old-map.example/',
@@ -310,6 +333,10 @@ describe('master-server-list-service', () => {
           shortname: 'New Shortname',
           description: '@mapUrl:https://map.example.com/',
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: [] }),
       }) as typeof fetch;
 
     await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({

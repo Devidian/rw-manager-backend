@@ -66,6 +66,12 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
     changed = true;
   }
 
+  server.status = response.status;
+  server.lastChecked = new Date(response.lastChecked);
+  server.errorMessage = response.errorMessage;
+  server.onlinePlayers = response.onlinePlayers;
+  changed = true;
+
   if (response.infoData !== undefined) {
     server.info = response.infoData;
     server.label = stringOrUndefined((response.infoData as { shortname?: unknown }).shortname) ?? server.label;

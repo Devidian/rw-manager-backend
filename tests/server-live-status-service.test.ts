@@ -8,6 +8,10 @@ interface StoredServer {
   backendUrl?: string;
   data?: unknown;
   info?: unknown;
+  status?: 'online' | 'offline';
+  onlinePlayers?: unknown[];
+  lastChecked?: Date | string;
+  errorMessage?: string;
   queryDataUpdatedAt?: Date | string;
   public: boolean;
   createdAt: Date | string;
@@ -96,6 +100,9 @@ describe('server-live-status-service', () => {
       label: 'Updated Shortname',
       mapUrl: 'https://gs1.omega-zirkel.de/main.backend/',
       backendUrl: 'https://gs1.omega-zirkel.de/main.backend/',
+      status: 'online',
+      onlinePlayers: [{ uid: 'player-1' }],
+      lastChecked: expect.any(Date),
       data: { name: 'Server', playercount: 1 },
       info: {
         shortname: 'Updated Shortname',

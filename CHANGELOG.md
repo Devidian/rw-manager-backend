@@ -63,3 +63,5 @@ The format follows Common Changelog principles and the project uses Semantic Ver
   to each frontend server entry's existing player-list data.
 * Migrated local package-manager execution from the obsolete Yarn 1 path file
   to the declared Yarn 4/Corepack baseline.
+* Server list responses now include the latest cached live status fields from
+  periodic query refreshes, including online status and player-list data.

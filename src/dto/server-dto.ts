@@ -20,6 +20,12 @@ export interface ServerDto {
   backendUrl?: (string & Format<'url'>) | undefined;
   data?: unknown;
   info?: unknown;
+  status?: 'online' | 'offline' | undefined;
+  queryData?: unknown;
+  infoData?: unknown;
+  onlinePlayers?: unknown[] | undefined;
+  lastChecked?: (string & Format<'date-time'>) | undefined;
+  errorMessage?: string | undefined;
   firstSeen?: (string & Format<'date-time'>) | undefined;
   lastSeen?: (string & Format<'date-time'>) | undefined;
   queryDataUpdatedAt?: (string & Format<'date-time'>) | undefined;
