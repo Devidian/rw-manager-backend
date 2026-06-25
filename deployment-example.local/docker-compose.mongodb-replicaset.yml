@@ -1,21 +1,42 @@
 services:
   mongodb:
-    image: mongo:7
+    image: mongo:8
     command:
       - mongod
       - --replSet
       - rs0
+      - --keyFile
+      - /data/configdb/keyfile
       - --bind_ip_all
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: rwmanager
+      MONGO_INITDB_ROOT_PASSWORD: rwmanager-dev-password
+      MONGO_INITDB_DATABASE: rw-manager
+      MONGO_REPLICA_SET_KEY: cnctbWFuYWdlci1sb2NhbC1yZXBsaWNhLXNldC1rZXktY2hhbmdlLW1l
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        mkdir -p /data/configdb &&
+        printf "%s" "$$MONGO_REPLICA_SET_KEY" > /data/configdb/keyfile &&
+        chmod 400 /data/configdb/keyfile &&
+        chown mongodb:mongodb /data/configdb/keyfile &&
+        exec docker-entrypoint.sh "$$@"
+      - docker-entrypoint.sh
     ports:
-      - "27017:27017"
+      - "${MONGODB_PORT:-27017}:27017"
     volumes:
       - mongodb-data:/data/db
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          mongosh --quiet --eval
-          'db.adminCommand("ping").ok && (rs.status().ok || rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]}).ok)'
+          mongosh --quiet
+          -u "$$MONGO_INITDB_ROOT_USERNAME"
+          -p "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin
+          --eval
+          'db.adminCommand("ping"); const ok = (() => { try { return rs.status().ok; } catch (error) { return rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]}).ok; } })(); if (!ok) quit(1);'
       interval: 5s
       timeout: 5s
       retries: 30

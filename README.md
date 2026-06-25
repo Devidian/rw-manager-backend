@@ -61,15 +61,18 @@ variable is missing or the server is unreachable, the backend logs a warning
 and keeps using the JSON database fallback under `APP_DATA_ROOT`.
 
 ```text
-MONGODB_URI=mongodb://localhost:27017/rw-manager?replicaSet=rs0
+MONGODB_URI=mongodb://rwmanager:rwmanager-dev-password@mongodb:27017/rw-manager?replicaSet=rs0&authSource=admin
 MONGODB_DATABASE=rw-manager
 MONGODB_CONNECT_TIMEOUT_MS=5000
 ```
 
-For local Change Stream compatible tests, use the minimal replica-set example:
+For local Change Stream compatible tests, use the minimal replica-set example.
+The backend should use the URI above when it runs in the same Compose network.
+Set `MONGODB_PORT` when the host port `27017` is already occupied.
 
 ```text
 docker compose -f deployment-example.local/docker-compose.mongodb-replicaset.yml up -d
+MONGODB_PORT=27018 docker compose -f deployment-example.local/docker-compose.mongodb-replicaset.yml up -d
 ```
 
 The backend derives `queryUrl` as `http://<ip>:<port - 1>`. Query `data` and
