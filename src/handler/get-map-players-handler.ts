@@ -7,7 +7,7 @@ import { AppConfig } from '../utils/app-config.js';
 
 export async function getMapPlayersHandler(req: Request, res: Response) {
   try {
-    const user = getUserFromBearerToken(req.header('authorization'));
+    const user = await getUserFromBearerToken(req.header('authorization'));
     const items = await getMapPlayers(user?.role === 'admin');
     const response: GetMapPlayersResponse = {
       schemaVersion: 1,

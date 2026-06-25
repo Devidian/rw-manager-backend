@@ -4,11 +4,11 @@ import type { ListUsersResponse } from '../dto/list-users-response.js';
 import type { RequestWithUser } from '../interfaces/request-with-user.js';
 import { listUsers } from '../service/storage-service.js';
 
-export function listUsersHandler(req: Request, res: Response) {
+export async function listUsersHandler(req: Request, res: Response) {
   try {
     const request = req as RequestWithUser;
     const response = typia.assert<ListUsersResponse>({
-      users: listUsers(request.user?.steamId ?? ''),
+      users: await listUsers(request.user?.steamId ?? ''),
     });
     return res.json(response);
   } catch (error) {

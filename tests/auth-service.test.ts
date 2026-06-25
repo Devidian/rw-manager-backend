@@ -29,6 +29,8 @@ const findUserBySteamIdMock = jest.fn();
 const findUserByUsernameMock = jest.fn();
 const setUserSteamIdMock = jest.fn();
 const toPrivateUserMock = jest.fn();
+const updateUserMock = jest.fn();
+const deleteUserAndOwnedServersMock = jest.fn();
 const verifyUserPasswordMock = jest.fn();
 const createAuthTokenMock = jest.fn<(userId: string) => string>();
 const mapPrivateUserToDtoMock = jest.fn<(user: MutableDbUser) => { id: string; username: string }>();
@@ -36,17 +38,15 @@ const normalizeSteamIdMock = jest.fn<(value: unknown) => string | null>();
 const debugMock = jest.fn<(value: unknown) => void>();
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 
-jest.unstable_mockModule('../src/db/json.js', () => ({
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   createUser: createUserMock,
-  db: {
-    data: state,
-    write: writeMock,
-  },
   findUserById: findUserByIdMock,
   findUserBySteamId: findUserBySteamIdMock,
   findUserByUsername: findUserByUsernameMock,
   setUserSteamId: setUserSteamIdMock,
   toPrivateUser: toPrivateUserMock,
+  updateUser: updateUserMock,
+  deleteUserAndOwnedServers: deleteUserAndOwnedServersMock,
   verifyUserPassword: verifyUserPasswordMock,
 }));
 
@@ -102,11 +102,30 @@ describe('auth-service', () => {
     state.users = [];
     state.servers = [];
     createUserMock.mockReset();
-    findUserByIdMock.mockReset();
-    findUserBySteamIdMock.mockReset();
-    findUserByUsernameMock.mockReset();
+    findUserByIdMock.mockReset().mockImplementation((id: string) =>
+      state.users.find((entry) => entry.id === id),
+    );
+    findUserBySteamIdMock.mockReset().mockImplementation((steamId: string) =>
+      state.users.find((entry) => entry.steamId === steamId),
+    );
+    findUserByUsernameMock.mockReset().mockImplementation((username: string) =>
+      state.users.find((entry) => entry.username === username),
+    );
     setUserSteamIdMock.mockReset();
     toPrivateUserMock.mockReset();
+    updateUserMock.mockReset().mockImplementation(async (id: string, patch: Partial<MutableDbUser>) => {
+      const user = state.users.find((entry) => entry.id === id);
+      if (!user) return null;
+      Object.assign(user, patch);
+      return user;
+    });
+    deleteUserAndOwnedServersMock.mockReset().mockImplementation(async (id: string) => {
+      const exists = state.users.some((entry) => entry.id === id);
+      if (!exists) return false;
+      state.users = state.users.filter((entry) => entry.id !== id);
+      state.servers = state.servers.filter((entry) => entry.userId !== id);
+      return true;
+    });
     verifyUserPasswordMock.mockReset();
     createAuthTokenMock.mockReset().mockImplementation((userId: string) => `token:${userId}`);
     mapPrivateUserToDtoMock.mockReset().mockImplementation((user: MutableDbUser) => ({
@@ -208,26 +227,26 @@ describe('auth-service', () => {
     });
   });
 
-  test('loginUser rejects invalid credentials and returns an auth token on success', () => {
+  test('loginUser rejects invalid credentials and returns an auth token on success', async () => {
     const user = createUserRecord();
     findUserByUsernameMock.mockReturnValueOnce(undefined);
-    expect(() =>
+    await expect(
       authService.loginUser({ username: 'alice', password: 'secret' }),
-    ).toThrow('INVALID_USERNAME_OR_PASSWORD');
+    ).rejects.toThrow('INVALID_USERNAME_OR_PASSWORD');
 
     findUserByUsernameMock.mockReturnValueOnce(user);
     verifyUserPasswordMock.mockReturnValueOnce(false);
-    expect(() =>
+    await expect(
       authService.loginUser({ username: 'alice', password: 'secret' }),
-    ).toThrow('INVALID_USERNAME_OR_PASSWORD');
+    ).rejects.toThrow('INVALID_USERNAME_OR_PASSWORD');
 
     findUserByUsernameMock.mockReturnValueOnce(user);
     verifyUserPasswordMock.mockReturnValueOnce(true);
     toPrivateUserMock.mockReturnValueOnce(user);
 
-    expect(
+    await expect(
       authService.loginUser({ username: 'alice', password: 'secret' }),
-    ).toEqual({
+    ).resolves.toEqual({
       user: { id: 'user-1', username: 'alice' },
       token: 'token:user-1',
     });
@@ -279,11 +298,11 @@ describe('auth-service', () => {
     });
 
     findUserByIdMock.mockReturnValueOnce(undefined);
-    expect(() => authService.validateUser('missing')).toThrow('USER_NOT_FOUND');
+    await expect(authService.validateUser('missing')).rejects.toThrow('USER_NOT_FOUND');
 
     findUserByIdMock.mockReturnValueOnce(createUserRecord());
     toPrivateUserMock.mockReturnValueOnce(createUserRecord());
-    expect(authService.validateUser('user-1')).toEqual({
+    await expect(authService.validateUser('user-1')).resolves.toEqual({
       user: { id: 'user-1', username: 'alice' },
     });
 
@@ -325,7 +344,7 @@ describe('auth-service', () => {
     expect(state.users[0].apiTokenCreatedAt).toEqual(expect.any(Date));
     expect(state.users[0].apiTokenHash).not.toBe(token);
     expect(state.users[0].apiTokenSalt).not.toBe(token);
-    expect(writeMock).toHaveBeenCalled();
+    expect(updateUserMock).toHaveBeenCalled();
   });
 
   test('steamSignIn reuses existing users and creates new users with role and state defaults', async () => {

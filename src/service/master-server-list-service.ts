@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { db } from '../db/json.js';
+import {
+  findServerByMasterIdentity,
+  listServers,
+  replacePinnedServerId,
+  saveServer,
+} from '../db/manager-store.js';
 import type { MasterServerListEntry, MasterServerListResponse } from '../interfaces/master-server-list.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
@@ -76,15 +81,6 @@ function serverIdFor(entry: MasterServerListEntry): string | undefined {
   if (!ip || port === undefined || port <= 0) return undefined;
   const hash = createHash('sha256').update(`${ip}:${port}`).digest('hex').slice(0, 24);
   return `server-${hash}`;
-}
-
-function replacePinnedServerId(previousId: string, nextId: string): void {
-  if (previousId === nextId) return;
-  for (const user of db.data.users) {
-    if (!Array.isArray(user.pinnedServers)) continue;
-    const pinned = new Set(user.pinnedServers.map((entry) => entry === previousId ? nextId : entry));
-    user.pinnedServers = [...pinned];
-  }
 }
 
 function shouldRefreshQueryData(server: ServerConfig, now: Date): boolean {
@@ -181,11 +177,7 @@ export async function refreshMasterServerList(options: {
     const serverId = serverIdFor(entry);
     if (!serverId || !queryUrl) continue;
 
-    let server = db.data.servers.find(
-      (candidate) =>
-        candidate.id === serverId ||
-        (steamId !== undefined && (candidate.steamId === steamId || candidate.id === steamId)),
-    );
+    let server = await findServerByMasterIdentity({ serverId, steamId });
     if (!server) {
       server = {
         id: serverId,
@@ -197,10 +189,9 @@ export async function refreshMasterServerList(options: {
         firstSeen: now,
         lastSeen: now,
       };
-      db.data.servers.push(server);
       inserted += 1;
     } else {
-      replacePinnedServerId(server.id, serverId);
+      await replacePinnedServerId(server.id, serverId);
       server.id = serverId;
       updated += 1;
     }
@@ -209,20 +200,23 @@ export async function refreshMasterServerList(options: {
     if (options.refreshQueryData && await refreshQueryData(server, now)) {
       refreshed += 1;
     }
+    await saveServer(server);
   }
 
-  await db.write();
   return { fetched: entries.length, inserted, updated, refreshed };
 }
 
 export async function refreshAllServerQueryData(): Promise<MasterServerListSyncResult> {
   const now = new Date();
   let refreshed = 0;
-  for (const server of db.data.servers) {
-    if (await refreshQueryData(server, now)) refreshed += 1;
+  const servers = await listServers();
+  for (const server of servers) {
+    if (await refreshQueryData(server, now)) {
+      refreshed += 1;
+      await saveServer(server);
+    }
   }
-  await db.write();
-  return { fetched: db.data.servers.length, inserted: 0, updated: 0, refreshed };
+  return { fetched: servers.length, inserted: 0, updated: 0, refreshed };
 }
 
 export function startMasterServerListSync(): { stop: () => void } | null {

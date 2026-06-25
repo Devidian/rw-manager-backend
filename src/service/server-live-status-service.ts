@@ -1,4 +1,4 @@
-import { db } from '../db/json.js';
+import { findServerById, updateServer } from '../db/manager-store.js';
 import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
 import type { ServerLiveStatusResponse } from '../dto/server-live-status-response.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
@@ -89,7 +89,18 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
 
   if (changed) {
     server.queryDataUpdatedAt = new Date(response.lastChecked);
-    await db.write();
+      await updateServer(server.id, {
+        data: server.data,
+        info: server.info,
+        label: server.label,
+        mapUrl: server.mapUrl,
+        backendUrl: server.backendUrl,
+        status: server.status,
+        lastChecked: server.lastChecked,
+        errorMessage: server.errorMessage,
+        onlinePlayers: server.onlinePlayers,
+        queryDataUpdatedAt: server.queryDataUpdatedAt,
+      });
   }
 }
 
@@ -129,7 +140,7 @@ function playerCountFromLiveStatus(response: ServerLiveStatusResponse): number {
 }
 
 export async function getServerLiveStatus(serverId: string): Promise<ServerLiveStatusResponse> {
-  const server = db.data.servers.find((entry) => entry.id === serverId);
+  const server = await findServerById(serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
   if (!server.queryUrl) throw new Error('QUERY_URL_MISSING');
 

@@ -4,6 +4,7 @@ import { defaultLogger } from '../utils/logger.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import type { JsonDbUser } from '../interfaces/app-user.js';
 import type { ServerStatisticsBucket } from '../interfaces/server-statistics.js';
+import { db as jsonDb } from './json.js';
 
 export interface MongoCollections {
   servers: Collection<ServerConfig & Document>;
@@ -39,6 +40,7 @@ export async function bootstrapMongoDb(): Promise<MongoCollections | undefined> 
       serverStatistics: database.collection<ServerStatisticsBucket & Document>('server_statistics'),
     };
     await ensureIndexes(collections);
+    await seedMongoFromJson(collections);
     defaultLogger.log(`MongoDB connected: ${AppConfig.mongoDatabaseName}`);
     return collections;
   } catch (error) {
@@ -75,4 +77,61 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
     next.serverStatistics.createIndex({ id: 1 }, { unique: true }),
     next.serverStatistics.createIndex({ serverId: 1, hourStart: 1 }, { unique: true }),
   ]);
+}
+
+async function seedMongoFromJson(next: MongoCollections): Promise<void> {
+  const [serverCount, userCount, statisticsCount] = await Promise.all([
+    next.servers.estimatedDocumentCount(),
+    next.users.estimatedDocumentCount(),
+    next.serverStatistics.estimatedDocumentCount(),
+  ]);
+
+  const operations: Promise<unknown>[] = [];
+  if (serverCount === 0 && jsonDb.data.servers.length > 0) {
+    operations.push(
+      next.servers.bulkWrite(
+        jsonDb.data.servers.map((server) => ({
+          replaceOne: {
+            filter: { id: server.id },
+            replacement: server,
+            upsert: true,
+          },
+        })),
+      ),
+    );
+  }
+  if (userCount === 0 && jsonDb.data.users.length > 0) {
+    operations.push(
+      next.users.bulkWrite(
+        jsonDb.data.users.map((user) => ({
+          replaceOne: {
+            filter: { id: user.id },
+            replacement: user,
+            upsert: true,
+          },
+        })),
+      ),
+    );
+  }
+  const statistics = Array.isArray(jsonDb.data.serverStatistics)
+    ? jsonDb.data.serverStatistics
+    : [];
+  if (statisticsCount === 0 && statistics.length > 0) {
+    operations.push(
+      next.serverStatistics.bulkWrite(
+        statistics.map((bucket) => ({
+          replaceOne: {
+            filter: { id: bucket.id },
+            replacement: bucket,
+            upsert: true,
+          },
+        })),
+      ),
+    );
+  }
+
+  if (operations.length > 0) {
+    await Promise.all(operations);
+    defaultLogger.log('MongoDB seeded from JSON fallback data');
+  }
 }

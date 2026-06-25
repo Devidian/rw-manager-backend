@@ -1,6 +1,17 @@
-import { addServer, db, removeServer, updateServer } from '../db/json.js';
+import {
+  addServer,
+  deleteUserAndOwnedServers,
+  findServerById,
+  findUserById,
+  listServers as listStoredServers,
+  listUsers as listStoredUsers,
+  removeServer,
+  toPublicUser,
+  updateServer,
+  updateUser,
+} from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
-import type { PublicUser, UserRole, UserState } from '../interfaces/app-user.js';
+import type { UserRole, UserState } from '../interfaces/app-user.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import type { CreateServerRequest } from '../dto/create-server-request.js';
 import type { PublicUserDto } from '../dto/public-user-dto.js';
@@ -104,9 +115,9 @@ function assertServerWriteAccess(
   });
 }
 
-export function listServers(context: StorageRequestContext): ServerDto[] {
+export async function listServers(context: StorageRequestContext): Promise<ServerDto[]> {
   void context;
-  return db.data.servers.map(mapServerToDto);
+  return (await listStoredServers()).map(mapServerToDto);
 }
 
 export async function createServer(
@@ -125,7 +136,8 @@ export async function createServer(
       ? await fetchQueryUrlName(queryUrl)
       : undefined;
 
-  const duplicate = db.data.servers.some(
+  const servers = await listStoredServers();
+  const duplicate = servers.some(
     (server) =>
       (AppConfig.enableAuth ? server.userId === context.userId : true) &&
       serializeQueryUrl(server.queryUrl) === queryUrlSerialized,
@@ -155,7 +167,7 @@ export async function patchServer(
   patch: UpdateServerRequest,
   context: StorageRequestContext,
 ): Promise<ServerDto> {
-  const current = db.data.servers.find((server) => server.id === serverId);
+  const current = await findServerById(serverId);
   if (!current) {
     throw new Error('SERVER_NOT_FOUND');
   }
@@ -168,7 +180,8 @@ export async function patchServer(
       ? normalizeBackendUrl(patch.backendUrl)
       : normalizeBackendUrl(current.backendUrl);
   const nextQueryUrlSerialized = serializeQueryUrl(nextQueryUrl);
-  const duplicate = db.data.servers.some(
+  const servers = await listStoredServers();
+  const duplicate = servers.some(
     (server) =>
       server.id !== current.id &&
       (AppConfig.enableAuth ? server.userId === current.userId : true) &&
@@ -206,25 +219,13 @@ export async function deleteServer(
   serverId: string,
   context: StorageRequestContext,
 ): Promise<void> {
-  const current = db.data.servers.find((server) => server.id === serverId);
+  const current = await findServerById(serverId);
   if (!current) {
     throw new Error('SERVER_NOT_FOUND');
   }
 
   await assertServerWriteAccess(current, context);
   await removeServer(current.id);
-}
-
-function toPublicUser(user: (typeof db.data.users)[number]): PublicUser {
-  return {
-    id: user.id,
-    username: user.username,
-    state: user.state,
-    role: user.role,
-    steamId: user.steamId,
-    pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
-    createdAt: user.createdAt,
-  };
 }
 
 export async function pinServer(
@@ -235,12 +236,12 @@ export async function pinServer(
     throw new Error('UNAUTHORIZED');
   }
 
-  const server = db.data.servers.find((entry) => entry.id === serverId);
+  const server = await findServerById(serverId);
   if (!server) {
     throw new Error('SERVER_NOT_FOUND');
   }
 
-  const user = db.data.users.find((entry) => entry.id === context.userId);
+  const user = await findUserById(context.userId);
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
@@ -250,7 +251,7 @@ export async function pinServer(
     : [];
   if (!user.pinnedServers.includes(serverId)) {
     user.pinnedServers.push(serverId);
-    await db.write();
+    await updateUser(user.id, { pinnedServers: user.pinnedServers });
   }
 
   return mapPublicUserToDto(toPublicUser(user));
@@ -264,7 +265,7 @@ export async function unpinServer(
     throw new Error('UNAUTHORIZED');
   }
 
-  const user = db.data.users.find((entry) => entry.id === context.userId);
+  const user = await findUserById(context.userId);
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
@@ -272,16 +273,16 @@ export async function unpinServer(
   user.pinnedServers = Array.isArray(user.pinnedServers)
     ? user.pinnedServers.filter((entry) => entry !== serverId)
     : [];
-  await db.write();
+  await updateUser(user.id, { pinnedServers: user.pinnedServers });
 
   return mapPublicUserToDto(toPublicUser(user));
 }
 
-export function listUsers(currentSteamId: string): PublicUserDto[] {
+export async function listUsers(currentSteamId: string): Promise<PublicUserDto[]> {
   if (!AppConfig.superAdminId || currentSteamId !== AppConfig.superAdminId) {
     throw new Error('FORBIDDEN');
   }
-  return db.data.users.map(toPublicUser).map(mapPublicUserToDto);
+  return (await listStoredUsers()).map(toPublicUser).map(mapPublicUserToDto);
 }
 
 export async function patchUser(
@@ -309,14 +310,14 @@ export async function patchUser(
     throw new Error('ROLE_INVALID');
   }
 
-  const user = db.data.users.find((entry) => entry.id === userId);
+  const user = await findUserById(userId);
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
 
   if (patch.state !== undefined) user.state = patch.state;
   if (patch.role !== undefined) user.role = patch.role;
-  await db.write();
+  await updateUser(user.id, { state: user.state, role: user.role });
   return mapPublicUserToDto(toPublicUser(user));
 }
 
@@ -332,12 +333,7 @@ export async function deleteStorageUser(
     throw new Error('CANNOT_DELETE_SELF');
   }
 
-  const user = db.data.users.find((entry) => entry.id === userId);
-  if (!user) {
+  if (!await deleteUserAndOwnedServers(userId)) {
     throw new Error('USER_NOT_FOUND');
   }
-
-  db.data.users = db.data.users.filter((entry) => entry.id !== userId);
-  db.data.servers = db.data.servers.filter((entry) => entry.userId !== userId);
-  await db.write();
 }

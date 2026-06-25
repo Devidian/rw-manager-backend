@@ -52,11 +52,13 @@ LIVE_QUERY_PROXY_CACHE_TTL_MS=5000
 LIVE_QUERY_PROXY_TIMEOUT_MS=8000
 ```
 
-MongoDB is optional during the transition. When `MONGODB_URI` is set, the
-backend bootstraps MongoDB collections and unique indexes for servers, users,
-and statistics while keeping MongoDB `_id` values internal. When the variable
-is missing or the server is unreachable, the backend logs a warning and keeps
-using the JSON database fallback under `APP_DATA_ROOT`.
+MongoDB is the preferred manager storage backend. When `MONGODB_URI` is set,
+the backend bootstraps MongoDB collections and unique indexes for servers,
+users, and statistics while keeping MongoDB `_id` values internal. If the
+MongoDB collections are empty, existing JSON fallback data from
+`APP_DATA_ROOT/data.json` is copied into MongoDB once during bootstrap. When the
+variable is missing or the server is unreachable, the backend logs a warning
+and keeps using the JSON database fallback under `APP_DATA_ROOT`.
 
 ```text
 MONGODB_URI=mongodb://localhost:27017/rw-manager?replicaSet=rs0

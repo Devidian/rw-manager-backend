@@ -16,7 +16,7 @@ const toPrivateUserMock = jest.fn<(user: PrivateUserRecord) => PrivateUserRecord
 const verifyUserPasswordMock = jest.fn<(user: { id: string }, password: string) => boolean>();
 const debugMock = jest.fn<(value: unknown) => void>();
 
-jest.unstable_mockModule('../src/db/json.js', () => ({
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   findUserById: findUserByIdMock,
   findUserByUsername: findUserByUsernameMock,
   toPrivateUser: toPrivateUserMock,
@@ -63,7 +63,7 @@ describe('auth-token-service', () => {
     expect(typeof authMiddleware[0]).toBe('function');
   });
 
-  test('registers a local passport strategy that verifies credentials', () => {
+  test('registers a local passport strategy that verifies credentials', async () => {
     const strategy = passport._strategy('local') as {
       _verify: (
         username: string,
@@ -73,10 +73,11 @@ describe('auth-token-service', () => {
     };
 
     findUserByUsernameMock.mockReturnValueOnce(undefined);
-    strategy._verify('alice', 'secret', (_error, user, options) => {
+    await new Promise<void>((resolve) => strategy._verify('alice', 'secret', (_error, user, options) => {
       expect(user).toBe(false);
       expect(options).toEqual({ message: 'Invalid username or password' });
-    });
+      resolve();
+    }));
 
     const user = {
       id: 'user-1',
@@ -89,12 +90,13 @@ describe('auth-token-service', () => {
     findUserByUsernameMock.mockReturnValueOnce(user);
     verifyUserPasswordMock.mockReturnValueOnce(true);
     toPrivateUserMock.mockReturnValueOnce(user);
-    strategy._verify('alice', 'secret', (_error, result) => {
+    await new Promise<void>((resolve) => strategy._verify('alice', 'secret', (_error, result) => {
       expect(result).toEqual(user);
-    });
+      resolve();
+    }));
   });
 
-  test('createAuthToken creates a three-part token and getUserFromBearerToken resolves users', () => {
+  test('createAuthToken creates a three-part token and getUserFromBearerToken resolves users', async () => {
     const user: PrivateUserRecord = {
       id: 'user-1',
       username: 'alice',
@@ -110,31 +112,31 @@ describe('auth-token-service', () => {
     const token = createAuthToken('user-1');
 
     expect(token.split('.')).toHaveLength(3);
-    expect(getUserFromBearerToken(`Bearer ${token}`)).toEqual(user);
+    await expect(getUserFromBearerToken(`Bearer ${token}`)).resolves.toEqual(user);
     expect(debugMock).toHaveBeenCalled();
   });
 
-  test('getUserFromBearerToken rejects invalid authorization shapes and signatures', () => {
+  test('getUserFromBearerToken rejects invalid authorization shapes and signatures', async () => {
     const token = createAuthToken('user-1');
     const invalidToken = `${token.slice(0, -1)}x`;
 
-    expect(getUserFromBearerToken(undefined)).toBeNull();
-    expect(getUserFromBearerToken('Basic token')).toBeNull();
-    expect(getUserFromBearerToken('Bearer missing.parts')).toBeNull();
-    expect(getUserFromBearerToken(`Bearer ${invalidToken}`)).toBeNull();
+    await expect(getUserFromBearerToken(undefined)).resolves.toBeNull();
+    await expect(getUserFromBearerToken('Basic token')).resolves.toBeNull();
+    await expect(getUserFromBearerToken('Bearer missing.parts')).resolves.toBeNull();
+    await expect(getUserFromBearerToken(`Bearer ${invalidToken}`)).resolves.toBeNull();
   });
 
-  test('getUserFromBearerToken rejects malformed, expired, and missing-user payloads', () => {
+  test('getUserFromBearerToken rejects malformed, expired, and missing-user payloads', async () => {
     const token = createAuthToken('user-1');
 
     findUserByIdMock.mockReturnValue(undefined);
-    expect(getUserFromBearerToken(`Bearer ${token}`)).toBeNull();
+    await expect(getUserFromBearerToken(`Bearer ${token}`)).resolves.toBeNull();
 
     findUserByIdMock.mockReset();
     Date.now = jest.fn(() => new Date('2030-01-01T00:00:00.000Z').valueOf());
-    expect(getUserFromBearerToken(`Bearer ${token}`)).toBeNull();
+    await expect(getUserFromBearerToken(`Bearer ${token}`)).resolves.toBeNull();
 
     const malformed = 'Bearer a.b.c';
-    expect(getUserFromBearerToken(malformed)).toBeNull();
+    await expect(getUserFromBearerToken(malformed)).resolves.toBeNull();
   });
 });

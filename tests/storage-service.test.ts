@@ -28,20 +28,30 @@ const state = {
 const addServerMock = jest.fn();
 const removeServerMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const updateServerMock = jest.fn();
+const findServerByIdMock = jest.fn();
+const findUserByIdMock = jest.fn();
+const listServersMock = jest.fn();
+const listUsersMock = jest.fn();
+const toPublicUserMock = jest.fn();
+const updateUserMock = jest.fn();
+const deleteUserAndOwnedServersMock = jest.fn();
 const mapServerToDtoMock = jest.fn();
 const mapPublicUserToDtoMock = jest.fn();
 const canAdminServerMock = jest.fn();
 const fetchBackendAdminsMock = jest.fn();
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 
-jest.unstable_mockModule('../src/db/json.js', () => ({
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   addServer: addServerMock,
-  db: {
-    data: state,
-    write: writeMock,
-  },
+  findServerById: findServerByIdMock,
+  findUserById: findUserByIdMock,
+  listServers: listServersMock,
+  listUsers: listUsersMock,
   removeServer: removeServerMock,
+  toPublicUser: toPublicUserMock,
   updateServer: updateServerMock,
+  updateUser: updateUserMock,
+  deleteUserAndOwnedServers: deleteUserAndOwnedServersMock,
 }));
 
 jest.unstable_mockModule('../src/mapper/server-mapper.js', () => ({
@@ -106,6 +116,36 @@ describe('storage-service', () => {
     addServerMock.mockReset();
     removeServerMock.mockClear();
     updateServerMock.mockReset();
+    findServerByIdMock.mockReset().mockImplementation(async (id: string) =>
+      state.servers.find((server) => server.id === id),
+    );
+    findUserByIdMock.mockReset().mockImplementation(async (id: string) =>
+      state.users.find((user) => user.id === id),
+    );
+    listServersMock.mockReset().mockImplementation(async () => state.servers);
+    listUsersMock.mockReset().mockImplementation(async () => state.users);
+    toPublicUserMock.mockReset().mockImplementation((user: StoredUser) => ({
+      id: user.id,
+      username: user.username,
+      state: user.state,
+      role: user.role,
+      steamId: user.steamId,
+      pinnedServers: user.pinnedServers ?? [],
+      createdAt: user.createdAt,
+    }));
+    updateUserMock.mockReset().mockImplementation(async (id: string, patch: Partial<StoredUser>) => {
+      const user = state.users.find((entry) => entry.id === id);
+      if (!user) return null;
+      Object.assign(user, patch);
+      return user;
+    });
+    deleteUserAndOwnedServersMock.mockReset().mockImplementation(async (id: string) => {
+      const exists = state.users.some((user) => user.id === id);
+      if (!exists) return false;
+      state.users = state.users.filter((user) => user.id !== id);
+      state.servers = state.servers.filter((server) => server.userId !== id);
+      return true;
+    });
     mapServerToDtoMock.mockReset().mockImplementation((server: StoredServer) => ({
       id: server.id,
       label: server.label,
@@ -130,7 +170,7 @@ describe('storage-service', () => {
     global.fetch = originalFetch;
   });
 
-  test('listServers returns the shared server list independent of auth ownership', () => {
+  test('listServers returns the shared server list independent of auth ownership', async () => {
     state.servers = [
       createServerRecord({ id: 'a', public: false, userId: 'user-1' }),
       createServerRecord({ id: 'b', public: true, userId: 'user-2' }),
@@ -138,7 +178,7 @@ describe('storage-service', () => {
     ];
 
     process.env.ENABLE_AUTH = 'true';
-    expect(storageService.listServers({ userId: 'user-1' })).toEqual([
+    await expect(storageService.listServers({ userId: 'user-1' })).resolves.toEqual([
       { id: 'a', label: 'Server' },
       { id: 'b', label: 'Server' },
       { id: 'c', label: 'Server' },
@@ -463,8 +503,8 @@ describe('storage-service', () => {
       createUserRecord({ id: 'user-2', username: 'bob', role: 'guest' }),
     ];
 
-    expect(() => storageService.listUsers('wrong')).toThrow('FORBIDDEN');
-    expect(storageService.listUsers('steam-admin')).toHaveLength(2);
+    await expect(storageService.listUsers('wrong')).rejects.toThrow('FORBIDDEN');
+    await expect(storageService.listUsers('steam-admin')).resolves.toHaveLength(2);
 
     await expect(
       storageService.patchUser('wrong', 'user-2', {}),

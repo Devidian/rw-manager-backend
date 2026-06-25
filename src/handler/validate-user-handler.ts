@@ -4,13 +4,13 @@ import type { RequestWithUser } from '../interfaces/request-with-user.js';
 import type { ValidateUserResponse } from '../dto/validate-user-response.js';
 import { validateUser } from '../service/auth-service.js';
 
-export function validateUserHandler(req: Request, res: Response) {
+export async function validateUserHandler(req: Request, res: Response) {
   try {
     const userId = (req as RequestWithUser).user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'unauthorized' });
     }
-    const response = typia.assert<ValidateUserResponse>(validateUser(userId));
+    const response = typia.assert<ValidateUserResponse>(await validateUser(userId));
     return res.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';

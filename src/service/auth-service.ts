@@ -1,14 +1,15 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import {
   createUser,
-  db,
+  deleteUserAndOwnedServers,
   findUserById,
   findUserBySteamId,
   findUserByUsername,
   setUserSteamId,
   toPrivateUser,
+  updateUser,
   verifyUserPassword,
-} from '../db/json.js';
+} from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { normalizeSteamId } from '../utils/normalize-steam-id.js';
 import { createAuthToken } from './auth-token-service.js';
@@ -59,7 +60,7 @@ export async function registerLocalUser(
       ? input.username.trim()
       : normalizedEmail;
 
-  if (findUserByUsername(resolvedUsername)) {
+  if (await findUserByUsername(resolvedUsername)) {
     throw new Error('USERNAME_EXISTS');
   }
 
@@ -71,7 +72,7 @@ export async function registerLocalUser(
     }
     normalizedSteamId = parsedSteamId;
   }
-  if (normalizedSteamId && findUserBySteamId(normalizedSteamId)) {
+  if (normalizedSteamId && await findUserBySteamId(normalizedSteamId)) {
     throw new Error('STEAM_ID_EXISTS');
   }
 
@@ -86,8 +87,8 @@ export async function registerLocalUser(
   return { user: mapPrivateUserToDto(user as PrivateUser), token };
 }
 
-export function loginUser(input: LoginUserRequest): AuthUserTokenResponse {
-  const user = findUserByUsername(input.username);
+export async function loginUser(input: LoginUserRequest): Promise<AuthUserTokenResponse> {
+  const user = await findUserByUsername(input.username);
   if (!user || !verifyUserPassword(user, input.password)) {
     throw new Error('INVALID_USERNAME_OR_PASSWORD');
   }
@@ -103,7 +104,7 @@ export async function connectSteam(
 ): Promise<AuthUserTokenResponse> {
   const steamId = parseSteamId(input);
 
-  const existingSteamUser = findUserBySteamId(steamId);
+  const existingSteamUser = await findUserBySteamId(steamId);
   const privateUser = existingSteamUser
     ? (toPrivateUser(existingSteamUser) as PrivateUser)
     : ((await setUserSteamId(userId, steamId)) as PrivateUser | null);
@@ -133,19 +134,17 @@ export async function steamSignIn(
   input: SteamAuthRequest,
 ): Promise<AuthUserTokenResponse> {
   const steamId = parseSteamId(input);
-  const existingUser = findUserBySteamId(steamId);
+  const existingUser = await findUserBySteamId(steamId);
+  const baseUsername = `steam_${steamId}`;
+  let username = baseUsername;
+  for (let i = 1; !existingUser && await findUserByUsername(username); i += 1) {
+    username = `${baseUsername}_${i}`;
+  }
 
   const user = existingUser
     ? (toPrivateUser(existingUser) as PrivateUser)
     : ((await createUser(
-        (() => {
-          const baseUsername = `steam_${steamId}`;
-          let username = baseUsername;
-          for (let i = 1; findUserByUsername(username); i += 1) {
-            username = `${baseUsername}_${i}`;
-          }
-          return username;
-        })(),
+        username,
         `${`steam_${steamId}`}@steam.local`,
         randomBytes(24).toString('hex'),
         steamId,
@@ -158,8 +157,8 @@ export async function steamSignIn(
   return { user: mapPrivateUserToDto(user), token };
 }
 
-export function validateUser(userId: string): ValidateUserResponse {
-  const user = findUserById(userId);
+export async function validateUser(userId: string): Promise<ValidateUserResponse> {
+  const user = await findUserById(userId);
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
@@ -175,30 +174,25 @@ export async function renameSelf(
     throw new Error('NAME_REQUIRED');
   }
 
-  const user = db.data.users.find((entry) => entry.id === userId);
+  const user = await findUserById(userId);
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
 
-  const existing = findUserByUsername(nextName);
+  const existing = await findUserByUsername(nextName);
   if (existing && existing.id !== user.id) {
     throw new Error('USERNAME_EXISTS');
   }
 
   user.username = nextName;
-  await db.write();
+  await updateUser(user.id, { username: nextName });
   return { user: mapPrivateUserToDto(toPrivateUser(user)) };
 }
 
 export async function deleteSelf(userId: string): Promise<void> {
-  const user = db.data.users.find((entry) => entry.id === userId);
-  if (!user) {
+  if (!await deleteUserAndOwnedServers(userId)) {
     throw new Error('USER_NOT_FOUND');
   }
-
-  db.data.users = db.data.users.filter((entry) => entry.id !== userId);
-  db.data.servers = db.data.servers.filter((entry) => entry.userId !== userId);
-  await db.write();
 }
 
 function hashApiToken(token: string, salt: string): string {
@@ -206,7 +200,7 @@ function hashApiToken(token: string, salt: string): string {
 }
 
 export async function generateApiToken(userId: string): Promise<string> {
-  const user = db.data.users.find((entry) => entry.id === userId);
+  const user = await findUserById(userId);
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
@@ -216,6 +210,10 @@ export async function generateApiToken(userId: string): Promise<string> {
   user.apiTokenSalt = salt;
   user.apiTokenHash = hashApiToken(token, salt);
   user.apiTokenCreatedAt = new Date();
-  await db.write();
+  await updateUser(user.id, {
+    apiTokenSalt: salt,
+    apiTokenHash: user.apiTokenHash,
+    apiTokenCreatedAt: user.apiTokenCreatedAt,
+  });
   return token;
 }

@@ -1,4 +1,4 @@
-import { db } from '../db/json.js';
+import { findServerById } from '../db/manager-store.js';
 import { listServerStatisticsBuckets } from '../db/server-statistics-store.js';
 import type { ServerStatisticsResponse } from '../dto/server-statistics-response.js';
 
@@ -19,7 +19,7 @@ export async function getServerStatistics(params: {
   from?: unknown;
   to?: unknown;
 }): Promise<ServerStatisticsResponse> {
-  const server = db.data.servers.find((entry) => entry.id === params.serverId);
+  const server = await findServerById(params.serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
 
   const from = parseDate(params.from, 'from');

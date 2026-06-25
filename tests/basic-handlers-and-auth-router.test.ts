@@ -101,22 +101,22 @@ describe('basic handlers and auth router guard', () => {
     expect(unknownAdminResponse.json).toHaveBeenCalledWith({ error: 'UNKNOWN_ERROR' });
   });
 
-  test('requireAuth bypasses when auth is disabled and validates bearer users when enabled', () => {
+  test('requireAuth bypasses when auth is disabled and validates bearer users when enabled', async () => {
     const next = jest.fn() as NextFunction;
     process.env.ENABLE_AUTH = 'false';
-    requireAuth(request(), createResponse().res, next);
+    await requireAuth(request(), createResponse().res, next);
     expect(next).toHaveBeenCalledTimes(1);
 
     process.env.ENABLE_AUTH = 'true';
     getUserFromBearerTokenMock.mockReturnValueOnce({ id: 'user-1' });
     const authedRequest = request();
-    requireAuth(authedRequest, createResponse().res, next);
+    await requireAuth(authedRequest, createResponse().res, next);
     expect(next).toHaveBeenCalledTimes(2);
     expect((authedRequest as Request & { user?: unknown }).user).toEqual({ id: 'user-1' });
 
     getUserFromBearerTokenMock.mockReturnValueOnce(null);
     const response = createResponse();
-    requireAuth(request(), response.res, next);
+    await requireAuth(request(), response.res, next);
     expect(response.status).toHaveBeenCalledWith(401);
     expect(response.json).toHaveBeenCalledWith({ error: 'Unauthorized' });
   });

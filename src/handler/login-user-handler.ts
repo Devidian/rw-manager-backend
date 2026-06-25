@@ -4,10 +4,10 @@ import type { LoginUserRequest } from '../dto/login-user-request.js';
 import type { AuthUserTokenResponse } from '../dto/auth-user-token-response.js';
 import { loginUser } from '../service/auth-service.js';
 
-export function loginUserHandler(req: Request, res: Response) {
+export async function loginUserHandler(req: Request, res: Response) {
   try {
     const body = typia.assert<LoginUserRequest>(req.body);
-    const response = typia.assert<AuthUserTokenResponse>(loginUser(body));
+    const response = typia.assert<AuthUserTokenResponse>(await loginUser(body));
     return res.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';

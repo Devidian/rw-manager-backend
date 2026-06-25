@@ -6,7 +6,7 @@ import {
   findUserByUsername,
   toPrivateUser,
   verifyUserPassword,
-} from '../db/json.js';
+} from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 
@@ -42,7 +42,7 @@ function signTokenPart(header: string, payload: string): string {
 
 passport.use(
   new LocalStrategy(
-    (
+    async (
       username: string,
       password: string,
       done: (
@@ -51,7 +51,7 @@ passport.use(
         options?: { message: string },
       ) => void,
     ) => {
-      const user = findUserByUsername(username);
+      const user = await findUserByUsername(username);
       if (!user || !verifyUserPassword(user, password)) {
         return done(null, false, { message: 'Invalid username or password' });
       }
@@ -77,7 +77,13 @@ export function createAuthToken(userId: string): string {
 
 export function getUserFromBearerToken(
   authorization: string | undefined,
-): ReturnType<typeof toPrivateUser> | null {
+): Promise<ReturnType<typeof toPrivateUser> | null> {
+  return getUserFromBearerTokenAsync(authorization);
+}
+
+export async function getUserFromBearerTokenAsync(
+  authorization: string | undefined,
+): Promise<ReturnType<typeof toPrivateUser> | null> {
   if (!authorization) return null;
   const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
   if (!bearerMatch) return null;
@@ -105,7 +111,7 @@ export function getUserFromBearerToken(
     if (!payload?.sub || typeof payload.exp !== 'number') return null;
     if (payload.exp <= Math.floor(Date.now() / 1000)) return null;
     defaultLogger.debug(payload);
-    const user = findUserById(payload.sub);
+    const user = await findUserById(payload.sub);
     return user ? toPrivateUser(user) : null;
   } catch {
     return null;
