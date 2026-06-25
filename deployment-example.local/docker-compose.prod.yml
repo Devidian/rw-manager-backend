@@ -1,0 +1,88 @@
+name: production-docker
+
+services:
+  app:
+    image: devidian/rw-manager-backend:latest
+    # build:
+    #   context: ..
+    #   dockerfile: Dockerfile
+    container_name: rw-manager-backend-prod
+    environment:
+      NODE_ENV: production
+      APP_DATA_ROOT: /appdata/rwman
+      SERVER_ROOT: /appdata/rising-world/dedicated-server
+      ENABLE_DATA: true
+      ENABLE_MAP_RENDERER: false
+      MAP_TILE_ROOT: /appdata/rwman/map-tiles
+      MAP_RENDER_INTERVAL_MS: 30000
+      MAP_RENDER_BATCH_SIZE: 256
+      MAP_RECENT_PLAYER_DAYS: 7
+      ENABLE_STORAGE: true
+      MASTER_SERVER_LIST_URL: https://api.rising-world.net/v5/serverlist
+      MASTER_SERVER_LIST_REFRESH_INTERVAL_MS: 300000
+      SERVER_QUERY_REFRESH_INTERVAL_MS: 86400000
+      LIVE_QUERY_PROXY_CACHE_TTL_MS: 5000
+      LIVE_QUERY_PROXY_TIMEOUT_MS: 8000
+      MONGODB_URI: ${MONGODB_URI:-mongodb://rwmanager:rwmanager-dev-password@mongodb:27017/rw-manager?replicaSet=rs0&authSource=admin}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-rw-manager}
+      MONGODB_CONNECT_TIMEOUT_MS: 5000
+      ENABLE_AUTH: true
+      FORCE_AUTH: true
+      DEFAULT_USER_ROLE: user
+      AUTH_SESSION_SECRET: change-me
+      SUPER_ADMIN_ID: ""
+      ENABLE_LOG_COLORS: true
+      LOG_LEVEL: info
+      LOG_STYLE: detailed
+    expose:
+      - "3000"
+    volumes:
+      - ./app-data:/appdata/rwman
+      - ./data:/appdata/rising-world/dedicated-server
+      - ./cert:/app/cert
+    restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  nginx:
+    image: nginx:stable
+    container_name: proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: always
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    command: >
+      certonly --webroot
+      --webroot-path=/var/www/certbot
+      --email admin@example.com
+      --agree-tos
+      --no-eff-email
+      -d example.com
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+
+  certbot-renew:
+    image: certbot/certbot
+    container_name: certbot-renew
+    entrypoint: >
+      sh -c "while :; do certbot renew --quiet; sleep 12h; done"
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    restart: always
