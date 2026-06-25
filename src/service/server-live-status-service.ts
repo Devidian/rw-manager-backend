@@ -1,4 +1,5 @@
 import { db } from '../db/json.js';
+import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
 import type { ServerLiveStatusResponse } from '../dto/server-live-status-response.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
@@ -40,6 +41,12 @@ function playersFromPayload(payload: unknown): unknown[] | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const players = (payload as { players?: unknown }).players;
   return Array.isArray(players) ? players : undefined;
+}
+
+function numberFromPayload(payload: unknown, key: string): number | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function stringOrUndefined(value: unknown): string | undefined {
@@ -111,6 +118,16 @@ async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusRespon
   return response;
 }
 
+function playerCountFromLiveStatus(response: ServerLiveStatusResponse): number {
+  const queryCount = numberFromPayload(response.queryData, 'playercount');
+  if (queryCount !== undefined) return queryCount;
+  const playerListCount = numberFromPayload(
+    { playercount: response.onlinePlayers?.length },
+    'playercount',
+  );
+  return playerListCount ?? 0;
+}
+
 export async function getServerLiveStatus(serverId: string): Promise<ServerLiveStatusResponse> {
   const server = db.data.servers.find((entry) => entry.id === serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
@@ -128,6 +145,12 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
   const request = fetchLiveStatus(server.queryUrl)
     .then(async (response) => {
       await persistLiveStatus(server, response);
+      await recordServerStatisticsSample({
+        serverId,
+        sampledAt: new Date(response.lastChecked),
+        online: response.status === 'online',
+        playerCount: playerCountFromLiveStatus(response),
+      });
       cache.set(serverId, {
         expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs,
         response,

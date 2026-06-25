@@ -8,9 +8,11 @@ import { db } from './db/sqlite.js';
 import { AppConfig } from './utils/app-config.js';
 import { startMapRenderer } from './service/map-render-runtime.js';
 import { startMasterServerListSync } from './service/master-server-list-service.js';
+import { bootstrapMongoDb, closeMongoDb } from './db/mongodb.js';
 
-const main = () => {
+const main = async () => {
   const app = express();
+  await bootstrapMongoDb();
   const database = db;
   if (AppConfig.enableData && !database.initializeIfAvailable()) {
     defaultLogger.debug('Rising World player database unavailable; player data API disabled');
@@ -84,8 +86,13 @@ process.on('uncaughtException', function (error) {
   defaultLogger.critical(error, error.stack);
 });
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   defaultLogger.critical(error);
-}
+});
+
+process.once('SIGINT', () => {
+  void closeMongoDb();
+});
+process.once('SIGTERM', () => {
+  void closeMongoDb();
+});

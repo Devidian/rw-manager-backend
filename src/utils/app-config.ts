@@ -83,6 +83,20 @@ export class AppConfig {
       30000,
     );
   }
+  static get mongoUri(): string | undefined {
+    return env.MONGODB_URI?.trim() || env.MONGO_URI?.trim() || undefined;
+  }
+  static get mongoDatabaseName(): string {
+    return env.MONGODB_DATABASE?.trim() || 'rw-manager';
+  }
+  static get mongoConnectTimeoutMs(): number {
+    return AppConfig.boundedInteger(
+      env.MONGODB_CONNECT_TIMEOUT_MS,
+      5000,
+      1000,
+      30000,
+    );
+  }
   static get defaultUserRole(): 'guest' | 'user' | 'admin' {
     const value = env.DEFAULT_USER_ROLE;
     return AppConfig.validRoles.find((item) => item === value) ?? 'user';

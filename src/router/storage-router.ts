@@ -9,6 +9,7 @@ import { pinServerHandler } from '../handler/pin-server-handler.js';
 import { unpinServerHandler } from '../handler/unpin-server-handler.js';
 import { refreshServerQueryDataHandler } from '../handler/refresh-server-query-data-handler.js';
 import { getServerLiveStatusHandler } from '../handler/get-server-live-status-handler.js';
+import { getServerStatisticsHandler } from '../handler/get-server-statistics-handler.js';
 
 const storageRouter = Router();
 
@@ -19,6 +20,7 @@ const requireServerGetAuth =
 storageRouter.get('/server', requireServerGetAuth, listServersHandler);
 storageRouter.post('/server/refresh-query-data', requireAuth, refreshServerQueryDataHandler);
 storageRouter.get('/server/:id/live', requireServerGetAuth, getServerLiveStatusHandler);
+storageRouter.get('/server/:id/statistics', requireServerGetAuth, getServerStatisticsHandler);
 storageRouter.post('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, pinServerHandler);
 storageRouter.delete('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, unpinServerHandler);
 

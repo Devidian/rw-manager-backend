@@ -1,0 +1,24 @@
+services:
+  mongodb:
+    image: mongo:7
+    command:
+      - mongod
+      - --replSet
+      - rs0
+      - --bind_ip_all
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval
+          'db.adminCommand("ping").ok && (rs.status().ok || rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]}).ok)'
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  mongodb-data:

@@ -1,6 +1,7 @@
 # rw-manager-backend
 
-Backend API for Rising World server management with TypeScript, Express 5, lowdb, and SQLite integration.
+Backend API for Rising World server management with TypeScript, Express 5,
+MongoDB/lowdb storage, and SQLite integration.
 
 ## Server Data API
 
@@ -51,6 +52,24 @@ LIVE_QUERY_PROXY_CACHE_TTL_MS=5000
 LIVE_QUERY_PROXY_TIMEOUT_MS=8000
 ```
 
+MongoDB is optional during the transition. When `MONGODB_URI` is set, the
+backend bootstraps MongoDB collections and unique indexes for servers, users,
+and statistics while keeping MongoDB `_id` values internal. When the variable
+is missing or the server is unreachable, the backend logs a warning and keeps
+using the JSON database fallback under `APP_DATA_ROOT`.
+
+```text
+MONGODB_URI=mongodb://localhost:27017/rw-manager?replicaSet=rs0
+MONGODB_DATABASE=rw-manager
+MONGODB_CONNECT_TIMEOUT_MS=5000
+```
+
+For local Change Stream compatible tests, use the minimal replica-set example:
+
+```text
+docker compose -f deployment-example.local/docker-compose.mongodb-replicaset.yml up -d
+```
+
 The backend derives `queryUrl` as `http://<ip>:<port - 1>`. Query `data` and
 `info` are refreshed automatically no more often than
 `SERVER_QUERY_REFRESH_INTERVAL_MS`. If `info.contact` is a valid Steam ID it is
@@ -72,6 +91,15 @@ the same server page or list. Periodic query refreshes store the same live
 fields (`status`, `queryData`, `infoData`, `onlinePlayers`, `lastChecked`, and
 `errorMessage`) on the server record, so `GET /api/storage/server` can include
 the latest known status without triggering another live request.
+
+Every non-cached live status check records one hourly statistics sample. The
+statistics API returns hourly buckets with sample count, average players,
+maximum players, and availability:
+
+```text
+GET /api/storage/server/:id/statistics
+GET /api/storage/server/:id/statistics?from=2026-06-25T00:00:00.000Z&to=2026-06-26T00:00:00.000Z
+```
 
 Authenticated users can pin and unpin servers:
 

@@ -19,6 +19,7 @@ interface StoredServer {
 
 const state = {
   servers: [] as StoredServer[],
+  serverStatistics: [] as unknown[],
 };
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 
@@ -57,6 +58,7 @@ describe('server-live-status-service', () => {
         createdAt: new Date().toISOString(),
       },
     ];
+    state.serverStatistics = [];
     writeMock.mockClear();
     service.clearServerLiveStatusCache();
     global.fetch = originalFetch;
@@ -111,7 +113,17 @@ describe('server-live-status-service', () => {
       },
       queryDataUpdatedAt: expect.any(Date),
     });
-    expect(writeMock).toHaveBeenCalledTimes(1);
+    expect(writeMock).toHaveBeenCalledTimes(2);
+    expect(state.serverStatistics).toHaveLength(1);
+    expect(state.serverStatistics[0]).toMatchObject({
+      serverId: 'server-1',
+      sampleCount: 1,
+      onlineSampleCount: 1,
+      playerSampleTotal: 1,
+      maxPlayers: 1,
+      averagePlayers: 1,
+      availability: 100,
+    });
   });
 
   test('coalesces concurrent requests for the same server', async () => {

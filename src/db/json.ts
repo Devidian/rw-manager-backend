@@ -12,6 +12,7 @@ import type {
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { AppConfig } from '../utils/app-config.js';
+import type { ServerStatisticsBucket } from '../interfaces/server-statistics.js';
 
 // ensure data directory exists
 mkdirSync(AppConfig.dataRoot, { recursive: true });
@@ -19,7 +20,12 @@ mkdirSync(AppConfig.dataRoot, { recursive: true });
 export const db = await JSONFilePreset<{
   servers: ServerConfig[];
   users: JsonDbUser[];
-}>(path.join(AppConfig.dataRoot, 'data.json'), { servers: [], users: [] });
+  serverStatistics?: ServerStatisticsBucket[];
+}>(path.join(AppConfig.dataRoot, 'data.json'), { servers: [], users: [], serverStatistics: [] });
+
+db.data.serverStatistics = Array.isArray(db.data.serverStatistics)
+  ? db.data.serverStatistics
+  : [];
 
 export async function addServer(
   label: string,
