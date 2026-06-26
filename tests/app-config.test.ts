@@ -30,6 +30,7 @@ describe('AppConfig', () => {
     expect(AppConfig.mapTileRoot).toBeUndefined();
     expect(AppConfig.mapRenderIntervalMs).toBe(30000);
     expect(AppConfig.mapRenderBatchSize).toBe(256);
+    expect(AppConfig.masterServerListTimeoutMs).toBe(8000);
     expect(AppConfig.defaultUserRole).toBe('user');
     expect(AppConfig.superAdminId).toBe('');
     expect(AppConfig.authSessionSecret).toBe('rw-manager-storage-session');
@@ -49,6 +50,7 @@ describe('AppConfig', () => {
     process.env.MAP_TILE_ROOT = '/srv/map-tiles';
     process.env.MAP_RENDER_INTERVAL_MS = '1000';
     process.env.MAP_RENDER_BATCH_SIZE = '4096';
+    process.env.MASTER_SERVER_LIST_TIMEOUT_MS = '12000';
     process.env.DEFAULT_USER_ROLE = 'admin';
     process.env.SUPER_ADMIN_ID = 'steam-admin';
     process.env.AUTH_SESSION_SECRET = 'secret';
@@ -66,6 +68,7 @@ describe('AppConfig', () => {
     expect(AppConfig.mapTileRoot).toBe('/srv/map-tiles');
     expect(AppConfig.mapRenderIntervalMs).toBe(1000);
     expect(AppConfig.mapRenderBatchSize).toBe(4096);
+    expect(AppConfig.masterServerListTimeoutMs).toBe(12000);
     expect(AppConfig.defaultUserRole).toBe('admin');
     expect(AppConfig.superAdminId).toBe('steam-admin');
     expect(AppConfig.authSessionSecret).toBe('secret');
@@ -78,11 +81,13 @@ describe('AppConfig', () => {
     process.env.LOG_STYLE = 'invalid';
     process.env.MAP_RENDER_INTERVAL_MS = '999';
     process.env.MAP_RENDER_BATCH_SIZE = '4097';
+    process.env.MASTER_SERVER_LIST_TIMEOUT_MS = '999';
 
     expect(AppConfig.defaultUserRole).toBe('user');
     expect(AppConfig.logLevel).toBe('debug');
     expect(AppConfig.logStyle).toBe('default');
     expect(AppConfig.mapRenderIntervalMs).toBe(30000);
     expect(AppConfig.mapRenderBatchSize).toBe(256);
+    expect(AppConfig.masterServerListTimeoutMs).toBe(8000);
   });
 });

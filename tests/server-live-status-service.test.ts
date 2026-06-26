@@ -49,6 +49,7 @@ describe('server-live-status-service', () => {
     restoreEnv(originalEnv);
     process.env.LIVE_QUERY_PROXY_CACHE_TTL_MS = '1000';
     process.env.LIVE_QUERY_PROXY_TIMEOUT_MS = '1000';
+    process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '60000';
     state.servers = [
       {
         id: 'server-1',
@@ -146,6 +147,32 @@ describe('server-live-status-service', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  test('returns stored live status after cache expiry while server query data is still fresh', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-24T12:00:00.000Z'));
+
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({ name: 'Server', playercount: 2 }))
+      .mockResolvedValueOnce(response({ shortname: 'Server' }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }, { uid: 'player-2' }] })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      queryData: { name: 'Server', playercount: 2 },
+    });
+    jest.setSystemTime(new Date('2026-06-24T12:00:02.000Z'));
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      queryData: { name: 'Server', playercount: 2 },
+      onlinePlayers: [{ uid: 'player-1' }, { uid: 'player-2' }],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    jest.useRealTimers();
+  });
+
   test('refreshes after cache expiry and reports offline main query failures', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-06-24T12:00:00.000Z'));
@@ -163,7 +190,7 @@ describe('server-live-status-service', () => {
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'online',
     });
-    jest.setSystemTime(new Date('2026-06-24T12:00:02.000Z'));
+    jest.setSystemTime(new Date('2026-06-24T12:01:01.000Z'));
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'offline',
       errorMessage: 'HTTP 500',

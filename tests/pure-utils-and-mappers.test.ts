@@ -154,6 +154,8 @@ describe('pure utils and mappers', () => {
       port: '4255' as unknown as number,
       region: 7 as unknown as string,
       mods: 'false' as unknown as boolean,
+      mapUrl: 'not-a-url',
+      backendUrl: 'also-not-a-url',
       public: true,
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     };
@@ -164,6 +166,8 @@ describe('pure utils and mappers', () => {
       port: undefined,
       region: undefined,
       mods: undefined,
+      mapUrl: undefined,
+      backendUrl: undefined,
     });
   });
 

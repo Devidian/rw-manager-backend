@@ -59,6 +59,14 @@ export class AppConfig {
       Number.MAX_SAFE_INTEGER,
     );
   }
+  static get masterServerListTimeoutMs(): number {
+    return AppConfig.boundedInteger(
+      env.MASTER_SERVER_LIST_TIMEOUT_MS,
+      8000,
+      1000,
+      30000,
+    );
+  }
   static get serverQueryRefreshIntervalMs(): number {
     return AppConfig.boundedInteger(
       env.SERVER_QUERY_REFRESH_INTERVAL_MS,

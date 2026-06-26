@@ -116,7 +116,9 @@ async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { o
 
 async function fetchMasterServerList(): Promise<MasterServerListResponse | undefined> {
   try {
-    const response = await fetch(AppConfig.masterServerListUrl);
+    const response = await fetch(AppConfig.masterServerListUrl, {
+      signal: AbortSignal.timeout(AppConfig.masterServerListTimeoutMs),
+    });
     if (!response.ok) return undefined;
     const text = await response.text();
     return JSON.parse(
@@ -183,62 +185,88 @@ function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, no
 export async function refreshMasterServerList(options: {
   refreshQueryData?: boolean;
 } = {}): Promise<MasterServerListSyncResult> {
+  const startedAt = Date.now();
+  defaultLogger.debug('Master server list refresh started:', {
+    refreshQueryData: options.refreshQueryData === true,
+  });
   const now = new Date();
-  const response = await fetchMasterServerList();
-  const entries = Array.isArray(response?.data)
-    ? response.data as MasterServerListEntry[]
-    : [];
+  try {
+    const response = await fetchMasterServerList();
+    const entries = Array.isArray(response?.data)
+      ? response.data as MasterServerListEntry[]
+      : [];
 
-  let inserted = 0;
-  let updated = 0;
-  let refreshed = 0;
+    let inserted = 0;
+    let updated = 0;
+    let refreshed = 0;
 
-  for (const entry of entries) {
-    const steamId = steamIdOrUndefined(entry.steamid);
-    const queryUrl = queryUrlFor(entry);
-    const serverId = serverIdFor(entry);
-    if (!serverId || !queryUrl) continue;
+    for (const entry of entries) {
+      const steamId = steamIdOrUndefined(entry.steamid);
+      const queryUrl = queryUrlFor(entry);
+      const serverId = serverIdFor(entry);
+      if (!serverId || !queryUrl) continue;
 
-    let server = await findServerByMasterIdentity({ serverId, steamId });
-    if (!server) {
-      server = {
-        id: serverId,
-        steamId,
-        label: serverId,
-        queryUrl,
-        public: true,
-        createdAt: now,
-        firstSeen: now,
-        lastSeen: now,
-      };
-      inserted += 1;
-    } else {
-      await replacePinnedServerId(server.id, serverId);
-      server.id = serverId;
-      updated += 1;
+      let server = await findServerByMasterIdentity({ serverId, steamId });
+      if (!server) {
+        server = {
+          id: serverId,
+          steamId,
+          label: serverId,
+          queryUrl,
+          public: true,
+          createdAt: now,
+          firstSeen: now,
+          lastSeen: now,
+        };
+        inserted += 1;
+      } else {
+        await replacePinnedServerId(server.id, serverId);
+        server.id = serverId;
+        updated += 1;
+      }
+
+      applyMasterEntry(server, entry, now);
+      if (options.refreshQueryData && await refreshQueryData(server, now)) {
+        refreshed += 1;
+      }
+      await saveServer(server);
     }
 
-    applyMasterEntry(server, entry, now);
-    if (options.refreshQueryData && await refreshQueryData(server, now)) {
-      refreshed += 1;
-    }
-    await saveServer(server);
+    const result = { fetched: entries.length, inserted, updated, refreshed };
+    defaultLogger.debug('Master server list refresh completed:', {
+      ...result,
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (error) {
+    defaultLogger.error('Master server list refresh failed:', error);
+    throw error;
   }
-
-  return { fetched: entries.length, inserted, updated, refreshed };
 }
 
 export async function refreshAllServerQueryData(): Promise<MasterServerListSyncResult> {
+  const startedAt = Date.now();
+  defaultLogger.debug('Server query data refresh started');
   const now = new Date();
-  let refreshed = 0;
-  const servers = await listServers();
-  for (const server of servers) {
-    if (await refreshQueryData(server, now)) {
-      refreshed += 1;
-      await saveServer(server);
+  try {
+    let refreshed = 0;
+    const servers = await listServers();
+    for (const server of servers) {
+      if (await refreshQueryData(server, now)) {
+        refreshed += 1;
+        await saveServer(server);
+      }
     }
+    const result = { fetched: servers.length, inserted: 0, updated: 0, refreshed };
+    defaultLogger.debug('Server query data refresh completed:', {
+      ...result,
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (error) {
+    defaultLogger.error('Server query data refresh failed:', error);
+    throw error;
   }
-  return { fetched: servers.length, inserted: 0, updated: 0, refreshed };
 }
 
 export function startMasterServerListSync(): { stop: () => void } | null {

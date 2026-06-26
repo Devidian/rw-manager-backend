@@ -28,6 +28,7 @@ const state = {
 };
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const errorMock = jest.fn();
+const debugMock = jest.fn();
 
 jest.unstable_mockModule('../src/db/json.js', () => ({
   db: {
@@ -38,6 +39,7 @@ jest.unstable_mockModule('../src/db/json.js', () => ({
 
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: {
+    debug: debugMock,
     error: errorMock,
   },
 }));
@@ -66,6 +68,7 @@ describe('master-server-list-service', () => {
     state.serverStatistics = [];
     writeMock.mockClear();
     errorMock.mockClear();
+    debugMock.mockClear();
     global.fetch = originalFetch;
   });
 

@@ -12,6 +12,18 @@ function mapOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function mapOptionalUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    new URL(trimmed);
+    return trimmed;
+  } catch {
+    return undefined;
+  }
+}
+
 function mapOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
@@ -37,8 +49,8 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     whitelist: mapOptionalBoolean(server.whitelist),
     adminUid: mapOptionalString(server.adminUid),
     queryUrl: server.queryUrl as ServerDto['queryUrl'],
-    mapUrl: server.mapUrl as ServerDto['mapUrl'],
-    backendUrl: (server.backendUrl ?? server.mapUrl) as ServerDto['backendUrl'],
+    mapUrl: mapOptionalUrl(server.mapUrl) as ServerDto['mapUrl'],
+    backendUrl: mapOptionalUrl(server.backendUrl ?? server.mapUrl) as ServerDto['backendUrl'],
     data: server.data,
     info: server.info,
     status: mapServerStatus(server),

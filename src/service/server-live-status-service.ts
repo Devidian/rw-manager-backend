@@ -3,6 +3,7 @@ import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
 import type { ServerLiveStatusResponse } from '../dto/server-live-status-response.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
+import { defaultLogger } from '../utils/logger.js';
 
 const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 
@@ -65,6 +66,37 @@ function mapUrlFromInfo(info: unknown): string | undefined {
   }
 }
 
+function isQueryDataFresh(server: ServerConfig, now: number): boolean {
+  if (!server.queryDataUpdatedAt) return false;
+  const updatedAt = new Date(server.queryDataUpdatedAt).getTime();
+  if (Number.isNaN(updatedAt)) return false;
+  return now - updatedAt < AppConfig.serverQueryRefreshIntervalMs;
+}
+
+function storedLiveStatusResponse(server: ServerConfig): ServerLiveStatusResponse {
+  const parsedLastChecked = server.lastChecked
+    ? new Date(server.lastChecked)
+    : new Date();
+  const lastChecked = Number.isNaN(parsedLastChecked.getTime())
+    ? new Date().toISOString()
+    : parsedLastChecked.toISOString();
+  const status = server.status === 'online'
+    ? 'online'
+    : server.status === 'offline'
+      ? 'offline'
+      : server.data !== undefined
+        ? 'online'
+        : 'offline';
+  return {
+    status,
+    lastChecked: lastChecked as ServerLiveStatusResponse['lastChecked'],
+    queryData: server.data,
+    infoData: server.info,
+    onlinePlayers: server.onlinePlayers,
+    errorMessage: server.errorMessage,
+  };
+}
+
 async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatusResponse): Promise<void> {
   let changed = false;
 
@@ -105,6 +137,8 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
 }
 
 async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusResponse> {
+  const startedAt = Date.now();
+  defaultLogger.debug(`Live server query started: ${queryUrl}`);
   const [queryResult, infoResult, playerlistResult] = await Promise.all([
     fetchJson(queryUrl),
     fetchJson(buildInfoUrl(queryUrl)),
@@ -126,6 +160,11 @@ async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusRespon
   if (infoResult.ok) response.infoData = infoResult.data;
   if (playerlistResult.ok) response.onlinePlayers = playersFromPayload(playerlistResult.data);
 
+  defaultLogger.debug('Live server query completed:', {
+    queryUrl,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
+  });
   return response;
 }
 
@@ -147,7 +186,22 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
   const now = Date.now();
   const cached = cache.get(serverId);
   if (cached && cached.expiresAt > now) {
+    defaultLogger.debug(`Live server status cache hit: ${serverId}`);
     return cached.response;
+  }
+
+  if (isQueryDataFresh(server, now)) {
+    const response = storedLiveStatusResponse(server);
+    cache.set(serverId, {
+      expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs,
+      response,
+    });
+    defaultLogger.debug('Live server query skipped within server refresh interval:', {
+      serverId,
+      queryDataUpdatedAt: server.queryDataUpdatedAt,
+      serverQueryRefreshIntervalMs: AppConfig.serverQueryRefreshIntervalMs,
+    });
+    return response;
   }
 
   const existing = inflight.get(serverId);
