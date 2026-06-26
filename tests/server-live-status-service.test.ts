@@ -173,6 +173,33 @@ describe('server-live-status-service', () => {
     jest.useRealTimers();
   });
 
+  test('normalizes invalid stored live status fields while query data is fresh', async () => {
+    state.servers = [
+      {
+        id: 'server-1',
+        label: 'Server',
+        queryUrl: 'http://query.example',
+        data: { playercount: 0 },
+        status: 'offline',
+        onlinePlayers: { players: [] } as unknown as unknown[],
+        errorMessage: { message: 'stored error' } as unknown as string,
+        queryDataUpdatedAt: new Date().toISOString(),
+        public: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const fetchMock = jest.fn() as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'offline',
+      queryData: { playercount: 0 },
+      onlinePlayers: undefined,
+      errorMessage: undefined,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('refreshes after cache expiry and reports offline main query failures', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-06-24T12:00:00.000Z'));

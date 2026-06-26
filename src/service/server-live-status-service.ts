@@ -54,6 +54,10 @@ function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function arrayOrUndefined(value: unknown): unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined;
+}
+
 function mapUrlFromInfo(info: unknown): string | undefined {
   if (!info || typeof info !== 'object') return undefined;
   const description = stringOrUndefined((info as { description?: unknown }).description);
@@ -92,8 +96,8 @@ function storedLiveStatusResponse(server: ServerConfig): ServerLiveStatusRespons
     lastChecked: lastChecked as ServerLiveStatusResponse['lastChecked'],
     queryData: server.data,
     infoData: server.info,
-    onlinePlayers: server.onlinePlayers,
-    errorMessage: server.errorMessage,
+    onlinePlayers: arrayOrUndefined(server.onlinePlayers),
+    errorMessage: stringOrUndefined(server.errorMessage),
   };
 }
 
