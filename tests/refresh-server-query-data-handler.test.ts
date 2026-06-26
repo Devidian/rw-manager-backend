@@ -91,6 +91,16 @@ describe('refresh-server-query-data-handler', () => {
       errorMessage: 'UNKNOWN_ERROR',
     });
   });
+
+  test('maps current server listing failures to 400 responses', async () => {
+    listServersMock.mockRejectedValueOnce(new Error('list failed'));
+    const response = createResponse();
+
+    await refreshServerQueryDataHandler(request({ steamId: 'steam-admin' }), response.res);
+
+    expect(response.status).toHaveBeenCalledWith(400);
+    expect(response.json).toHaveBeenCalledWith({ error: 'list failed' });
+  });
 });
 
 function request(user?: { id?: string; steamId: string }) {

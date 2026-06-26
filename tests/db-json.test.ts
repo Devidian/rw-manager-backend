@@ -125,6 +125,29 @@ describe('db/json', () => {
     expect(writeMock).toHaveBeenCalled();
   });
 
+  test('updateServer ignores invalid optional patch field types', async () => {
+    presetState.servers.push({
+      id: 'server-1',
+      label: 'Server',
+      queryUrl: 'https://query.example.com',
+      backendUrl: 'https://backend.example.com',
+      public: true,
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    });
+
+    await expect(
+      jsonDb.updateServer('server-1', {
+        label: 123 as unknown as string,
+        backendUrl: false as unknown as string,
+        public: 'true' as unknown as boolean,
+      }),
+    ).resolves.toMatchObject({
+      label: 'Server',
+      backendUrl: 'https://backend.example.com',
+      public: true,
+    });
+  });
+
   test('createUser and lookup helpers operate on in-memory state', async () => {
     uuidMock.mockReturnValue('user-1');
     randomBytesMock.mockReturnValue(Buffer.from('salt'));
@@ -240,5 +263,12 @@ describe('db/json', () => {
       pinnedServers: [],
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     });
+
+    const pinnedUser = {
+      ...user,
+      pinnedServers: ['server-1'],
+    };
+    expect(jsonDb.toPrivateUser(pinnedUser).pinnedServers).toEqual(['server-1']);
+    expect(jsonDb.toPublicUser(pinnedUser).pinnedServers).toEqual(['server-1']);
   });
 });

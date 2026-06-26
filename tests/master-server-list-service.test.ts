@@ -277,6 +277,18 @@ describe('master-server-list-service', () => {
     expect(state.servers[0].gm).toBeUndefined();
   });
 
+  test('refreshMasterServerList logs and rethrows persistence failures', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        '{"successful":true,"data":[{"steamid":"76561198000000003","ip":"127.0.0.1","port":4255,"name":"Broken Save"}]}',
+    }) as typeof fetch;
+    writeMock.mockRejectedValueOnce(new Error('write failed'));
+
+    await expect(service.refreshMasterServerList()).rejects.toThrow('write failed');
+    expect(errorMock).toHaveBeenCalledWith('Master server list refresh failed:', expect.any(Error));
+  });
+
   test('refreshAllServerQueryData refreshes stale servers and preserves existing metadata on invalid info', async () => {
     state.servers = [
       {
@@ -381,6 +393,39 @@ describe('master-server-list-service', () => {
       mapUrl: 'https://map.example.com/',
       backendUrl: 'https://map.example.com/',
     });
+  });
+
+  test('refreshAllServerQueryData logs and rethrows persistence failures', async () => {
+    state.servers = [
+      {
+        id: 'server-1',
+        label: 'Server 1',
+        queryUrl: 'http://server-1.example',
+        queryDataUpdatedAt: 'invalid-date',
+        public: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: 5 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ shortname: 'Short Server 1' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: [] }),
+      }) as typeof fetch;
+    writeMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('save failed'));
+
+    await expect(service.refreshAllServerQueryData()).rejects.toThrow('save failed');
+    expect(errorMock).toHaveBeenCalledWith('Server query data refresh failed:', expect.any(Error));
   });
 
   test('refreshMasterServerList blocks overlapping refresh runs', async () => {

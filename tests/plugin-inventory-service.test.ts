@@ -54,6 +54,49 @@ describe('plugin inventory service', () => {
     ]);
   });
 
+  test('marks empty and blank plugin manifests invalid', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-plugins-blank-'));
+    await mkdir(path.join(root, 'Plugins', 'BlankName'), { recursive: true });
+    await mkdir(path.join(root, 'Plugins', 'BlankVersion'), { recursive: true });
+    await mkdir(path.join(root, 'Plugins', 'EmptyManifest'), { recursive: true });
+    await writeFile(
+      path.join(root, 'Plugins', 'BlankName', 'plugin.yml'),
+      'name: "   "\nversion: "1.0.0"\n',
+    );
+    await writeFile(
+      path.join(root, 'Plugins', 'BlankVersion', 'plugin.yml'),
+      'name: Blank Version\nversion: "   "\n',
+    );
+    await writeFile(path.join(root, 'Plugins', 'EmptyManifest', 'plugin.yml'), '');
+
+    await expect(listInstalledPlugins(root)).resolves.toEqual([
+      { directory: 'BlankName', valid: false },
+      { directory: 'BlankVersion', valid: false },
+      { directory: 'EmptyManifest', valid: false },
+    ]);
+  });
+
+  test('sorts non-preferred JAR names before falling back to plugin.yml', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-plugins-sort-'));
+    const pluginPath = path.join(root, 'Plugins', 'Legacy');
+    await mkdir(pluginPath, { recursive: true });
+    await writeJar(path.join(pluginPath, 'B.jar'), null);
+    await writeJar(path.join(pluginPath, 'A.jar'), null);
+    await writeFile(
+      path.join(pluginPath, 'plugin.yml'),
+      'name: Sorted Legacy\nversion: 1.0.0\n',
+    );
+
+    await expect(listInstalledPlugins(root)).resolves.toEqual([
+      {
+        directory: 'Legacy',
+        name: 'Sorted Legacy',
+        version: '1.0.0',
+        valid: true,
+      },
+    ]);
+  });
+
   test('rejects non-missing filesystem errors and tolerates invalid YAML', async () => {
     const invalidRoot = await mkdtemp(path.join(os.tmpdir(), 'rw-plugins-file-'));
     await writeFile(path.join(invalidRoot, 'Plugins'), 'not a directory');
