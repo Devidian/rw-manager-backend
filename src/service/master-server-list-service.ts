@@ -19,6 +19,7 @@ export interface MasterServerListSyncResult {
   inserted: number;
   updated: number;
   refreshed: number;
+  skipped?: boolean;
 }
 
 function stringOrUndefined(value: unknown): string | undefined {
@@ -182,7 +183,9 @@ function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, no
   server.lastSeen = now;
 }
 
-export async function refreshMasterServerList(options: {
+let masterServerListRefreshInFlight: Promise<MasterServerListSyncResult> | null = null;
+
+async function runMasterServerListRefresh(options: {
   refreshQueryData?: boolean;
 } = {}): Promise<MasterServerListSyncResult> {
   const startedAt = Date.now();
@@ -244,6 +247,23 @@ export async function refreshMasterServerList(options: {
   }
 }
 
+export async function refreshMasterServerList(options: {
+  refreshQueryData?: boolean;
+} = {}): Promise<MasterServerListSyncResult> {
+  if (masterServerListRefreshInFlight) {
+    defaultLogger.warn('Master server list refresh skipped because another refresh is still running');
+    return { fetched: 0, inserted: 0, updated: 0, refreshed: 0, skipped: true };
+  }
+
+  const request = runMasterServerListRefresh(options).finally(() => {
+    if (masterServerListRefreshInFlight === request) {
+      masterServerListRefreshInFlight = null;
+    }
+  });
+  masterServerListRefreshInFlight = request;
+  return request;
+}
+
 export async function refreshAllServerQueryData(): Promise<MasterServerListSyncResult> {
   const startedAt = Date.now();
   defaultLogger.debug('Server query data refresh started');
@@ -272,16 +292,28 @@ export async function refreshAllServerQueryData(): Promise<MasterServerListSyncR
 export function startMasterServerListSync(): { stop: () => void } | null {
   if (!AppConfig.enableStorage) return null;
 
-  void refreshMasterServerList({ refreshQueryData: true }).catch((error) => {
-    defaultLogger.error('Master server list refresh failed:', error);
-  });
-  const timer = setInterval(() => {
-    void refreshMasterServerList({ refreshQueryData: true }).catch((error) => {
-      defaultLogger.error('Master server list refresh failed:', error);
-    });
-  }, AppConfig.masterServerListRefreshIntervalMs);
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const schedule = () => {
+    if (stopped) return;
+    timer = setTimeout(run, AppConfig.masterServerListRefreshIntervalMs);
+  };
+
+  const run = () => {
+    void refreshMasterServerList({ refreshQueryData: true })
+      .catch((error) => {
+        defaultLogger.error('Master server list refresh failed:', error);
+      })
+      .finally(schedule);
+  };
+
+  run();
 
   return {
-    stop: () => clearInterval(timer),
+    stop: () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
   };
 }

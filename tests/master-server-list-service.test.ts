@@ -29,6 +29,7 @@ const state = {
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const errorMock = jest.fn();
 const debugMock = jest.fn();
+const warnMock = jest.fn();
 
 jest.unstable_mockModule('../src/db/json.js', () => ({
   db: {
@@ -41,6 +42,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: {
     debug: debugMock,
     error: errorMock,
+    warn: warnMock,
   },
 }));
 
@@ -69,6 +71,7 @@ describe('master-server-list-service', () => {
     writeMock.mockClear();
     errorMock.mockClear();
     debugMock.mockClear();
+    warnMock.mockClear();
     global.fetch = originalFetch;
   });
 
@@ -377,6 +380,37 @@ describe('master-server-list-service', () => {
       label: 'New Shortname',
       mapUrl: 'https://map.example.com/',
       backendUrl: 'https://map.example.com/',
+    });
+  });
+
+  test('refreshMasterServerList blocks overlapping refresh runs', async () => {
+    let resolveMasterResponse: (value: Response) => void = () => undefined;
+    const masterResponse = new Promise<Response>((resolve) => {
+      resolveMasterResponse = resolve;
+    });
+    const fetchMock = jest.fn().mockReturnValueOnce(masterResponse) as typeof fetch;
+    global.fetch = fetchMock;
+
+    const first = service.refreshMasterServerList();
+    await expect(service.refreshMasterServerList()).resolves.toEqual({
+      fetched: 0,
+      inserted: 0,
+      updated: 0,
+      refreshed: 0,
+      skipped: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(warnMock).toHaveBeenCalledWith(
+      'Master server list refresh skipped because another refresh is still running',
+    );
+
+    resolveMasterResponse(new Response('{"successful":true,"data":[]}', { status: 200 }));
+    await expect(first).resolves.toEqual({
+      fetched: 0,
+      inserted: 0,
+      updated: 0,
+      refreshed: 0,
     });
   });
 
