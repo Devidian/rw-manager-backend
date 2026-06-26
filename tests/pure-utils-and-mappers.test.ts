@@ -145,6 +145,28 @@ describe('pure utils and mappers', () => {
     });
   });
 
+  test('mapServerToDto drops invalid optional metadata from stored servers', () => {
+    const server: ServerConfig = {
+      id: 'server-3',
+      label: 'Imported Server',
+      queryUrl: 'https://query.example.com',
+      addr: 123 as unknown as string,
+      port: '4255' as unknown as number,
+      region: 7 as unknown as string,
+      mods: 'false' as unknown as boolean,
+      public: true,
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    };
+
+    expect(mapServerToDto(server)).toMatchObject({
+      id: 'server-3',
+      addr: undefined,
+      port: undefined,
+      region: undefined,
+      mods: undefined,
+    });
+  });
+
   test('normalizeSteamId accepts trimmed uint64 values and rejects invalid input', () => {
     expect(normalizeSteamId(' 76561198000000000 ')).toBe(
       '76561198000000000',

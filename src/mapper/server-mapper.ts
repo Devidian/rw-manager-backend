@@ -8,22 +8,34 @@ function mapServerStatus(server: ServerConfig): ServerDto['status'] {
   return 'unknown';
 }
 
+function mapOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function mapOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function mapOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 export function mapServerToDto(server: ServerConfig): ServerDto {
   return {
     id: server.id,
     label: server.label,
-    steamId: server.steamId,
-    addr: server.addr,
-    version: server.version,
-    name: server.name,
-    ip: server.ip,
-    port: server.port,
-    region: server.region,
-    gm: server.gm,
-    mods: server.mods,
-    password: server.password,
-    whitelist: server.whitelist,
-    adminUid: server.adminUid,
+    steamId: mapOptionalString(server.steamId),
+    addr: mapOptionalString(server.addr),
+    version: mapOptionalString(server.version),
+    name: mapOptionalString(server.name),
+    ip: mapOptionalString(server.ip),
+    port: mapOptionalNumber(server.port),
+    region: mapOptionalString(server.region),
+    gm: mapOptionalNumber(server.gm),
+    mods: mapOptionalBoolean(server.mods),
+    password: mapOptionalBoolean(server.password),
+    whitelist: mapOptionalBoolean(server.whitelist),
+    adminUid: mapOptionalString(server.adminUid),
     queryUrl: server.queryUrl as ServerDto['queryUrl'],
     mapUrl: server.mapUrl as ServerDto['mapUrl'],
     backendUrl: (server.backendUrl ?? server.mapUrl) as ServerDto['backendUrl'],
