@@ -152,11 +152,26 @@ describe('server-statistics-store', () => {
     expect(collections.serverStatistics.updateOne).toHaveBeenCalledWith(
       { id: 'server-1:2026-06-25T12:00:00.000Z' },
       expect.objectContaining({
+        $setOnInsert: {
+          id: 'server-1:2026-06-25T12:00:00.000Z',
+          serverId: 'server-1',
+          hourStart: '2026-06-25T12:00:00.000Z',
+        },
         $inc: expect.objectContaining({ sampleCount: 1 }),
         $max: { maxPlayers: 4 },
       }),
       { upsert: true },
     );
+    const update = collections.serverStatistics.updateOne.mock.calls[0][1] as {
+      $setOnInsert?: Record<string, unknown>;
+      $inc?: Record<string, unknown>;
+      $max?: Record<string, unknown>;
+    };
+    const insertedPaths = Object.keys(update.$setOnInsert ?? {});
+    const incrementedPaths = Object.keys(update.$inc ?? {});
+    const maxPaths = Object.keys(update.$max ?? {});
+    expect(insertedPaths).not.toContainEqual(expect.stringMatching(/sampleCount|playerSampleTotal|maxPlayers/));
+    expect(insertedPaths.filter((path) => incrementedPaths.includes(path) || maxPaths.includes(path))).toEqual([]);
     expect(collections.serverStatistics.find).toHaveBeenCalledWith(
       {
         serverId: 'server-1',

@@ -63,10 +63,6 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
           id,
           serverId: sample.serverId,
           hourStart,
-          sampleCount: 0,
-          onlineSampleCount: 0,
-          playerSampleTotal: 0,
-          maxPlayers: 0,
         },
         $inc: {
           sampleCount: 1,
