@@ -185,6 +185,7 @@ describe('pure utils and mappers', () => {
       mapUrl: '   ',
       backendUrl: 'also-not-a-url',
       errorMessage: { message: 'bad shape' } as unknown as string,
+      onlinePlayers: { players: [] } as unknown as unknown[],
       public: true,
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     };
@@ -201,6 +202,7 @@ describe('pure utils and mappers', () => {
       mapUrl: undefined,
       backendUrl: undefined,
       errorMessage: undefined,
+      onlinePlayers: undefined,
     });
   });
 

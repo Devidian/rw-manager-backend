@@ -32,6 +32,10 @@ function mapOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
+function mapOptionalArray(value: unknown): unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined;
+}
+
 export function mapServerToDto(server: ServerConfig): ServerDto {
   return {
     id: server.id,
@@ -56,7 +60,7 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     status: mapServerStatus(server),
     queryData: server.data,
     infoData: server.info,
-    onlinePlayers: server.onlinePlayers,
+    onlinePlayers: mapOptionalArray(server.onlinePlayers),
     lastChecked: server.lastChecked
       ? mapDateTimeString(server.lastChecked) as ServerDto['lastChecked']
       : undefined,
