@@ -156,6 +156,7 @@ describe('pure utils and mappers', () => {
       mods: 'false' as unknown as boolean,
       mapUrl: 'not-a-url',
       backendUrl: 'also-not-a-url',
+      errorMessage: { message: 'bad shape' } as unknown as string,
       public: true,
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     };
@@ -168,6 +169,7 @@ describe('pure utils and mappers', () => {
       mods: undefined,
       mapUrl: undefined,
       backendUrl: undefined,
+      errorMessage: undefined,
     });
   });
 

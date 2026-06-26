@@ -60,7 +60,7 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     lastChecked: server.lastChecked
       ? mapDateTimeString(server.lastChecked) as ServerDto['lastChecked']
       : undefined,
-    errorMessage: server.errorMessage,
+    errorMessage: mapOptionalString(server.errorMessage),
     firstSeen: server.firstSeen
       ? mapDateTimeString(server.firstSeen) as ServerDto['firstSeen']
       : undefined,
