@@ -24,6 +24,7 @@ interface StoredServer {
 const state = {
   servers: [] as StoredServer[],
   users: [] as Array<{ pinnedServers?: string[] }>,
+  serverStatistics: [] as unknown[],
 };
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const errorMock = jest.fn();
@@ -62,6 +63,7 @@ describe('master-server-list-service', () => {
     process.env.MASTER_SERVER_LIST_URL = 'https://master.example.com/list';
     process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '60000';
     state.servers = [];
+    state.serverStatistics = [];
     writeMock.mockClear();
     errorMock.mockClear();
     global.fetch = originalFetch;
@@ -127,7 +129,17 @@ describe('master-server-list-service', () => {
       },
       public: true,
     });
-    expect(writeMock).toHaveBeenCalledTimes(1);
+    expect(writeMock).toHaveBeenCalledTimes(2);
+    expect(state.serverStatistics).toHaveLength(1);
+    expect(state.serverStatistics[0]).toMatchObject({
+      serverId: 'server-f8e7fa9ca73fd4b4943db61a',
+      sampleCount: 1,
+      onlineSampleCount: 1,
+      playerSampleTotal: 3,
+      maxPlayers: 3,
+      averagePlayers: 3,
+      availability: 100,
+    });
   });
 
   test('refreshMasterServerList merges existing servers and skips fresh query metadata', async () => {
@@ -245,6 +257,14 @@ describe('master-server-list-service', () => {
       errorMessage: 'FETCH_FAILED',
       queryDataUpdatedAt: expect.any(Date),
     });
+    expect(state.serverStatistics).toHaveLength(1);
+    expect(state.serverStatistics[0]).toMatchObject({
+      serverId: 'server-f8e7fa9ca73fd4b4943db61a',
+      sampleCount: 1,
+      onlineSampleCount: 0,
+      playerSampleTotal: 0,
+      availability: 0,
+    });
     expect(state.servers[0].mods).toBeUndefined();
     expect(state.servers[0].password).toBeUndefined();
     expect(state.servers[0].whitelist).toBeUndefined();
@@ -306,6 +326,13 @@ describe('master-server-list-service', () => {
       mapUrl: 'https://old-map.example/',
       backendUrl: 'https://old-map.example/',
       queryDataUpdatedAt: expect.any(Date),
+    });
+    expect(state.serverStatistics).toHaveLength(1);
+    expect(state.serverStatistics[0]).toMatchObject({
+      serverId: 'server-1',
+      sampleCount: 1,
+      onlineSampleCount: 1,
+      playerSampleTotal: 5,
     });
     expect(writeMock).toHaveBeenCalled();
   });

@@ -5,6 +5,7 @@ import {
   replacePinnedServerId,
   saveServer,
 } from '../db/manager-store.js';
+import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
 import type { MasterServerListEntry, MasterServerListResponse } from '../interfaces/master-server-list.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
@@ -66,6 +67,19 @@ function playersFromPayload(payload: unknown): unknown[] | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const players = (payload as { players?: unknown }).players;
   return Array.isArray(players) ? players : undefined;
+}
+
+function numberFromPayload(payload: unknown, key: string): number | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function playerCountFromQueryData(queryData: unknown, onlinePlayers: unknown[] | undefined): number {
+  return numberFromPayload(queryData, 'playercount')
+    ?? numberFromPayload(queryData, 'players')
+    ?? onlinePlayers?.length
+    ?? 0;
 }
 
 function queryUrlFor(entry: MasterServerListEntry): string | undefined {
@@ -135,6 +149,14 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   }
   server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
   server.queryDataUpdatedAt = now;
+
+  await recordServerStatisticsSample({
+    serverId: server.id,
+    sampledAt: now,
+    online: server.status === 'online',
+    playerCount: playerCountFromQueryData(server.data, server.onlinePlayers),
+  });
+
   return data.ok || info.ok || playerlist.ok;
 }
 
