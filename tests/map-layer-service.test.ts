@@ -48,6 +48,18 @@ describe('map layer service', () => {
     await expect(getMapMarketplaceOffers(42, root)).resolves.toBeNull();
   });
 
+  test('uses default root arguments for cache-only layer reads', async () => {
+    await expect(getMapLayerCapabilities()).resolves.toMatchObject({
+      schemaVersion: 1,
+      claims: false,
+      players: false,
+    });
+    await expect(getMapClaims()).resolves.toBeNull();
+    await expect(getMapPlayers(false)).resolves.toBeNull();
+    await expect(getMapGpsGlobalMarkers()).resolves.toBeNull();
+    await expect(getMapMarketplaceOffers(42)).resolves.toBeNull();
+  });
+
   test('normalizes cached plugin route data for map layers', async () => {
     process.env.MAP_RECENT_PLAYER_DAYS = '7';
     const root = await createWorld();
@@ -191,9 +203,24 @@ describe('map layer service', () => {
       }))
       .mockResolvedValueOnce(response({ config: { Server_Admins: '' } }))
       .mockResolvedValueOnce(response({ markers: [{ id: 'bad' }, { id: 1, name: 'Valid', x: 1, y: 2, z: 3, icon: 'i', color: '#fff', createdAt: 'x' }] }))
-      .mockResolvedValueOnce(response({ zones: [{ areaId: 'bad' }] }))
+      .mockResolvedValueOnce(response({ zones: [{ areaId: 'bad' }, { areaId: 4 }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 3 }] }))
-      .mockResolvedValueOnce(response({ listings: [{ areaId: 3, price: 5, status: 'INACTIVE' }] })) as typeof fetch;
+      .mockResolvedValueOnce(response({ listings: [{ areaId: 3, price: 5, status: 'INACTIVE' }] }))
+      .mockResolvedValueOnce(response({
+        offers: [
+          { id: 'bad' },
+          {
+            id: 7,
+            itemName: 'Valid Offer',
+            itemVariant: 0,
+            amount: 1,
+            price: 2,
+            currency: 'coins',
+            sellerName: 'Seller',
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      })) as typeof fetch;
 
     await refreshPluginDataForServer({
       id: 'server-1',
@@ -222,6 +249,16 @@ describe('map layer service', () => {
     await expect(getMapGpsGlobalMarkers(root, 'server-1')).resolves.toEqual([
       { id: 1, name: 'Valid', x: 1, y: 2, z: 3, icon: 'i', color: '#fff', createdAt: 'x' },
     ]);
+    await expect(getMapMarketplaceOffers(4, root, 'server-1')).resolves.toEqual([{
+      id: 7,
+      itemName: 'Valid Offer',
+      itemVariant: 0,
+      amount: 1,
+      price: 2,
+      currency: 'coins',
+      sellerName: 'Seller',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
   });
 });
 

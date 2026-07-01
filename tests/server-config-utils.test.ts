@@ -30,4 +30,17 @@ describe('ServerConfig utility', () => {
       'Config file not found',
     );
   });
+
+  test('keeps string admin values and falls back to default world name', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-manager-config-'));
+    await writeFile(
+      path.join(root, 'server.properties'),
+      'Server_Admins=steam-1;steam-2\n',
+    );
+
+    expect(ServerConfig.getProperties(root)).toMatchObject({
+      Server_Admins: 'steam-1;steam-2',
+    });
+    expect(ServerConfig.getWorldName(root)).toBe('default');
+  });
 });

@@ -87,4 +87,38 @@ describe('manager refresh scheduler', () => {
     expect(refreshAllServerQueryDataMock).toHaveBeenCalledTimes(2);
     expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(5);
   });
+
+  test('keeps scheduling after failures and skips overlapping runs', async () => {
+    process.env.ENABLE_STORAGE = 'true';
+    process.env.MASTER_SERVER_LIST_REFRESH_INTERVAL_MS = '60000';
+    process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '60000';
+    process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '10000';
+    refreshMasterServerListMock.mockRejectedValueOnce(new Error('master failed'));
+    let resolvePluginRefresh: (() => void) | undefined;
+    refreshPluginDataForOnlineServersMock.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolvePluginRefresh = () => resolve({});
+      }),
+    );
+
+    const scheduler = startManagerRefreshScheduler();
+    await jest.advanceTimersByTimeAsync(0);
+    await Promise.resolve();
+    expect(refreshMasterServerListMock).toHaveBeenCalledTimes(1);
+    expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(50000);
+    expect(refreshMasterServerListMock).toHaveBeenCalledTimes(2);
+    expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(1);
+
+    resolvePluginRefresh?.();
+    await jest.advanceTimersByTimeAsync(0);
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(2);
+
+    scheduler?.stop();
+  });
 });

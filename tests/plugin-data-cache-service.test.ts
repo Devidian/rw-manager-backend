@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 import {
   clearPluginDataCache,
+  ensurePluginDataForServer,
+  getFirstCachedPluginData,
   getCachedPluginData,
   refreshPluginDataForServer,
 } from '../src/service/plugin-data-cache-service.js';
@@ -144,6 +146,44 @@ describe('plugin data cache service', () => {
     expect(getCachedPluginData('server-1')).toBeUndefined();
   });
 
+  test('skips refresh when no valid plugin query URL is available', async () => {
+    const fetchMock = jest.fn() as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(refreshPluginDataForServer(server({
+      queryUrl: 'not a url',
+      info: { description: '@queryUrl:not-a-url' },
+    }))).resolves.toEqual({
+      refreshed: false,
+      skippedReason: 'queryUrlMissing',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('expires cached entries and ignores malformed plugin payloads', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    global.fetch = jest.fn().mockResolvedValueOnce(response({
+      schemaVersion: 1,
+      plugins: [
+        null,
+        { valid: 'yes' },
+        { directory: 'OZGPS', name: 'OZ - GPS', version: 1, valid: true },
+      ],
+    })) as typeof fetch;
+
+    await refreshPluginDataForServer(server({ onlinePlayers: [] }));
+    expect(getFirstCachedPluginData()?.plugins).toEqual([{
+      directory: 'OZGPS',
+      name: 'OZ - GPS',
+      version: undefined,
+      valid: true,
+    }]);
+
+    nowSpy.mockReturnValue(301_001);
+    expect(getCachedPluginData('server-1')).toBeUndefined();
+    expect(getFirstCachedPluginData()).toBeUndefined();
+  });
+
   test('drops invalid optional spawn points from cached server players', async () => {
     const fetchMock = jest
       .fn()
@@ -220,6 +260,19 @@ describe('plugin data cache service', () => {
     );
   });
 
+  test('returns cached plugin data without refreshing when available', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(response({
+      schemaVersion: 1,
+      plugins: [],
+    })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await refreshPluginDataForServer(server({ onlinePlayers: [] }));
+    await expect(ensurePluginDataForServer(server({ onlinePlayers: [] })))
+      .resolves.toBe(getCachedPluginData('server-1'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test('does not derive plugin bridge URL from legacy backend map URL', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(response({
       schemaVersion: 1,
@@ -237,6 +290,7 @@ describe('plugin data cache service', () => {
       expect.any(Object),
     );
   });
+
 });
 
 function response(body: unknown, status = 200): Response {

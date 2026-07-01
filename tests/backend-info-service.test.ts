@@ -18,6 +18,19 @@ describe('backend info service', () => {
       version: 1,
     });
   });
+
+  test('includes forceAuth only when force auth is enabled', () => {
+    process.env.ENABLE_STORAGE = 'false';
+    process.env.ENABLE_DATA = 'false';
+    process.env.ENABLE_AUTH = 'false';
+    process.env.FORCE_AUTH = 'true';
+
+    expect(getBackendInfo()).toEqual({
+      ok: true,
+      services: ['forceAuth'],
+      version: 1,
+    });
+  });
 });
 
 function restoreEnv(snapshot: NodeJS.ProcessEnv): void {

@@ -311,6 +311,25 @@ describe('server-live-status-service', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://query.example/playerlist', expect.any(Object));
   });
 
+  test('ignores malformed map and query URL tokens from info descriptions', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({
+        shortname: 'Broken Links',
+        description: '@mapUrl:http://[bad]\n@queryUrl:http://[bad]',
+      }))
+      .mockResolvedValueOnce(response({ name: 'Server', playercount: 1 }))
+      .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      queryData: { name: 'Server', playercount: 1 },
+    });
+    expect(state.servers[0].mapUrl).toBeUndefined();
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example', expect.any(Object));
+  });
+
   test('validates missing servers and missing query urls', async () => {
     await expect(service.getServerLiveStatus('missing')).rejects.toThrow('SERVER_NOT_FOUND');
 
