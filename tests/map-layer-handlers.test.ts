@@ -2,7 +2,11 @@ import { jest } from '@jest/globals';
 import type { Request, Response } from 'express';
 
 const getMapLayerCapabilitiesMock = jest.fn<() => Promise<unknown>>();
-const getMapClaimsMock = jest.fn<() => Promise<unknown[] | null>>();
+const getMapClaimsMock = jest.fn<(
+  rootPath?: string,
+  serverId?: string,
+  currentUserSteamId?: string,
+) => Promise<unknown[] | null>>();
 const getMapPlayersMock = jest.fn<(includeLongTerm: boolean) => Promise<unknown[] | null>>();
 const getMapGpsGlobalMarkersMock = jest.fn<() => Promise<unknown[] | null>>();
 const getMapMarketplaceOffersMock = jest.fn<(areaId: number) => Promise<unknown[] | null>>();

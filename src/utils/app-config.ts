@@ -33,17 +33,20 @@ export class AppConfig {
   static get forceAuth(): boolean {
     return (env.FORCE_AUTH ?? 'false') === 'true';
   }
-  static get enableMapRenderer(): boolean {
-    return (env.ENABLE_MAP_RENDERER ?? 'false') === 'true';
-  }
   static get mapTileRoot(): string | undefined {
     return env.MAP_TILE_ROOT;
   }
-  static get mapRenderIntervalMs(): number {
-    return AppConfig.boundedInteger(env.MAP_RENDER_INTERVAL_MS, 30000, 1000, Number.MAX_SAFE_INTEGER);
+  static get mapTileRootUrl(): string | undefined {
+    const value = env.MAP_TILE_ROOT_URL?.trim();
+    if (!value) return undefined;
+    try {
+      return new URL(value).toString();
+    } catch {
+      return undefined;
+    }
   }
-  static get mapRenderBatchSize(): number {
-    return AppConfig.boundedInteger(env.MAP_RENDER_BATCH_SIZE, 256, 1, 4096);
+  static get mapServerId(): string | undefined {
+    return env.MAP_SERVER_ID?.trim() || undefined;
   }
   static get mapRecentPlayerDays(): number {
     return AppConfig.boundedInteger(env.MAP_RECENT_PLAYER_DAYS, 7, 1, 3650);
@@ -54,7 +57,7 @@ export class AppConfig {
   static get masterServerListRefreshIntervalMs(): number {
     return AppConfig.boundedInteger(
       env.MASTER_SERVER_LIST_REFRESH_INTERVAL_MS,
-      300000,
+      60000,
       60000,
       Number.MAX_SAFE_INTEGER,
     );
@@ -70,7 +73,47 @@ export class AppConfig {
   static get serverQueryRefreshIntervalMs(): number {
     return AppConfig.boundedInteger(
       env.SERVER_QUERY_REFRESH_INTERVAL_MS,
-      86400000,
+      600000,
+      60000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+  static get serverInfoRefreshOnStartupMs(): number {
+    return AppConfig.boundedInteger(
+      env.SERVER_INFO_REFRESH_ON_STARTUP_MS,
+      600000,
+      60000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+  static get playerListRefreshIntervalMs(): number {
+    return AppConfig.boundedInteger(
+      env.PLAYERLIST_REFRESH_INTERVAL_MS,
+      180000,
+      5000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+  static get playerListTimeoutMs(): number {
+    return AppConfig.boundedInteger(
+      env.PLAYERLIST_TIMEOUT_MS,
+      5000,
+      1000,
+      30000,
+    );
+  }
+  static get pluginDataRefreshIntervalMs(): number {
+    return AppConfig.boundedInteger(
+      env.PLUGIN_DATA_REFRESH_INTERVAL_MS,
+      60000,
+      10000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+  static get pluginDataCacheTtlMs(): number {
+    return AppConfig.boundedInteger(
+      env.PLUGIN_DATA_CACHE_TTL_MS,
+      300000,
       60000,
       Number.MAX_SAFE_INTEGER,
     );

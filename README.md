@@ -1,7 +1,7 @@
 # rw-manager-backend
 
 Backend API for Rising World server management with TypeScript, Express 5,
-MongoDB/lowdb storage, and SQLite integration.
+MongoDB/lowdb storage, and plugin-route cache integration.
 
 ## Server Data API
 
@@ -10,28 +10,23 @@ When `ENABLE_DATA=true`, the backend exposes read-only server data including:
 ```text
 GET /api/data/server/plugins
 GET /api/data/server/map
-GET /api/data/server/map/tiles/:worldKey/:z/:x/:y.png
 GET /api/data/server/map/layers
 GET /api/data/server/map/layers/claims
 GET /api/data/server/map/layers/players
 GET /api/data/server/map/layers/marketplaces/:areaId/offers
 ```
 
-The opt-in map renderer reads Admin Utils `map_chunks_v1` records from the
-active world database beneath `SERVER_ROOT`, publishes schema-5 PNG tiles
-beneath the writable absolute `MAP_TILE_ROOT`, and serves only that
-backend-owned output.
+Map tile rendering is owned by `rw-map-rendering`. The manager backend reads
+external renderer metadata from `MAP_TILE_ROOT/<MAP_SERVER_ID>/metadata.json`
+and publishes tile URLs with `MAP_TILE_ROOT_URL` when configured.
 
 The backend does not require a Rising World installation to start. Missing
-server configuration, worlds, player database, plugin directory, or Admin
-Utils map source disable only the corresponding optional data and rendering
-features.
+plugin-route cache data disables only the corresponding optional data features.
 
 ```text
-ENABLE_MAP_RENDERER=false
 MAP_TILE_ROOT=/appdata/rwman/map-tiles
-MAP_RENDER_INTERVAL_MS=30000
-MAP_RENDER_BATCH_SIZE=256
+MAP_TILE_ROOT_URL=https://tiles.example.com/maps
+MAP_SERVER_ID=server-f8e7fa9ca73fd4b4943db61a
 MAP_RECENT_PLAYER_DAYS=7
 ```
 
@@ -119,17 +114,8 @@ Superadmins can force-refresh stored query `data` and `info`:
 POST /api/storage/server/refresh-query-data
 ```
 
-Map layer APIs discover Land Claim, Marketplace, and Shop by their valid
-plugin manifests, then read the active world's game/plugin SQLite databases
-read-only.
-
-Validate a built renderer against a copied Admin Utils world database before
-enabling it:
-
-```text
-yarn build
-yarn smoke:map-render -- "/path/to/New World.db"
-```
+Map layer APIs prefer cached plugin-route data. Transitional local SQLite
+fallbacks remain only for migration parity checks.
 
 ## Runtime Baseline
 
@@ -151,10 +137,9 @@ services:
     environment:
       NODE_ENV: production
       APP_DATA_ROOT: /appdata/rwman
-      SERVER_ROOT: /appdata/rising-world/dedicated-server
       ENABLE_DATA: true
-      ENABLE_MAP_RENDERER: false
       MAP_TILE_ROOT: /appdata/rwman/map-tiles
+      MAP_TILE_ROOT_URL: https://tiles.example.com/maps
       ENABLE_STORAGE: true
       ENABLE_AUTH: false
       FORCE_AUTH: false
@@ -162,7 +147,6 @@ services:
       LOG_STYLE: detailed
     volumes:
       - ./app-data:/appdata/rwman
-      - ./data:/appdata/rising-world/dedicated-server
       - ./cert:/app/cert
     restart: unless-stopped
     healthcheck:
@@ -183,10 +167,9 @@ services:
     environment:
       NODE_ENV: production
       APP_DATA_ROOT: /appdata/rwman
-      SERVER_ROOT: /appdata/rising-world/dedicated-server
       ENABLE_DATA: true
-      ENABLE_MAP_RENDERER: false
       MAP_TILE_ROOT: /appdata/rwman/map-tiles
+      MAP_TILE_ROOT_URL: https://tiles.example.com/maps
       ENABLE_STORAGE: true
       ENABLE_AUTH: true
       FORCE_AUTH: true

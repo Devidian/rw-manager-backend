@@ -9,10 +9,10 @@ const getUserFromBearerTokenMock = jest.fn<() => { id: string } | null>();
 jest.unstable_mockModule('typia', () => ({
   default: { assert: (value: unknown) => value },
 }));
-jest.unstable_mockModule('../src/service/server-config-service.js', () => ({
-  getServerName: getServerNameMock,
-  getServerConfig: getServerConfigMock,
-  getServerAdminList: getServerAdminListMock,
+jest.unstable_mockModule('../src/service/server-plugin-data-service.js', () => ({
+  getCachedServerName: getServerNameMock,
+  getCachedServerConfig: getServerConfigMock,
+  getCachedServerAdminList: getServerAdminListMock,
 }));
 jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({
   getUserFromBearerToken: getUserFromBearerTokenMock,

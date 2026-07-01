@@ -122,7 +122,6 @@ describe('master-server-list-service', () => {
       label: 'Short Server',
       queryUrl: 'http://127.0.0.1:4254',
       mapUrl: 'https://map.example.com/',
-      backendUrl: 'https://map.example.com/',
       status: 'online',
       onlinePlayers: [{ uid: 'player-1' }],
       lastChecked: expect.any(Date),
@@ -391,7 +390,6 @@ describe('master-server-list-service', () => {
     expect(state.servers[0]).toMatchObject({
       label: 'New Shortname',
       mapUrl: 'https://map.example.com/',
-      backendUrl: 'https://map.example.com/',
     });
   });
 

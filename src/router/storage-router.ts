@@ -10,6 +10,16 @@ import { unpinServerHandler } from '../handler/unpin-server-handler.js';
 import { refreshServerQueryDataHandler } from '../handler/refresh-server-query-data-handler.js';
 import { getServerLiveStatusHandler } from '../handler/get-server-live-status-handler.js';
 import { getServerStatisticsHandler } from '../handler/get-server-statistics-handler.js';
+import { getServerMapHandler } from '../handler/get-server-map-handler.js';
+import { listServerPluginsHandler } from '../handler/list-server-plugins-handler.js';
+import { getMapLayerCapabilitiesHandler } from '../handler/get-map-layer-capabilities-handler.js';
+import { getMapClaimsHandler } from '../handler/get-map-claims-handler.js';
+import { getMapPlayersHandler } from '../handler/get-map-players-handler.js';
+import { getMapGpsGlobalMarkersHandler } from '../handler/get-map-gps-global-markers-handler.js';
+import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-offers-handler.js';
+import { getAllPlayersHandler } from '../handler/get-all-players-handler.js';
+import { getServerConfigHandler } from '../handler/get-server-config-handler.js';
+import { getServerAdminListHandler } from '../handler/get-server-admin-list-handler.js';
 
 const storageRouter = Router();
 
@@ -21,6 +31,24 @@ storageRouter.get('/server', requireServerGetAuth, listServersHandler);
 storageRouter.post('/server/refresh-query-data', requireAuth, refreshServerQueryDataHandler);
 storageRouter.get('/server/:id/live', requireServerGetAuth, getServerLiveStatusHandler);
 storageRouter.get('/server/:id/statistics', requireServerGetAuth, getServerStatisticsHandler);
+storageRouter.get('/server/:id/map', requireServerGetAuth, getServerMapHandler);
+storageRouter.get('/server/:id/plugins', requireServerGetAuth, listServerPluginsHandler);
+storageRouter.get('/server/:id/player', requireServerGetAuth, getAllPlayersHandler);
+storageRouter.get('/server/:id/config', requireAuth, getServerConfigHandler);
+storageRouter.get('/server/:id/admins', requireServerGetAuth, getServerAdminListHandler);
+storageRouter.get('/server/:id/map/layers', requireServerGetAuth, getMapLayerCapabilitiesHandler);
+storageRouter.get('/server/:id/map/layers/claims', requireServerGetAuth, getMapClaimsHandler);
+storageRouter.get('/server/:id/map/layers/players', requireServerGetAuth, getMapPlayersHandler);
+storageRouter.get(
+  '/server/:id/map/layers/gps-global-markers',
+  requireServerGetAuth,
+  getMapGpsGlobalMarkersHandler,
+);
+storageRouter.get(
+  '/server/:id/map/layers/marketplaces/:areaId/offers',
+  requireServerGetAuth,
+  getMapMarketplaceOffersHandler,
+);
 storageRouter.post('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, pinServerHandler);
 storageRouter.delete('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, unpinServerHandler);
 

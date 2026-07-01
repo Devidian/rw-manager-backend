@@ -163,7 +163,7 @@ describe('pure utils and mappers', () => {
     expect(mapServerToDto(server)).toMatchObject({
       status: 'offline',
       mapUrl: 'https://map.example.com',
-      backendUrl: 'https://map.example.com',
+      backendUrl: undefined,
       firstSeen: '2024-01-02T00:00:00.000Z',
       lastSeen: '2024-01-03T00:00:00.000Z',
       queryDataUpdatedAt: '2024-01-04T00:00:00.000Z',

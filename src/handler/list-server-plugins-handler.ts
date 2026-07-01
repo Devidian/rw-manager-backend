@@ -1,17 +1,29 @@
 import type { Request, Response } from 'express';
 import typia from 'typia';
 import type { ListServerPluginsResponse } from '../dto/list-server-plugins-response.js';
-import { listInstalledPlugins } from '../service/plugin-inventory-service.js';
+import { prepareServerRoute, serverRouteError } from './server-route-context.js';
+import { getCachedPluginData, getFirstCachedPluginData } from '../service/plugin-data-cache-service.js';
 
-export async function listServerPluginsHandler(_req: Request, res: Response) {
+export async function listServerPluginsHandler(req: Request, res: Response) {
   try {
+    const server = await prepareServerRoute(req);
+    const entry = server ? getCachedPluginData(server.id) : getFirstCachedPluginData();
     const response: ListServerPluginsResponse = {
-      items: await listInstalledPlugins(),
+      items: (entry?.plugins ?? []).flatMap((plugin) =>
+        typeof plugin.directory === 'string'
+          ? [{
+              directory: plugin.directory,
+              name: plugin.name,
+              version: plugin.version,
+              valid: plugin.valid,
+            }]
+          : [],
+      ),
     };
     res.setHeader('Cache-Control', 'no-store');
     return res.json(typia.assert<ListServerPluginsResponse>(response));
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
-    return res.status(500).json({ error: message });
+    const mapped = serverRouteError(error);
+    return res.status(mapped.status).json({ error: mapped.error });
   }
 }

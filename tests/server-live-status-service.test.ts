@@ -73,18 +73,18 @@ describe('server-live-status-service', () => {
   test('fetches live status and caches repeated calls briefly', async () => {
     const fetchMock = jest
       .fn()
-      .mockResolvedValueOnce(response({ name: 'Server', playercount: 1 }))
       .mockResolvedValueOnce(response({
         shortname: 'Updated Shortname',
         contact: 'admin',
         description: '@mapUrl:https://gs1.omega-zirkel.de/main.backend/',
       }))
+      .mockResolvedValueOnce(response({ name: 'Server', playercount: 9 }))
       .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'online',
-      queryData: { name: 'Server', playercount: 1 },
+      queryData: { name: 'Server', playercount: 9 },
       infoData: {
         shortname: 'Updated Shortname',
         contact: 'admin',
@@ -96,17 +96,16 @@ describe('server-live-status-service', () => {
     await service.getServerLiveStatus('server-1');
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example', expect.any(Object));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example/info', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example/info', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/playerlist', expect.any(Object));
     expect(state.servers[0]).toMatchObject({
       label: 'Updated Shortname',
       mapUrl: 'https://gs1.omega-zirkel.de/main.backend/',
-      backendUrl: 'https://gs1.omega-zirkel.de/main.backend/',
       status: 'online',
       onlinePlayers: [{ uid: 'player-1' }],
       lastChecked: expect.any(Date),
-      data: { name: 'Server', playercount: 1 },
+      data: { name: 'Server', playercount: 9 },
       info: {
         shortname: 'Updated Shortname',
         contact: 'admin',
@@ -134,8 +133,8 @@ describe('server-live-status-service', () => {
     });
     const fetchMock = jest
       .fn()
-      .mockReturnValueOnce(queryPromise)
       .mockResolvedValueOnce(response({ contact: 'admin' }))
+      .mockReturnValueOnce(queryPromise)
       .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -153,8 +152,8 @@ describe('server-live-status-service', () => {
 
     const fetchMock = jest
       .fn()
-      .mockResolvedValueOnce(response({ name: 'Server', playercount: 2 }))
       .mockResolvedValueOnce(response({ shortname: 'Server' }))
+      .mockResolvedValueOnce(response({ name: 'Server', playercount: 2 }))
       .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }, { uid: 'player-2' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -206,11 +205,11 @@ describe('server-live-status-service', () => {
 
     const fetchMock = jest
       .fn()
+      .mockResolvedValueOnce(response({ contact: 'admin' }))
       .mockResolvedValueOnce(response({ name: 'Server' }))
-      .mockResolvedValueOnce(response({ contact: 'admin' }))
       .mockResolvedValueOnce(response({ players: [] }))
-      .mockResolvedValueOnce(response({}, 500))
       .mockResolvedValueOnce(response({ contact: 'admin' }))
+      .mockResolvedValueOnce(response({}, 500))
       .mockResolvedValueOnce(response({ players: 'bad' })) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -221,7 +220,6 @@ describe('server-live-status-service', () => {
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'offline',
       errorMessage: 'HTTP 500',
-      onlinePlayers: undefined,
     });
     expect(fetchMock).toHaveBeenCalledTimes(6);
 
@@ -231,15 +229,86 @@ describe('server-live-status-service', () => {
   test('reports unknown fetch errors when the thrown value is not an Error', async () => {
     const fetchMock = jest
       .fn()
-      .mockRejectedValueOnce('network failed')
       .mockResolvedValueOnce(response({ contact: 'admin' }))
+      .mockRejectedValueOnce('network failed')
       .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
-      status: 'offline',
+      status: 'online',
       errorMessage: 'UNKNOWN_ERROR',
+      onlinePlayers: [],
     });
+  });
+
+  test('uses valid playerlist responses as online signal when the main query fails', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({ contact: 'admin' }))
+      .mockResolvedValueOnce(response({}, 500))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }, { uid: 'player-2' }] })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      errorMessage: 'HTTP 500',
+      onlinePlayers: [{ uid: 'player-1' }, { uid: 'player-2' }],
+    });
+    expect(state.serverStatistics[0]).toMatchObject({
+      onlineSampleCount: 1,
+      playerSampleTotal: 2,
+      maxPlayers: 2,
+    });
+  });
+
+  test('uses reachable query URL overrides from info descriptions', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({
+        shortname: 'Bridge',
+        description: '@queryUrl:https://bridge.example/query/',
+      }))
+      .mockResolvedValueOnce(response({ name: 'Bridge', playercount: 3 }))
+      .mockResolvedValueOnce(response({ name: 'Bridge', playercount: 3 }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'a' }, { uid: 'b' }, { uid: 'c' }] })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      queryData: { name: 'Bridge', playercount: 3 },
+      infoData: {
+        shortname: 'Bridge',
+        description: '@queryUrl:https://bridge.example/query/',
+      },
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example/info', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://bridge.example/query/', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'https://bridge.example/query/', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, 'https://bridge.example/query/playerlist', expect.any(Object));
+  });
+
+  test('falls back to derived query URL when override is unreachable', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({
+        shortname: 'Bridge',
+        description: '@queryUrl:https://bridge.example/query/',
+      }))
+      .mockResolvedValueOnce(response({}, 503))
+      .mockResolvedValueOnce(response({ name: 'Server', playercount: 1 }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }] })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      queryData: { name: 'Server', playercount: 1 },
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example/info', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://bridge.example/query/', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://query.example/playerlist', expect.any(Object));
   });
 
   test('validates missing servers and missing query urls', async () => {

@@ -1,7 +1,9 @@
 import type { MapBounds } from './map-bounds.js';
 
 export interface MapMetadata {
-  schemaVersion: 5;
+  schemaVersion: 6;
+  serverId?: string;
+  displayName?: string;
   worldKey: string;
   worldName: string;
   tileSize: number;

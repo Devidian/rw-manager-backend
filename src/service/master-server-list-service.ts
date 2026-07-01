@@ -148,7 +148,6 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
     server.label = labelFromInfo(info.data) ?? server.label;
     server.adminUid = adminUidFromInfo(info.data) ?? server.adminUid;
     server.mapUrl = mapUrlFromInfo(info.data) ?? server.mapUrl;
-    server.backendUrl = server.mapUrl ?? server.backendUrl;
   }
   server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
   server.queryDataUpdatedAt = now;

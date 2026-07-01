@@ -1,19 +1,16 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { GetServerMapResponse } from '../dto/get-server-map-response.js';
 import type { MapBounds } from '../interfaces/map-bounds.js';
 import type { MapMetadata } from '../interfaces/map-metadata.js';
 import { AppConfig } from '../utils/app-config.js';
-import { ServerConfig } from '../utils/server-config.js';
 
-const MAP_SCHEMA_VERSION = 5;
-const WORLD_KEY_PATTERN = /^[a-z0-9._-]+$/;
-const INTEGER_PATTERN = /^-?\d+$/;
+const RENDERER_MAP_SCHEMA_VERSION = 6;
 
 interface ProducerMetadata {
   schemaVersion?: unknown;
-  worldKey?: unknown;
-  worldName?: unknown;
+  serverId?: unknown;
+  displayName?: unknown;
   tileSize?: unknown;
   chunkSize?: unknown;
   pixelsPerBlock?: unknown;
@@ -23,28 +20,29 @@ interface ProducerMetadata {
   generatedChunkBounds?: unknown;
   generatedTileBounds?: unknown;
   updatedAt?: unknown;
+  tileUrl?: unknown;
 }
-
-export class InvalidMapTileRequestError extends Error {}
 
 export async function getServerMap(
   tileRoot: string | undefined = AppConfig.mapTileRoot,
   worldName?: string,
+  serverId: string | undefined = AppConfig.mapServerId,
+  publicTileRootUrl: string | undefined = AppConfig.mapTileRootUrl,
 ): Promise<GetServerMapResponse> {
-  if (!tileRoot || !path.isAbsolute(tileRoot)) return { available: false };
-  let activeWorldName = worldName;
-  if (!activeWorldName) {
-    try {
-      activeWorldName = ServerConfig.getWorldName(AppConfig.rootPath);
-    } catch {
-      return { available: false };
-    }
-  }
-  const worldKey = toWorldKey(activeWorldName);
-  const worldRoot = mapWorldRoot(tileRoot, worldKey);
+  void worldName;
+  if (!tileRoot || !path.isAbsolute(tileRoot) || !serverId) return { available: false };
+  return getRendererServerMap(tileRoot, serverId, publicTileRootUrl);
+}
+
+async function getRendererServerMap(
+  tileRoot: string,
+  serverId: string,
+  publicTileRootUrl: string | undefined,
+): Promise<GetServerMapResponse> {
+  const serverRoot = path.join(tileRoot, serverId);
   let json: string;
   try {
-    json = await readFile(path.join(worldRoot, 'metadata.json'), 'utf8');
+    json = await readFile(path.join(serverRoot, 'metadata.json'), 'utf8');
   } catch (error) {
     if (isMissing(error)) return { available: false };
     throw error;
@@ -52,80 +50,23 @@ export async function getServerMap(
 
   try {
     const producer = JSON.parse(json) as ProducerMetadata;
-    const metadata = validateMetadata(producer, worldKey, activeWorldName);
-    await stat(worldRoot);
+    const metadata = validateRendererMetadata(producer, serverId, publicTileRootUrl);
+    await stat(serverRoot);
     return { available: true, metadata };
   } catch {
     return { available: false };
   }
 }
 
-export async function resolveMapTile(
-  worldKey: string,
-  zoomValue: string,
-  xValue: string,
-  yValue: string,
-  tileRoot: string | undefined = AppConfig.mapTileRoot,
-  worldName?: string,
-): Promise<string | null> {
-  if (!WORLD_KEY_PATTERN.test(worldKey)) {
-    throw new InvalidMapTileRequestError('Invalid world key');
-  }
-  const zoom = parseInteger(zoomValue);
-  const x = parseInteger(xValue);
-  const y = parseInteger(yValue);
-  if (!tileRoot || !path.isAbsolute(tileRoot)) return null;
-  const map = await getServerMap(tileRoot, worldName);
-  if (!map.available || map.metadata.worldKey !== worldKey) return null;
-  if (zoom < map.metadata.minZoom || zoom > map.metadata.nativeZoom) {
-    throw new InvalidMapTileRequestError('Unsupported zoom');
-  }
-
-  const worldRoot = mapWorldRoot(tileRoot!, worldKey);
-  const tilePath = path.join(worldRoot, String(zoom), String(x), `${y}.png`);
-  try {
-    const [realRoot, realTile] = await Promise.all([
-      realpath(worldRoot),
-      realpath(tilePath),
-    ]);
-    const relative = path.relative(realRoot, realTile);
-    if (
-      relative === '' ||
-      relative.startsWith(`..${path.sep}`) ||
-      relative === '..' ||
-      path.isAbsolute(relative)
-    ) {
-      throw new InvalidMapTileRequestError('Tile escapes map root');
-    }
-    if (!(await stat(realTile)).isFile()) return null;
-    return realTile;
-  } catch (error) {
-    if (isMissing(error)) return null;
-    throw error;
-  }
-}
-
-export function toWorldKey(worldName: string): string {
-  const key = worldName
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return key === '' || key === '.' || key === '..' ? 'world' : key;
-}
-
-function mapWorldRoot(tileRoot: string, worldKey: string): string {
-  return path.join(tileRoot, worldKey);
-}
-
-function validateMetadata(
+function validateRendererMetadata(
   value: ProducerMetadata,
-  expectedWorldKey: string,
-  expectedWorldName: string,
+  expectedServerId: string,
+  publicTileRootUrl: string | undefined,
 ): MapMetadata {
   if (
-    value.schemaVersion !== MAP_SCHEMA_VERSION ||
-    value.worldKey !== expectedWorldKey ||
-    value.worldName !== expectedWorldName ||
+    value.schemaVersion !== RENDERER_MAP_SCHEMA_VERSION ||
+    value.serverId !== expectedServerId ||
+    typeof value.displayName !== 'string' ||
     !isPositiveInteger(value.tileSize) ||
     !isPositiveInteger(value.chunkSize) ||
     !isPositiveInteger(value.pixelsPerBlock) ||
@@ -136,14 +77,18 @@ function validateMetadata(
     !isBounds(value.generatedChunkBounds) ||
     !isBounds(value.generatedTileBounds) ||
     typeof value.updatedAt !== 'string' ||
-    Number.isNaN(Date.parse(value.updatedAt))
+    Number.isNaN(Date.parse(value.updatedAt)) ||
+    typeof value.tileUrl !== 'string' ||
+    !value.tileUrl.startsWith(`/${expectedServerId}/`)
   ) {
-    throw new Error('Invalid map metadata');
+    throw new Error('Invalid renderer map metadata');
   }
   return {
-    schemaVersion: MAP_SCHEMA_VERSION,
-    worldKey: expectedWorldKey,
-    worldName: value.worldName,
+    schemaVersion: RENDERER_MAP_SCHEMA_VERSION,
+    serverId: expectedServerId,
+    displayName: value.displayName,
+    worldKey: expectedServerId,
+    worldName: value.displayName,
     tileSize: value.tileSize,
     chunkSize: value.chunkSize,
     pixelsPerBlock: value.pixelsPerBlock,
@@ -153,8 +98,13 @@ function validateMetadata(
     generatedChunkBounds: value.generatedChunkBounds,
     generatedTileBounds: value.generatedTileBounds,
     updatedAt: value.updatedAt,
-    tileUrl: `/api/data/server/map/tiles/${expectedWorldKey}/{z}/{x}/{y}.png`,
+    tileUrl: publicRendererTileUrl(value.tileUrl, publicTileRootUrl),
   };
+}
+
+function publicRendererTileUrl(tileUrl: string, rootUrl: string | undefined): string {
+  if (!rootUrl) return tileUrl;
+  return `${rootUrl.replace(/\/+$/, '')}/${tileUrl.replace(/^\/+/, '')}`;
 }
 
 function isBounds(value: unknown): value is MapBounds {
@@ -176,17 +126,6 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
-}
-
-function parseInteger(value: string): number {
-  if (!INTEGER_PATTERN.test(value)) {
-    throw new InvalidMapTileRequestError('Invalid tile coordinate');
-  }
-  const number = Number(value);
-  if (!Number.isSafeInteger(number)) {
-    throw new InvalidMapTileRequestError('Invalid tile coordinate');
-  }
-  return number;
 }
 
 function isMissing(error: unknown): boolean {

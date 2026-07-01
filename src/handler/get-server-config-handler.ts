@@ -1,14 +1,19 @@
 import { Request, Response } from 'express';
 import typia from 'typia';
-import { getServerConfig } from '../service/server-config-service.js';
 import type { GetServerConfigResponse } from '../dto/get-server-config-response.js';
+import { prepareServerRoute, serverIdFromRequest, serverRouteError } from './server-route-context.js';
+import { getCachedServerConfig } from '../service/server-plugin-data-service.js';
 
-export function getServerConfigHandler(_req: Request, res: Response) {
+export async function getServerConfigHandler(req: Request, res: Response) {
   try {
-    const response: GetServerConfigResponse = { config: getServerConfig() };
+    const serverId = serverIdFromRequest(req);
+    if (serverId) await prepareServerRoute(req);
+    const response: GetServerConfigResponse = {
+      config: getCachedServerConfig(serverId),
+    };
     return res.json(typia.assert<GetServerConfigResponse>(response));
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
-    return res.status(400).json({ error: message });
+    const mapped = serverRouteError(error);
+    return res.status(mapped.status === 500 ? 400 : mapped.status).json({ error: mapped.error });
   }
 }

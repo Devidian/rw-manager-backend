@@ -6,6 +6,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 
 const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
+const QUERY_URL_PATTERN = /@queryUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 
 interface CacheEntry {
   expiresAt: number;
@@ -15,10 +16,13 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<ServerLiveStatusResponse>>();
 
-async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+async function fetchJson(
+  url: string,
+  timeoutMs: number = AppConfig.liveQueryProxyTimeoutMs,
+): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   try {
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
     return { ok: true, data: await response.json() };
@@ -36,6 +40,15 @@ function buildInfoUrl(queryUrl: string): string {
 
 function buildPlayerListUrl(queryUrl: string): string {
   return new URL('playerlist', `${queryUrl.replace(/\/+$/, '')}/`).toString();
+}
+
+function normalizedUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function playersFromPayload(payload: unknown): unknown[] | undefined {
@@ -63,11 +76,41 @@ function mapUrlFromInfo(info: unknown): string | undefined {
   const description = stringOrUndefined((info as { description?: unknown }).description);
   const match = description?.match(MAP_URL_PATTERN);
   if (!match) return undefined;
-  try {
-    return new URL(match[1] ?? match[2]).toString();
-  } catch {
-    return undefined;
+  return normalizedUrl(match[1] ?? match[2]);
+}
+
+function queryUrlFromInfo(info: unknown): string | undefined {
+  if (!info || typeof info !== 'object') return undefined;
+  const description = stringOrUndefined((info as { description?: unknown }).description);
+  const match = description?.match(QUERY_URL_PATTERN);
+  if (!match) return undefined;
+  return normalizedUrl(match[1] ?? match[2]);
+}
+
+async function reachableQueryUrl(candidate: string): Promise<boolean> {
+  const result = await fetchJson(candidate);
+  return result.ok;
+}
+
+async function selectQueryUrl(derivedQueryUrl: string): Promise<{
+  queryUrl: string;
+  infoData?: unknown;
+}> {
+  const infoResult = await fetchJson(buildInfoUrl(derivedQueryUrl));
+  if (!infoResult.ok) return { queryUrl: derivedQueryUrl };
+
+  const override = queryUrlFromInfo(infoResult.data);
+  if (!override || override === derivedQueryUrl) {
+    return { queryUrl: derivedQueryUrl, infoData: infoResult.data };
   }
+  if (await reachableQueryUrl(override)) {
+    return { queryUrl: override, infoData: infoResult.data };
+  }
+  defaultLogger.warn('Ignoring unreachable query URL override:', {
+    derivedQueryUrl,
+    override,
+  });
+  return { queryUrl: derivedQueryUrl, infoData: infoResult.data };
 }
 
 function isQueryDataFresh(server: ServerConfig, now: number): boolean {
@@ -119,7 +162,6 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
     server.info = response.infoData;
     server.label = stringOrUndefined((response.infoData as { shortname?: unknown }).shortname) ?? server.label;
     server.mapUrl = mapUrlFromInfo(response.infoData) ?? server.mapUrl;
-    server.backendUrl = server.mapUrl ?? server.backendUrl;
     changed = true;
   }
 
@@ -142,16 +184,22 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
 
 async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusResponse> {
   const startedAt = Date.now();
-  defaultLogger.debug(`Live server query started: ${queryUrl}`);
+  const selected = await selectQueryUrl(queryUrl);
+  defaultLogger.debug(`Live server query started: ${selected.queryUrl}`);
   const [queryResult, infoResult, playerlistResult] = await Promise.all([
-    fetchJson(queryUrl),
-    fetchJson(buildInfoUrl(queryUrl)),
-    fetchJson(buildPlayerListUrl(queryUrl)),
+    fetchJson(selected.queryUrl),
+    selected.infoData === undefined
+      ? fetchJson(buildInfoUrl(selected.queryUrl))
+      : Promise.resolve({ ok: true, data: selected.infoData } as const),
+    fetchJson(buildPlayerListUrl(selected.queryUrl), AppConfig.playerListTimeoutMs),
   ]);
 
   const lastChecked = new Date().toISOString() as ServerLiveStatusResponse['lastChecked'];
+  const onlinePlayers = playerlistResult.ok
+    ? playersFromPayload(playerlistResult.data)
+    : undefined;
   const response: ServerLiveStatusResponse = {
-    status: queryResult.ok ? 'online' : 'offline',
+    status: queryResult.ok || onlinePlayers !== undefined ? 'online' : 'offline',
     lastChecked,
   };
 
@@ -162,10 +210,10 @@ async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusRespon
   }
 
   if (infoResult.ok) response.infoData = infoResult.data;
-  if (playerlistResult.ok) response.onlinePlayers = playersFromPayload(playerlistResult.data);
+  if (onlinePlayers !== undefined) response.onlinePlayers = onlinePlayers;
 
   defaultLogger.debug('Live server query completed:', {
-    queryUrl,
+    queryUrl: selected.queryUrl,
     status: response.status,
     durationMs: Date.now() - startedAt,
   });
@@ -173,13 +221,13 @@ async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusRespon
 }
 
 function playerCountFromLiveStatus(response: ServerLiveStatusResponse): number {
-  const queryCount = numberFromPayload(response.queryData, 'playercount');
-  if (queryCount !== undefined) return queryCount;
   const playerListCount = numberFromPayload(
     { playercount: response.onlinePlayers?.length },
     'playercount',
   );
-  return playerListCount ?? 0;
+  if (playerListCount !== undefined) return playerListCount;
+  const queryCount = numberFromPayload(response.queryData, 'playercount');
+  return queryCount ?? 0;
 }
 
 export async function getServerLiveStatus(serverId: string): Promise<ServerLiveStatusResponse> {

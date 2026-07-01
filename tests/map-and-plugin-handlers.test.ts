@@ -3,24 +3,21 @@ import type { Request, Response } from 'express';
 import type { GetServerMapResponse } from '../src/dto/get-server-map-response.js';
 import type { PluginInfo } from '../src/interfaces/plugin-info.js';
 
-const listInstalledPluginsMock =
-  jest.fn<() => Promise<PluginInfo[]>>();
+const getFirstCachedPluginDataMock =
+  jest.fn<() => { plugins: PluginInfo[] } | undefined>();
+const getCachedPluginDataMock =
+  jest.fn<() => { plugins: PluginInfo[] } | undefined>();
 const getServerMapMock = jest.fn<() => Promise<GetServerMapResponse>>();
-const resolveMapTileMock =
-  jest.fn<() => Promise<string | null>>();
-
-class InvalidMapTileRequestError extends Error {}
 
 jest.unstable_mockModule('typia', () => ({
   default: { assert: (value: unknown) => value },
 }));
-jest.unstable_mockModule('../src/service/plugin-inventory-service.js', () => ({
-  listInstalledPlugins: listInstalledPluginsMock,
+jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
+  getCachedPluginData: getCachedPluginDataMock,
+  getFirstCachedPluginData: getFirstCachedPluginDataMock,
 }));
 jest.unstable_mockModule('../src/service/map-service.js', () => ({
-  InvalidMapTileRequestError,
   getServerMap: getServerMapMock,
-  resolveMapTile: resolveMapTileMock,
 }));
 
 const { listServerPluginsHandler } = await import(
@@ -29,10 +26,6 @@ const { listServerPluginsHandler } = await import(
 const { getServerMapHandler } = await import(
   '../src/handler/get-server-map-handler.js'
 );
-const { getServerMapTileHandler } = await import(
-  '../src/handler/get-server-map-tile-handler.js'
-);
-
 describe('map and plugin handlers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -40,9 +33,9 @@ describe('map and plugin handlers', () => {
 
   test('plugin handler returns inventory and handles service errors', async () => {
     const response = createResponse();
-    listInstalledPluginsMock.mockResolvedValue([
-      { directory: 'OZAdminUtils', valid: true },
-    ]);
+    getFirstCachedPluginDataMock.mockReturnValue({
+      plugins: [{ directory: 'OZAdminUtils', valid: true }],
+    });
 
     await listServerPluginsHandler({} as Request, response.res);
 
@@ -51,12 +44,16 @@ describe('map and plugin handlers', () => {
       items: [{ directory: 'OZAdminUtils', valid: true }],
     });
 
-    listInstalledPluginsMock.mockRejectedValue(new Error('inventory failed'));
+    getFirstCachedPluginDataMock.mockImplementationOnce(() => {
+      throw new Error('inventory failed');
+    });
     await listServerPluginsHandler({} as Request, response.res);
     expect(response.status).toHaveBeenCalledWith(500);
     expect(response.json).toHaveBeenCalledWith({ error: 'inventory failed' });
 
-    listInstalledPluginsMock.mockRejectedValue('unknown');
+    getFirstCachedPluginDataMock.mockImplementationOnce(() => {
+      throw 'unknown';
+    });
     await listServerPluginsHandler({} as Request, response.res);
     expect(response.json).toHaveBeenCalledWith({ error: 'UNKNOWN_ERROR' });
   });
@@ -80,61 +77,13 @@ describe('map and plugin handlers', () => {
     expect(response.json).toHaveBeenCalledWith({ error: 'UNKNOWN_ERROR' });
   });
 
-  test('tile handler serves PNGs and returns missing or invalid responses', async () => {
-    const response = createResponse();
-    resolveMapTileMock.mockResolvedValue('/tmp/map.png');
-
-    await getServerMapTileHandler(request('0.png'), response.res);
-    expect(response.type).toHaveBeenCalledWith('png');
-    expect(response.sendFile).toHaveBeenCalledWith('/tmp/map.png');
-
-    resolveMapTileMock.mockResolvedValue(null);
-    await getServerMapTileHandler(request('1.png'), response.res);
-    expect(response.sendStatus).toHaveBeenCalledWith(404);
-
-    await getServerMapTileHandler(request('0.jpg'), response.res);
-    expect(response.status).toHaveBeenCalledWith(400);
-  });
-
-  test('tile handler distinguishes invalid requests from server errors', async () => {
-    const response = createResponse();
-    resolveMapTileMock.mockRejectedValue(
-      new InvalidMapTileRequestError('bad tile'),
-    );
-    await getServerMapTileHandler(request('0.png'), response.res);
-    expect(response.status).toHaveBeenCalledWith(400);
-    expect(response.json).toHaveBeenCalledWith({ error: 'bad tile' });
-
-    resolveMapTileMock.mockRejectedValue(new Error('read failed'));
-    await getServerMapTileHandler(request('0.png'), response.res);
-    expect(response.status).toHaveBeenCalledWith(500);
-    expect(response.json).toHaveBeenCalledWith({ error: 'read failed' });
-
-    resolveMapTileMock.mockRejectedValue('unknown');
-    await getServerMapTileHandler(request('0.png'), response.res);
-    expect(response.json).toHaveBeenCalledWith({ error: 'UNKNOWN_ERROR' });
-  });
 });
-
-function request(fileName: string) {
-  return {
-    params: { worldKey: 'new-world', z: '8', x: '0', fileName },
-  } as unknown as Request<{
-    worldKey: string;
-    z: string;
-    x: string;
-    fileName: string;
-  }>;
-}
 
 function createResponse() {
   const response = {
     setHeader: jest.fn(),
     json: jest.fn(),
     status: jest.fn(),
-    sendStatus: jest.fn(),
-    type: jest.fn(),
-    sendFile: jest.fn(),
   };
   for (const method of Object.values(response)) {
     method.mockReturnValue(response);

@@ -15,7 +15,7 @@ export interface ServerConfig {
   adminUid?: string;
   queryUrl: string
   mapUrl?: string;
-  backendUrl?: string; // Deprecated alias for mapUrl during frontend migration.
+  backendUrl?: string; // Deprecated game-backend URL retained for stored legacy records.
   data?: unknown;
   info?: unknown;
   status?: 'online' | 'offline' | 'unknown';

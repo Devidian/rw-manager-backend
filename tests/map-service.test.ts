@@ -1,82 +1,78 @@
-import { mkdtemp, mkdir, realpath, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {
-  InvalidMapTileRequestError,
-  getServerMap,
-  resolveMapTile,
-  toWorldKey,
-} from '../src/service/map-service.js';
+import { getServerMap } from '../src/service/map-service.js';
 
 describe('map service', () => {
-  test('normalizes world keys using the producer contract', () => {
-    expect(toWorldKey('New World')).toBe('new-world');
-    expect(toWorldKey(' . ')).toBe('world');
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    restoreEnv(originalEnv);
   });
 
-  test('returns unavailable for absent, malformed, and incompatible maps', async () => {
+  test('returns unavailable for absent, malformed, and incompatible renderer maps', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-absent-'));
-    await expect(getServerMap(root, 'New World')).resolves.toEqual({
+    await expect(getServerMap(root, 'New World', 'server-valid')).resolves.toEqual({
       available: false,
     });
 
-    const mapRoot = await createMapRoot(root);
+    const mapRoot = await createRendererMapRoot(root, 'server-valid');
     await writeFile(path.join(mapRoot, 'metadata.json'), '{broken');
-    await expect(getServerMap(root, 'New World')).resolves.toEqual({
+    await expect(getServerMap(root, 'New World', 'server-valid')).resolves.toEqual({
       available: false,
     });
 
     await writeFile(
       path.join(mapRoot, 'metadata.json'),
-      JSON.stringify(metadata({ schemaVersion: 3 })),
+      JSON.stringify(rendererMetadata({ schemaVersion: 5, serverId: 'server-valid' })),
     );
-    await expect(getServerMap(root, 'New World')).resolves.toEqual({
+    await expect(getServerMap(root, 'New World', 'server-valid')).resolves.toEqual({
       available: false,
     });
   });
 
-  test('returns unavailable without a configured backend tile root', async () => {
-    await expect(getServerMap(undefined, 'New World')).resolves.toEqual({
+  test('returns unavailable without a configured renderer tile root or server id', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-unconfigured-'));
+
+    await expect(getServerMap(undefined, 'New World', 'server-valid')).resolves.toEqual({
       available: false,
     });
-    await expect(
-      resolveMapTile('new-world', '8', '0', '0', undefined, 'New World'),
-    ).resolves.toBeNull();
+    await expect(getServerMap(root, 'New World', undefined)).resolves.toEqual({
+      available: false,
+    });
   });
 
-  test('returns unavailable when no Rising World server configuration exists', async () => {
-    const tileRoot = await mkdtemp(path.join(os.tmpdir(), 'rw-map-no-server-'));
-    const previousRoot = process.env.SERVER_ROOT;
-    process.env.SERVER_ROOT = path.join(tileRoot, 'missing-server');
-    await expect(getServerMap(tileRoot)).resolves.toEqual({ available: false });
-    if (previousRoot === undefined) delete process.env.SERVER_ROOT;
-    else process.env.SERVER_ROOT = previousRoot;
-  });
-
-  test('returns validated schema-5 metadata with the backend tile URL', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-valid-'));
-    const mapRoot = await createMapRoot(root);
+  test('returns renderer schema-6 metadata with the public tile root URL', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-renderer-'));
+    const serverId = 'server-f8e7fa9ca73fd4b4943db61a';
+    process.env.MAP_SERVER_ID = serverId;
+    process.env.MAP_TILE_ROOT_URL = 'https://tiles.example.com/maps/';
+    const mapRoot = await createRendererMapRoot(root, serverId);
     await writeFile(
       path.join(mapRoot, 'metadata.json'),
-      JSON.stringify(metadata()),
+      JSON.stringify(rendererMetadata({ serverId })),
     );
 
-    await expect(getServerMap(root, 'New World')).resolves.toEqual({
+    await expect(getServerMap(root, 'Ignored World')).resolves.toEqual({
       available: true,
       metadata: {
-        ...metadata(),
+        ...rendererMetadata({ serverId }),
+        worldKey: serverId,
+        worldName: 'New World',
         tileUrl:
-          '/api/data/server/map/tiles/new-world/{z}/{x}/{y}.png',
+          'https://tiles.example.com/maps/server-f8e7fa9ca73fd4b4943db61a/{z}/{x}/{y}.png',
       },
     });
   });
 
-  test('rejects schema-5 metadata with invalid contract fields', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-invalid-'));
-    const mapRoot = await createMapRoot(root);
+  test('rejects renderer metadata with invalid contract fields', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-renderer-invalid-'));
+    const serverId = 'server-valid';
+    const mapRoot = await createRendererMapRoot(root, serverId);
     const invalidValues = [
-      { worldKey: 'other-world' },
-      { worldName: 'Other World' },
+      { serverId: 'server-other' },
+      { tileUrl: '/other/{z}/{x}/{y}.png' },
+      { displayName: 7 },
       { tileSize: 0 },
       { chunkSize: 0 },
       { pixelsPerBlock: 0 },
@@ -94,85 +90,26 @@ describe('map service', () => {
     for (const invalid of invalidValues) {
       await writeFile(
         path.join(mapRoot, 'metadata.json'),
-        JSON.stringify(metadata(invalid)),
+        JSON.stringify(rendererMetadata({ serverId, ...invalid })),
       );
-      await expect(getServerMap(root, 'New World')).resolves.toEqual({
+      await expect(getServerMap(root, 'Ignored World', serverId)).resolves.toEqual({
         available: false,
       });
     }
   });
-
-  test('resolves existing positive and negative tile coordinates', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-tile-'));
-    const mapRoot = await createMapRoot(root);
-    await writeFile(
-      path.join(mapRoot, 'metadata.json'),
-      JSON.stringify(metadata()),
-    );
-    const tile = path.join(mapRoot, '8', '-2', '3.png');
-    await mkdir(path.dirname(tile), { recursive: true });
-    await writeFile(tile, 'png');
-
-    await expect(
-      resolveMapTile('new-world', '8', '-2', '3', root, 'New World'),
-    ).resolves.toBe(await realpath(tile));
-    await expect(
-      resolveMapTile('new-world', '8', '-2', '4', root, 'New World'),
-    ).resolves.toBeNull();
-  });
-
-  test('rejects invalid coordinates, unsupported zoom, and symlink escape', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-secure-'));
-    const mapRoot = await createMapRoot(root);
-    await writeFile(
-      path.join(mapRoot, 'metadata.json'),
-      JSON.stringify(metadata()),
-    );
-
-    await expect(
-      resolveMapTile('new-world', 'x', '0', '0', root, 'New World'),
-    ).rejects.toBeInstanceOf(InvalidMapTileRequestError);
-    await expect(
-      resolveMapTile('../new-world', '8', '0', '0', root, 'New World'),
-    ).rejects.toBeInstanceOf(InvalidMapTileRequestError);
-    await expect(
-      resolveMapTile(
-        'new-world',
-        '8',
-        '9007199254740992',
-        '0',
-        root,
-        'New World',
-      ),
-    ).rejects.toBeInstanceOf(InvalidMapTileRequestError);
-    await expect(
-      resolveMapTile('new-world', '9', '0', '0', root, 'New World'),
-    ).rejects.toBeInstanceOf(InvalidMapTileRequestError);
-    await expect(
-      resolveMapTile('other-world', '8', '0', '0', root, 'New World'),
-    ).resolves.toBeNull();
-
-    const outside = path.join(root, 'outside.png');
-    await writeFile(outside, 'outside');
-    await mkdir(path.join(mapRoot, '8', '0'), { recursive: true });
-    await symlink(outside, path.join(mapRoot, '8', '0', '0.png'));
-    await expect(
-      resolveMapTile('new-world', '8', '0', '0', root, 'New World'),
-    ).rejects.toBeInstanceOf(InvalidMapTileRequestError);
-  });
 });
 
-async function createMapRoot(root: string): Promise<string> {
-  const mapRoot = path.join(root, 'new-world');
+async function createRendererMapRoot(root: string, serverId: string): Promise<string> {
+  const mapRoot = path.join(root, serverId);
   await mkdir(mapRoot, { recursive: true });
   return mapRoot;
 }
 
-function metadata(overrides: Record<string, unknown> = {}) {
+function rendererMetadata(overrides: Record<string, unknown> = {}) {
   return {
-    schemaVersion: 5,
-    worldKey: 'new-world',
-    worldName: 'New World',
+    schemaVersion: 6,
+    serverId: 'server-f8e7fa9ca73fd4b4943db61a',
+    displayName: 'New World',
     tileSize: 256,
     chunkSize: 32,
     pixelsPerBlock: 4,
@@ -182,6 +119,14 @@ function metadata(overrides: Record<string, unknown> = {}) {
     generatedChunkBounds: { minX: 0, minZ: 0, maxX: 3, maxZ: 3 },
     generatedTileBounds: { minX: 0, minZ: 0, maxX: 31, maxZ: 31 },
     updatedAt: '2026-06-09T07:00:00Z',
+    tileUrl: '/server-f8e7fa9ca73fd4b4943db61a/{z}/{x}/{y}.png',
     ...overrides,
   };
+}
+
+function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in snapshot)) delete process.env[key];
+  }
+  Object.assign(process.env, snapshot);
 }

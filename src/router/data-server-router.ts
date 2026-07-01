@@ -5,7 +5,6 @@ import { getServerAdminListHandler } from '../handler/get-server-admin-list-hand
 import { getServerNameHandler } from '../handler/get-server-name-handler.js';
 import { listServerPluginsHandler } from '../handler/list-server-plugins-handler.js';
 import { getServerMapHandler } from '../handler/get-server-map-handler.js';
-import { getServerMapTileHandler } from '../handler/get-server-map-tile-handler.js';
 import { getMapLayerCapabilitiesHandler } from '../handler/get-map-layer-capabilities-handler.js';
 import { getMapClaimsHandler } from '../handler/get-map-claims-handler.js';
 import { getMapPlayersHandler } from '../handler/get-map-players-handler.js';
@@ -25,13 +24,18 @@ dataServerRouter.get('/server/map/layers', getMapLayerCapabilitiesHandler);
 dataServerRouter.get('/server/map/layers/claims', getMapClaimsHandler);
 dataServerRouter.get('/server/map/layers/players', getMapPlayersHandler);
 dataServerRouter.get('/server/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
+dataServerRouter.get('/server/:id/plugins', listServerPluginsHandler);
+dataServerRouter.get('/server/:id/map', getServerMapHandler);
+dataServerRouter.get('/server/:id/map/layers', getMapLayerCapabilitiesHandler);
+dataServerRouter.get('/server/:id/map/layers/claims', getMapClaimsHandler);
+dataServerRouter.get('/server/:id/map/layers/players', getMapPlayersHandler);
+dataServerRouter.get('/server/:id/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
 dataServerRouter.get(
   '/server/map/layers/marketplaces/:areaId/offers',
   getMapMarketplaceOffersHandler,
 );
 dataServerRouter.get(
-  '/server/map/tiles/:worldKey/:z/:x/:fileName',
-  getServerMapTileHandler,
+  '/server/:id/map/layers/marketplaces/:areaId/offers',
+  getMapMarketplaceOffersHandler,
 );
-
 export default dataServerRouter;

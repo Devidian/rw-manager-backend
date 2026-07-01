@@ -54,7 +54,7 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     adminUid: mapOptionalString(server.adminUid),
     queryUrl: server.queryUrl as ServerDto['queryUrl'],
     mapUrl: mapOptionalUrl(server.mapUrl) as ServerDto['mapUrl'],
-    backendUrl: mapOptionalUrl(server.backendUrl ?? server.mapUrl) as ServerDto['backendUrl'],
+    backendUrl: mapOptionalUrl(server.backendUrl) as ServerDto['backendUrl'],
     data: server.data,
     info: server.info,
     status: mapServerStatus(server),

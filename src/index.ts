@@ -4,30 +4,18 @@ import https from 'node:https';
 import http from 'node:http';
 import { defaultLogger } from './utils/logger.js';
 import api from './router/api-router.js';
-import { db } from './db/sqlite.js';
-import { AppConfig } from './utils/app-config.js';
-import { startMapRenderer } from './service/map-render-runtime.js';
-import { startMasterServerListSync } from './service/master-server-list-service.js';
+import { startManagerRefreshScheduler } from './service/manager-refresh-scheduler.js';
 import { bootstrapMongoDb, closeMongoDb } from './db/mongodb.js';
+import { getBackendInfo } from './service/backend-info-service.js';
 
 const main = async () => {
   const app = express();
   await bootstrapMongoDb();
-  const database = db;
-  if (AppConfig.enableData && !database.initializeIfAvailable()) {
-    defaultLogger.debug('Rising World player database unavailable; player data API disabled');
-  }
-  const mapRenderer = startMapRenderer();
-  if (mapRenderer) {
-    const stopMapRenderer = () => mapRenderer.stop();
-    process.once('SIGINT', stopMapRenderer);
-    process.once('SIGTERM', stopMapRenderer);
-  }
-  const masterServerListSync = startMasterServerListSync();
-  if (masterServerListSync) {
-    const stopMasterServerListSync = () => masterServerListSync.stop();
-    process.once('SIGINT', stopMasterServerListSync);
-    process.once('SIGTERM', stopMasterServerListSync);
+  const refreshScheduler = startManagerRefreshScheduler();
+  if (refreshScheduler) {
+    const stopRefreshScheduler = () => refreshScheduler.stop();
+    process.once('SIGINT', stopRefreshScheduler);
+    process.once('SIGTERM', stopRefreshScheduler);
   }
 
   app.use(express.json());
@@ -45,13 +33,7 @@ const main = async () => {
   });
 
   app.get('/', (req, res) => {
-    const services: string[] = [];
-    if (AppConfig.enableStorage) services.push('storage');
-    if (AppConfig.enableData) services.push('data');
-    if (AppConfig.enableAuth) services.push('auth');
-    if (AppConfig.forceAuth) services.push('forceAuth');
-
-    res.json({ ok: true, services, version: 1 });
+    res.json(getBackendInfo());
   });
 
   const useSSL =

@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { AppConfig } from '../utils/app-config.js';
+import { getBackendInfo } from '../service/backend-info-service.js';
 
 const router = Router();
 
-router.get('/', (_req, res) => res.json({ ok: true }));
+router.get('/', (_req, res) => res.json(getBackendInfo()));
 
 if (AppConfig.enableAuth) {
   const { authMiddleware } = await import('../service/auth-token-service.js');
