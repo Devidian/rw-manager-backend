@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.2.0...rw-manager-backend-v0.3.0) (2026-07-01)
+
+
+### Added
+
+* add GPS map marker layer API ([430c9f5](https://github.com/Devidian/rw-manager-backend/commit/430c9f5273640efff6ea1a4fffa88593acf65d2e))
+* add online map layer APIs ([d52c6fb](https://github.com/Devidian/rw-manager-backend/commit/d52c6fbb2a1741ad3c241c912ca93ab512c6da2e))
+* render map tiles with semantic colors ([8edc092](https://github.com/Devidian/rw-manager-backend/commit/8edc092f06e1cbcc0beb82db0d1d57d348e724b2))
+
+
+### Fixed
+
+* compile typia transforms deterministically ([1b2d9af](https://github.com/Devidian/rw-manager-backend/commit/1b2d9af6a2b96a2f0009f0c408a1334c21ad9722))
+* correct live map layer alignment ([9a94c74](https://github.com/Devidian/rw-manager-backend/commit/9a94c7407cb300766da79586df15f7f5311cdd3d))
+* read plugin metadata from release jars ([f3eb3d9](https://github.com/Devidian/rw-manager-backend/commit/f3eb3d9d862b732c9be713cba8619f7402788d39))
+* refine forest and arctic map colors ([2aad3d8](https://github.com/Devidian/rw-manager-backend/commit/2aad3d858a23ac8b367c7d888ae0b5cd433532e9))
+* render water and LOD vegetation colors ([16b283a](https://github.com/Devidian/rw-manager-backend/commit/16b283aa12a7158f6581beefdb20fdacb45b9c81))
+
+
+### Maintenance
+
+* **deps:** bump @babel/core ([1eac447](https://github.com/Devidian/rw-manager-backend/commit/1eac44788449f39fa5dea2a2e5287865cb5661c6))
+* **deps:** bump @babel/core from 7.29.0 to 7.29.7 in the npm_and_yarn group across 1 directory ([102b7b7](https://github.com/Devidian/rw-manager-backend/commit/102b7b7153291628f48bcf21487c6019d7c05e11))
+* **deps:** bump form-data from 4.0.5 to 4.0.6 in the npm_and_yarn group across 1 directory ([e2454eb](https://github.com/Devidian/rw-manager-backend/commit/e2454ebf7c3d6857ffb95152bc412da3ea79215c))
+* **deps:** bump form-data in the npm_and_yarn group across 1 directory ([b194c33](https://github.com/Devidian/rw-manager-backend/commit/b194c338f309c4749e949827c0723f0e007c9b2b))
+* **deps:** bump js-yaml from 3.14.2 to 3.15.0 in the npm_and_yarn group across 1 directory ([e7693ca](https://github.com/Devidian/rw-manager-backend/commit/e7693cad0a79f4cbe1082bb89544feb79fe1e781))
+* **deps:** bump js-yaml in the npm_and_yarn group across 1 directory ([c85ddf2](https://github.com/Devidian/rw-manager-backend/commit/c85ddf2c0bd735f90686a3be04309a16d613de55))
+* **deps:** bump the npm_and_yarn group across 1 directory with 9 updates ([59d7335](https://github.com/Devidian/rw-manager-backend/commit/59d7335c2eaa0a0f6ec7397222f904a4cb62e661))
+* **deps:** bump the npm_and_yarn group across 1 directory with 9 updates ([a95c7c0](https://github.com/Devidian/rw-manager-backend/commit/a95c7c03ab1ef093e8d520313895b9089338f0f8))
+
 ## [0.2.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.1.0...rw-manager-backend-v0.2.0) (2026-06-12)
 
 
