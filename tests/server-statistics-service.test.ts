@@ -81,6 +81,16 @@ describe('server statistics service', () => {
       from: '2026-06-02T00:00:00.000Z',
       to: '2026-06-01T00:00:00.000Z',
     })).rejects.toThrow('DATE_RANGE_INVALID');
+    await expect(getServerStatistics({
+      serverId: 'server-1',
+      from: '',
+    })).rejects.toThrow('FROM_INVALID');
+    await expect(getGlobalStatistics({
+      to: 42,
+    })).rejects.toThrow('TO_INVALID');
+    await expect(getGlobalStatistics({
+      from: 'not-a-date',
+    })).rejects.toThrow('FROM_INVALID');
   });
 });
 

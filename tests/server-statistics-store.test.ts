@@ -192,6 +192,47 @@ describe('server-statistics-store', () => {
     );
   });
 
+  test('uses Mongo global query path without date filters', async () => {
+    const mongoBucket = {
+      _id: 'mongo-id',
+      id: 'server-1:2026-06-25T12:00:00.000Z',
+      serverId: 'server-1',
+      hourStart: '2026-06-25T12:00:00.000Z',
+      sampleCount: 0,
+      onlineSampleCount: 0,
+      playerSampleTotal: 0,
+      maxPlayers: 0,
+      onlinePlayerUids: ['player-1', 'player-1'],
+      updatedAt: '2026-06-25T12:10:00.000Z',
+    };
+    const toArrayMock = jest.fn(async () => [mongoBucket]);
+    const sortMock = jest.fn().mockReturnValue({ toArray: toArrayMock });
+    const collections = {
+      serverStatistics: {
+        find: jest.fn().mockReturnValue({ sort: sortMock }),
+      },
+    };
+    getMongoCollectionsMock.mockReturnValue(collections);
+
+    await expect(store.listGlobalStatisticsBuckets({})).resolves.toEqual([
+      {
+        id: 'server-1:2026-06-25T12:00:00.000Z',
+        serverId: 'server-1',
+        hourStart: '2026-06-25T12:00:00.000Z',
+        sampleCount: 0,
+        onlineSampleCount: 0,
+        playerSampleTotal: 0,
+        maxPlayers: 0,
+        averagePlayers: 0,
+        availability: 0,
+        onlinePlayerUids: ['player-1'],
+        updatedAt: '2026-06-25T12:10:00.000Z',
+      },
+    ]);
+    expect(collections.serverStatistics.find).toHaveBeenCalledWith({}, { projection: { _id: 0 } });
+    expect(sortMock).toHaveBeenCalledWith({ hourStart: 1, serverId: 1 });
+  });
+
   test('lists global buckets sorted by hour and server with player union', async () => {
     await store.recordServerStatisticsSample({
       serverId: 'server-b',

@@ -154,6 +154,36 @@ describe('server data handlers with server id routes', () => {
       ],
     });
   });
+
+  test('lists cached players without server route and skips duplicate or invalid fallback players', async () => {
+    serverIdFromRequestMock.mockReturnValueOnce(undefined);
+    getCachedServerPlayersMock.mockReturnValueOnce([{ uid: 'db-1', name: 'Db Player' }]);
+    findServerByIdMock.mockResolvedValueOnce({
+      knownPlayers: [{ uid: 'db-1', name: 'Duplicate' }, { uid: '', name: 'Invalid' }],
+      onlinePlayers: 'invalid',
+    });
+
+    const response = createResponse();
+    await getAllPlayersHandler(request(), response.res);
+
+    expect(prepareServerRouteMock).not.toHaveBeenCalled();
+    expect(findServerByIdMock).not.toHaveBeenCalled();
+    expect(getCachedServerPlayersMock).toHaveBeenCalledWith(undefined);
+    expect(response.json).toHaveBeenCalledWith({
+      items: [{ uid: 'db-1', name: 'Db Player' }],
+    });
+  });
+
+  test('maps player list route errors to client errors', async () => {
+    prepareServerRouteMock.mockRejectedValueOnce(new Error('boom'));
+
+    const response = createResponse();
+    await getAllPlayersHandler(request(), response.res);
+
+    expect(getCachedServerPlayersMock).not.toHaveBeenCalled();
+    expect(response.status).toHaveBeenCalledWith(400);
+    expect(response.json).toHaveBeenCalledWith({ error: 'boom' });
+  });
 });
 
 function request() {
