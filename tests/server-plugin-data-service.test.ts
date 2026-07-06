@@ -78,6 +78,45 @@ describe('server plugin data service', () => {
     ]);
     expect(getCachedServerPlayers('server-1')[0]?.secondaryspawn).toBeUndefined();
   });
+
+  test('keeps cached player rows that only expose an id and Admin Utils field names', () => {
+    getCachedPluginDataMock.mockReturnValue({
+      data: {
+        'ozadminutils.playerlist': {
+          players: [
+            {
+              id: 7,
+              name: 'Map Only Player',
+              permissionGroup: 'admin',
+              lastTimeOnline: 3000,
+              totalPlayTime: 42,
+            },
+            {
+              id: 8,
+              UID: ' uid-8 ',
+              name: 'Upper UID Player',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(getCachedServerPlayers('server-1')).toEqual([
+      {
+        id: 7,
+        uid: '7',
+        name: 'Map Only Player',
+        permissiongroup: 'admin',
+        playtime: 42,
+        lastseen: 3000,
+      },
+      {
+        id: 8,
+        uid: 'uid-8',
+        name: 'Upper UID Player',
+      },
+    ]);
+  });
 });
 
 function player(overrides: Record<string, unknown> = {}) {

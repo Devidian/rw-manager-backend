@@ -7,6 +7,7 @@ export interface MapLayerCapabilities {
   recentPlayerDays: number;
   claims: boolean;
   claimSales: boolean;
+  renewZones: boolean;
   marketplace: boolean;
   shop: boolean;
   players: boolean;
@@ -27,6 +28,8 @@ export interface MapClaim {
   fillColor: string;
   forSale: boolean;
   salePrice?: number;
+  renewZone: boolean;
+  nextRenewalAt?: string;
   marketplace: boolean;
   shop: boolean;
 }

@@ -7,6 +7,11 @@ interface StoredServer {
   backendUrl?: string;
   public: boolean;
   userId?: string;
+  status?: 'online' | 'offline' | 'unknown';
+  lastChecked?: Date | string;
+  lastSeen?: Date | string;
+  blocked?: boolean;
+  blockedAt?: Date | string | null;
   createdAt: Date;
 }
 
@@ -149,6 +154,8 @@ describe('storage-service', () => {
     mapServerToDtoMock.mockReset().mockImplementation((server: StoredServer) => ({
       id: server.id,
       label: server.label,
+      blocked: server.blocked,
+      blockedAt: server.blockedAt,
     }));
     mapPublicUserToDtoMock.mockReset().mockImplementation((user: StoredUser) => ({
       id: user.id,
@@ -170,19 +177,61 @@ describe('storage-service', () => {
     global.fetch = originalFetch;
   });
 
-  test('listServers returns the shared server list independent of auth ownership', async () => {
+  test('listServers returns visible shared servers independent of auth ownership', async () => {
     state.servers = [
       createServerRecord({ id: 'a', public: false, userId: 'user-1' }),
       createServerRecord({ id: 'b', public: true, userId: 'user-2' }),
       createServerRecord({ id: 'c', public: false, userId: 'user-2' }),
+      createServerRecord({ id: 'blocked', blocked: true }),
+      createServerRecord({
+        id: 'stale-offline',
+        status: 'offline',
+        lastChecked: new Date('2026-06-01T00:00:00.000Z'),
+      }),
     ];
 
     process.env.ENABLE_AUTH = 'true';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-10T00:00:00.000Z'));
     await expect(storageService.listServers({ userId: 'user-1' })).resolves.toEqual([
-      { id: 'a', label: 'Server' },
-      { id: 'b', label: 'Server' },
-      { id: 'c', label: 'Server' },
+      { id: 'a', label: 'Server', blocked: undefined, blockedAt: undefined },
+      { id: 'b', label: 'Server', blocked: undefined, blockedAt: undefined },
+      { id: 'c', label: 'Server', blocked: undefined, blockedAt: undefined },
     ]);
+    await expect(storageService.listServers({ userId: 'user-1', userSteamId: 'steam-admin' })).resolves.toHaveLength(5);
+    jest.useRealTimers();
+  });
+
+  test('setServerBlocked is restricted to the super admin', async () => {
+    state.servers = [createServerRecord({ id: 'server-1' })];
+    updateServerMock.mockImplementation(async (id: string, patch: Partial<StoredServer>) => {
+      const server = state.servers.find((entry) => entry.id === id);
+      if (!server) return null;
+      Object.assign(server, patch);
+      return server;
+    });
+
+    await expect(storageService.setServerBlocked('server-1', true, 'steam-user')).rejects.toThrow('FORBIDDEN');
+
+    await expect(storageService.setServerBlocked('server-1', true, 'steam-admin')).resolves.toMatchObject({
+      id: 'server-1',
+      blocked: true,
+      blockedAt: expect.any(Date),
+    });
+    expect(updateServerMock).toHaveBeenLastCalledWith('server-1', {
+      blocked: true,
+      blockedAt: expect.any(Date),
+    });
+
+    await expect(storageService.setServerBlocked('server-1', false, 'steam-admin')).resolves.toMatchObject({
+      id: 'server-1',
+      blocked: false,
+      blockedAt: null,
+    });
+    expect(updateServerMock).toHaveBeenLastCalledWith('server-1', {
+      blocked: false,
+      blockedAt: null,
+    });
   });
 
   test('createServer validates required fields and duplicate query urls', async () => {

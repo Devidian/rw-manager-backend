@@ -33,6 +33,7 @@ describe('server-statistics-store', () => {
         sampledAt: new Date('2026-06-25T12:34:56.000Z'),
         online: true,
         playerCount: 2.8,
+        onlinePlayerUids: [' player-1 ', 'player-1', '', 'player-2'],
       }),
     ).resolves.toMatchObject({
       id: 'server-1:2026-06-25T12:00:00.000Z',
@@ -44,6 +45,7 @@ describe('server-statistics-store', () => {
       maxPlayers: 2,
       averagePlayers: 2,
       availability: 100,
+      onlinePlayerUids: ['player-1', 'player-2'],
     });
 
     await store.recordServerStatisticsSample({
@@ -51,6 +53,7 @@ describe('server-statistics-store', () => {
       sampledAt: new Date('2026-06-25T12:55:00.000Z'),
       online: false,
       playerCount: -1,
+      onlinePlayerUids: ['player-2', 'player-3'],
     });
     await store.recordServerStatisticsSample({
       serverId: 'server-2',
@@ -74,6 +77,7 @@ describe('server-statistics-store', () => {
         maxPlayers: 2,
         averagePlayers: 1,
         availability: 50,
+        onlinePlayerUids: ['player-1', 'player-2', 'player-3'],
       }),
     ]);
     expect(writeMock).toHaveBeenCalledTimes(3);
@@ -111,9 +115,10 @@ describe('server-statistics-store', () => {
       hourStart: '2026-06-25T12:00:00.000Z',
       sampleCount: 4,
       onlineSampleCount: 3,
-      playerSampleTotal: 10,
-      maxPlayers: 5,
-      updatedAt: '2026-06-25T12:10:00.000Z',
+        playerSampleTotal: 10,
+        maxPlayers: 5,
+        onlinePlayerUids: undefined,
+        updatedAt: '2026-06-25T12:10:00.000Z',
     };
     const sortMock = jest.fn().mockReturnValue({
       toArray: jest.fn(async () => [mongoBucket]),
@@ -133,10 +138,12 @@ describe('server-statistics-store', () => {
         sampledAt: new Date('2026-06-25T12:10:00.000Z'),
         online: true,
         playerCount: 4,
+        onlinePlayerUids: ['player-9', 'player-9'],
       }),
     ).resolves.toMatchObject({
       averagePlayers: 2.5,
       availability: 75,
+      onlinePlayerUids: [],
     });
 
     await expect(
@@ -159,6 +166,7 @@ describe('server-statistics-store', () => {
         },
         $inc: expect.objectContaining({ sampleCount: 1 }),
         $max: { maxPlayers: 4 },
+        $addToSet: { onlinePlayerUids: { $each: ['player-9'] } },
       }),
       { upsert: true },
     );
@@ -182,5 +190,37 @@ describe('server-statistics-store', () => {
       },
       { projection: { _id: 0 } },
     );
+  });
+
+  test('lists global buckets sorted by hour and server with player union', async () => {
+    await store.recordServerStatisticsSample({
+      serverId: 'server-b',
+      sampledAt: new Date('2026-06-25T12:10:00.000Z'),
+      online: true,
+      playerCount: 1,
+      onlinePlayerUids: ['b'],
+    });
+    await store.recordServerStatisticsSample({
+      serverId: 'server-a',
+      sampledAt: new Date('2026-06-25T12:20:00.000Z'),
+      online: true,
+      playerCount: 2,
+      onlinePlayerUids: ['a'],
+    });
+    await store.recordServerStatisticsSample({
+      serverId: 'server-a',
+      sampledAt: new Date('2026-06-25T13:00:00.000Z'),
+      online: true,
+      playerCount: 3,
+      onlinePlayerUids: ['c'],
+    });
+
+    await expect(store.listGlobalStatisticsBuckets({
+      from: new Date('2026-06-25T12:00:00.000Z'),
+      to: new Date('2026-06-25T13:00:00.000Z'),
+    })).resolves.toMatchObject([
+      { serverId: 'server-a', onlinePlayerUids: ['a'] },
+      { serverId: 'server-b', onlinePlayerUids: ['b'] },
+    ]);
   });
 });

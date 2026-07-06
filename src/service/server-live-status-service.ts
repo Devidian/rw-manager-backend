@@ -4,6 +4,7 @@ import type { ServerLiveStatusResponse } from '../dto/server-live-status-respons
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
+import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 
 const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 const QUERY_URL_PATTERN = /@queryUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
@@ -55,6 +56,15 @@ function playersFromPayload(payload: unknown): unknown[] | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const players = (payload as { players?: unknown }).players;
   return Array.isArray(players) ? players : undefined;
+}
+
+function onlinePlayerUids(players: unknown[] | undefined): string[] {
+  if (!players) return [];
+  return [...new Set(players.flatMap((player): string[] => {
+    if (!player || typeof player !== 'object') return [];
+    const uid = (player as { uid?: unknown; UID?: unknown }).uid ?? (player as { UID?: unknown }).UID;
+    return typeof uid === 'string' && uid.trim() ? [uid.trim()] : [];
+  }))];
 }
 
 function numberFromPayload(payload: unknown, key: string): number | undefined {
@@ -156,6 +166,10 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
   server.lastChecked = new Date(response.lastChecked);
   server.errorMessage = response.errorMessage;
   server.onlinePlayers = response.onlinePlayers;
+  server.knownPlayers = mergeKnownPlayers(
+    server.knownPlayers,
+    observedPlayersFromValues(response.onlinePlayers, response.lastChecked),
+  );
   changed = true;
 
   if (response.infoData !== undefined) {
@@ -177,6 +191,7 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
         lastChecked: server.lastChecked,
         errorMessage: server.errorMessage,
         onlinePlayers: server.onlinePlayers,
+        knownPlayers: server.knownPlayers,
         queryDataUpdatedAt: server.queryDataUpdatedAt,
       });
   }
@@ -267,6 +282,7 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
         sampledAt: new Date(response.lastChecked),
         online: response.status === 'online',
         playerCount: playerCountFromLiveStatus(response),
+        onlinePlayerUids: onlinePlayerUids(response.onlinePlayers),
       });
       cache.set(serverId, {
         expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs,

@@ -37,6 +37,7 @@ describe('map layer service', () => {
       recentPlayerDays: 7,
       claims: false,
       claimSales: false,
+      renewZones: false,
       marketplace: false,
       shop: false,
       players: false,
@@ -78,6 +79,7 @@ describe('map layer service', () => {
       expect.objectContaining({
         claims: true,
         claimSales: true,
+        renewZones: true,
         marketplace: true,
         shop: true,
         players: true,
@@ -119,6 +121,8 @@ describe('map layer service', () => {
         fillColor: '#00FFFF50',
         forSale: true,
         salePrice: 1000,
+        renewZone: true,
+        nextRenewalAt: '2026-01-02T00:00:00.000Z',
         marketplace: true,
         shop: true,
       },
@@ -136,6 +140,8 @@ describe('map layer service', () => {
         fillColor: '#DDEEFF00',
         forSale: false,
         salePrice: undefined,
+        renewZone: false,
+        nextRenewalAt: undefined,
         marketplace: false,
         shop: false,
       },
@@ -153,6 +159,8 @@ describe('map layer service', () => {
         fillColor: '#55667788',
         forSale: false,
         salePrice: undefined,
+        renewZone: false,
+        nextRenewalAt: undefined,
         marketplace: false,
         shop: false,
       },
@@ -206,6 +214,7 @@ describe('map layer service', () => {
       .mockResolvedValueOnce(response({ zones: [{ areaId: 'bad' }, { areaId: 4 }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 3 }] }))
       .mockResolvedValueOnce(response({ listings: [{ areaId: 3, price: 5, status: 'INACTIVE' }] }))
+      .mockResolvedValueOnce(response({ zones: [{ areaId: 'bad' }, { areaId: 3, nextRenewalAt: 0 }] }))
       .mockResolvedValueOnce(response({
         offers: [
           { id: 'bad' },
@@ -235,6 +244,7 @@ describe('map layer service', () => {
       areaId: 3,
       borderColor: '#0010E010',
       forSale: false,
+      renewZone: true,
       marketplace: false,
       shop: true,
     })]);
@@ -370,6 +380,14 @@ function mockPluginRouteResponses(): void {
         areaId: 42,
         price: 1000,
         status: 'ACTIVE',
+      }],
+    }))
+    .mockResolvedValueOnce(response({
+      zones: [{
+        areaId: 42,
+        nextRenewalAt: Date.parse('2026-01-02T00:00:00.000Z'),
+        borderColor: '#00C2A89C',
+        frameColor: '#00C2A8AA',
       }],
     }))
     .mockResolvedValueOnce(response({

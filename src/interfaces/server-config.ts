@@ -1,3 +1,5 @@
+import type { DbPlayer } from './game-player.js';
+
 export interface ServerConfig {
   id: string;
   label: string;
@@ -20,6 +22,9 @@ export interface ServerConfig {
   info?: unknown;
   status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
+  knownPlayers?: DbPlayer[];
+  blocked?: boolean;
+  blockedAt?: Date | string | null;
   lastChecked?: Date | string;
   errorMessage?: string;
   firstSeen?: Date | string;

@@ -10,6 +10,7 @@ interface StoredServer {
   info?: unknown;
   status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
+  knownPlayers?: Array<{ uid: string; name?: string; platform?: string | number; firstseen?: number; lastseen?: number }>;
   lastChecked?: Date | string;
   errorMessage?: string;
   queryDataUpdatedAt?: Date | string;
@@ -79,7 +80,7 @@ describe('server-live-status-service', () => {
         description: '@mapUrl:https://gs1.omega-zirkel.de/main.backend/',
       }))
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 9 }))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }] })) as typeof fetch;
+      .mockResolvedValueOnce(response({ players: [{ uid: '76561198000000000', name: 'Alice' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
@@ -90,7 +91,7 @@ describe('server-live-status-service', () => {
         contact: 'admin',
         description: '@mapUrl:https://gs1.omega-zirkel.de/main.backend/',
       },
-      onlinePlayers: [{ uid: 'player-1' }],
+      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
       lastChecked: expect.any(String),
     });
     await service.getServerLiveStatus('server-1');
@@ -103,8 +104,17 @@ describe('server-live-status-service', () => {
       label: 'Updated Shortname',
       mapUrl: 'https://gs1.omega-zirkel.de/main.backend/',
       status: 'online',
-      onlinePlayers: [{ uid: 'player-1' }],
+      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
       lastChecked: expect.any(Date),
+      knownPlayers: [
+        {
+          uid: '76561198000000000',
+          name: 'Alice',
+          platform: 'Steam',
+          firstseen: expect.any(Number),
+          lastseen: expect.any(Number),
+        },
+      ],
       data: { name: 'Server', playercount: 9 },
       info: {
         shortname: 'Updated Shortname',
@@ -258,7 +268,53 @@ describe('server-live-status-service', () => {
       onlineSampleCount: 1,
       playerSampleTotal: 2,
       maxPlayers: 2,
+      onlinePlayerUids: ['player-1', 'player-2'],
     });
+  });
+
+  test('merges observed online players into persisted known players', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-24T12:00:00.000Z'));
+    state.servers[0].knownPlayers = [
+      {
+        uid: 'standalone-player',
+        name: 'Old Name',
+        platform: 'Standalone',
+        firstseen: 1782300000,
+        lastseen: 1782300000,
+      },
+    ];
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({ shortname: 'Server' }))
+      .mockResolvedValueOnce(response({ name: 'Server', playercount: 2 }))
+      .mockResolvedValueOnce(response({
+        players: [
+          { uid: 'standalone-player', name: 'New Name' },
+          { UID: '76561198000000000', name: 'Steam Player' },
+        ],
+      })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await service.getServerLiveStatus('server-1');
+
+    expect(state.servers[0].knownPlayers).toEqual([
+      {
+        uid: 'standalone-player',
+        name: 'New Name',
+        platform: 'Standalone',
+        firstseen: 1782300000,
+        lastseen: 1782302400,
+      },
+      {
+        uid: '76561198000000000',
+        name: 'Steam Player',
+        platform: 'Steam',
+        firstseen: 1782302400,
+        lastseen: 1782302400,
+      },
+    ]);
+    jest.useRealTimers();
   });
 
   test('uses reachable query URL overrides from info descriptions', async () => {

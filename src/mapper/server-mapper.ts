@@ -61,6 +61,10 @@ export function mapServerToDto(server: ServerConfig): ServerDto {
     queryData: server.data,
     infoData: server.info,
     onlinePlayers: mapOptionalArray(server.onlinePlayers),
+    blocked: mapOptionalBoolean(server.blocked),
+    blockedAt: server.blockedAt
+      ? mapDateTimeString(server.blockedAt) as ServerDto['blockedAt']
+      : undefined,
     lastChecked: server.lastChecked
       ? mapDateTimeString(server.lastChecked) as ServerDto['lastChecked']
       : undefined,

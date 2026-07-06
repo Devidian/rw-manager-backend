@@ -39,6 +39,7 @@ export async function getMapLayerCapabilities(
     recentPlayerDays: AppConfig.mapRecentPlayerDays,
     claims: cachedMapClaims(entry) !== null,
     claimSales: cachedClaimSales(entry) !== null,
+    renewZones: cachedRenewZones(entry) !== null,
     marketplace: cachedAreaIds('ozmarketplace.zones', entry) !== null,
     shop: cachedAreaIds('ozshop.zones', entry) !== null,
     players: cachedMapPlayers(true, new Date(), entry) !== null,
@@ -89,6 +90,7 @@ function landClaimSettingsFromValues(values: Map<string, string>): LandClaimSett
     pvp: get('specialPvPAreaPermission', 'ozlc-special-pvp'),
     static: get('specialStaticAreaPermission', 'ozlc-special-static'),
     trap: get('specialTrapAreaPermission', 'ozlc-special-trap'),
+    renew: get('specialRenewAreaPermission', 'ozlc-special-renew'),
     special: get('specialAreaPermission', 'ozlc-special'),
     default: get('defaultAreaPermission', 'ozlc-guest'),
   };
@@ -109,6 +111,10 @@ function landClaimSettingsFromValues(values: Map<string, string>): LandClaimSett
     trap: {
       border: color('trapAreaBorderColor', '0xff91009c'),
       fill: color('trapAreaFrameColor', '0xff9100AA'),
+    },
+    renew: {
+      border: color('renewAreaBorderColor', '0x00C2A89c'),
+      fill: color('renewAreaFrameColor', '0x00C2A8AA'),
     },
     special: {
       border: color('specialAreaBorderColor', '0xFFFFFF10'),
@@ -134,6 +140,7 @@ function landClaimSettingsFromValues(values: Map<string, string>): LandClaimSett
       [permission.pvp]: colors.pvp,
       [permission.static]: colors.static,
       [permission.trap]: colors.trap,
+      [permission.renew]: colors.renew,
       [permission.special]: colors.special,
       [permission.default]: colors.other,
     },
@@ -154,8 +161,8 @@ function cachedLandClaimSettings(payload: Record<string, unknown>): LandClaimSet
 }
 
 function packedRgba(value: string, fallback: string): string {
-  const normalized = value.trim().replace(/^0x/i, '');
-  const fallbackNormalized = fallback.replace(/^0x/i, '');
+  const normalized = value.trim().replace(/^0x/i, '').replace(/^#/, '');
+  const fallbackNormalized = fallback.replace(/^0x/i, '').replace(/^#/, '');
   return `#${/^[0-9a-fA-F]{8}$/.test(normalized) ? normalized : fallbackNormalized}`.toUpperCase();
 }
 
@@ -288,6 +295,37 @@ function cachedClaimSales(entry?: PluginDataCacheEntry): Map<number, number> | n
   return result;
 }
 
+interface CachedRenewZone {
+  nextRenewalAt?: string;
+  borderColor?: string;
+  fillColor?: string;
+}
+
+function cachedRenewZones(entry?: PluginDataCacheEntry): Map<number, CachedRenewZone> | null {
+  const payload = entry?.data['ozlandclaim.renewZones'];
+  if (!payload || typeof payload !== 'object') return null;
+  const zones = (payload as { zones?: unknown }).zones;
+  if (!Array.isArray(zones)) return null;
+  const result = new Map<number, CachedRenewZone>();
+  for (const zone of zones) {
+    if (!zone || typeof zone !== 'object') continue;
+    const value = zone as Record<string, unknown>;
+    const { areaId, nextRenewalAt, borderColor, frameColor } = value;
+    if (
+      typeof areaId === 'number' &&
+      Number.isSafeInteger(areaId) &&
+      areaId > 0
+    ) {
+      result.set(areaId, {
+        nextRenewalAt: typeof nextRenewalAt === 'number' ? epochMilliseconds(nextRenewalAt) : undefined,
+        borderColor: typeof borderColor === 'string' ? packedRgba(borderColor, borderColor) : undefined,
+        fillColor: typeof frameColor === 'string' ? packedRgba(frameColor, frameColor) : undefined,
+      });
+    }
+  }
+  return result;
+}
+
 function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: string): MapClaim[] | null {
   const payload = entry?.data['ozadminutils.worldAreas'];
   if (!payload || typeof payload !== 'object') return null;
@@ -297,6 +335,7 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
 
   const settings = cachedLandClaimSettings(payloadRecord);
   const sales = cachedClaimSales(entry) ?? new Map<number, number>();
+  const renewZones = cachedRenewZones(entry) ?? new Map<number, CachedRenewZone>();
   const marketplaceAreaIds = cachedAreaIds('ozmarketplace.zones', entry) ?? new Set<number>();
   const shopAreaIds = cachedAreaIds('ozshop.zones', entry) ?? new Set<number>();
 
@@ -319,9 +358,15 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
     const geometry = normalizeCachedArea(startX, startZ, endX, endZ);
     if (!geometry) return [];
     const salePrice = sales.get(id);
+    const renewZone = renewZones.get(id);
     const isOwner = currentUserSteamId !== undefined && ownerUid === currentUserSteamId;
     const colors = salePrice !== undefined
       ? settings.sale
+      : renewZone
+        ? {
+            border: renewZone.borderColor ?? settings.colors[permission]?.border ?? settings.other.border,
+            fill: renewZone.fillColor ?? settings.colors[permission]?.fill ?? settings.other.fill,
+          }
       : isOwner
         ? settings.owner
         : settings.colors[permission] ?? settings.other;
@@ -336,6 +381,8 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
       fillColor: colors.fill,
       forSale: salePrice !== undefined,
       salePrice,
+      renewZone: renewZone !== undefined,
+      nextRenewalAt: renewZone?.nextRenewalAt,
       marketplace: marketplaceAreaIds.has(id),
       shop: shopAreaIds.has(id),
     }];
@@ -413,4 +460,9 @@ function normalizeCachedArea(
 function epochSeconds(value: number): string | undefined {
   if (!Number.isSafeInteger(value) || value <= 0) return undefined;
   return new Date(value * 1000).toISOString();
+}
+
+function epochMilliseconds(value: number): string | undefined {
+  if (!Number.isSafeInteger(value) || value <= 0) return undefined;
+  return new Date(value).toISOString();
 }

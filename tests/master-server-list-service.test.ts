@@ -12,6 +12,7 @@ interface StoredServer {
   info?: unknown;
   status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
+  knownPlayers?: Array<{ uid: string; name?: string; platform?: string | number; firstseen?: number; lastseen?: number }>;
   lastChecked?: Date | string;
   errorMessage?: string;
   firstSeen?: Date | string;
@@ -124,6 +125,14 @@ describe('master-server-list-service', () => {
       mapUrl: 'https://map.example.com/',
       status: 'online',
       onlinePlayers: [{ uid: 'player-1' }],
+      knownPlayers: [
+        {
+          uid: 'player-1',
+          platform: 'Standalone',
+          firstseen: expect.any(Number),
+          lastseen: expect.any(Number),
+        },
+      ],
       lastChecked: expect.any(Date),
       adminUid: '76561198000000000',
       data: { players: 3 },
@@ -144,6 +153,7 @@ describe('master-server-list-service', () => {
       maxPlayers: 3,
       averagePlayers: 3,
       availability: 100,
+      onlinePlayerUids: ['player-1'],
     });
   });
 
@@ -338,6 +348,14 @@ describe('master-server-list-service', () => {
       data: { players: 5 },
       status: 'online',
       onlinePlayers: [{ uid: 'player-5' }],
+      knownPlayers: [
+        {
+          uid: 'player-5',
+          platform: 'Standalone',
+          firstseen: expect.any(Number),
+          lastseen: expect.any(Number),
+        },
+      ],
       label: 'Short Server 1',
       adminUid: '76561198000000000',
       mapUrl: 'https://old-map.example/',

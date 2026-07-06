@@ -46,7 +46,7 @@ function normalizeDbPlayer(value: unknown): DbPlayer | null {
   if (!value || typeof value !== 'object') return null;
   const player = value as Record<string, unknown>;
   const id = numberOrNull(player.id);
-  const uid = stringOrNull(player.uid);
+  const uid = uidOrNull(player, id);
   const name = stringOrNull(player.name);
   const posx = numberOrNull(player.posx);
   const posy = numberOrNull(player.posy);
@@ -56,7 +56,7 @@ function normalizeDbPlayer(value: unknown): DbPlayer | null {
   const rotz = numberOrNull(player.rotz);
   const rotw = numberOrNull(player.rotw);
   const platform = platformOrNull(player.platform);
-  const permissiongroup = stringOrNull(player.permissiongroup);
+  const permissiongroup = stringOrNull(player.permissiongroup) ?? stringOrNull(player.permissionGroup);
   const health = numberOrNull(player.health);
   const hunger = numberOrNull(player.hunger);
   const thirst = numberOrNull(player.thirst);
@@ -67,66 +67,40 @@ function normalizeDbPlayer(value: unknown): DbPlayer | null {
   const lastspawn = numberOrNull(player.lastspawn);
   const lastusedmount = numberOrNull(player.lastusedmount);
   const lastusedvehicle = numberOrNull(player.lastusedvehicle);
-  const playtime = numberOrNull(player.playtime);
+  const playtime = numberOrNull(player.playtime) ?? numberOrNull(player.totalPlayTime);
   const firstseen = numberOrNull(player.firstseen);
-  const lastseen = numberOrNull(player.lastseen);
-  if (
-    id === null ||
-    uid === null ||
-    name === null ||
-    posx === null ||
-    posy === null ||
-    posz === null ||
-    rotx === null ||
-    roty === null ||
-    rotz === null ||
-    rotw === null ||
-    platform === null ||
-    permissiongroup === null ||
-    health === null ||
-    hunger === null ||
-    thirst === null ||
-    brokenbones === null ||
-    temperature === null ||
-    dead === null ||
-    flying === null ||
-    lastspawn === null ||
-    lastusedmount === null ||
-    lastusedvehicle === null ||
-    playtime === null ||
-    firstseen === null ||
-    lastseen === null
-  ) return null;
+  const lastseen = numberOrNull(player.lastseen) ?? numberOrNull(player.lastTimeOnline);
+  if (uid === null) return null;
   return {
-    id,
     uid,
-    name,
-    posx,
-    posy,
-    posz,
-    rotx,
-    roty,
-    rotz,
-    rotw,
-    platform,
-    permissiongroup,
-    health,
-    hunger,
-    thirst,
-    brokenbones,
-    temperature,
-    dead,
-    flying,
+    ...(id !== null ? { id } : {}),
+    ...(name !== null ? { name } : {}),
+    ...(posx !== null ? { posx } : {}),
+    ...(posy !== null ? { posy } : {}),
+    ...(posz !== null ? { posz } : {}),
+    ...(rotx !== null ? { rotx } : {}),
+    ...(roty !== null ? { roty } : {}),
+    ...(rotz !== null ? { rotz } : {}),
+    ...(rotw !== null ? { rotw } : {}),
+    ...(platform !== null ? { platform } : {}),
+    ...(permissiongroup !== null ? { permissiongroup } : {}),
+    ...(health !== null ? { health } : {}),
+    ...(hunger !== null ? { hunger } : {}),
+    ...(thirst !== null ? { thirst } : {}),
+    ...(brokenbones !== null ? { brokenbones } : {}),
+    ...(temperature !== null ? { temperature } : {}),
+    ...(dead !== null ? { dead } : {}),
+    ...(flying !== null ? { flying } : {}),
     ...(typeof player.clothes === 'string' ? { clothes: player.clothes } : {}),
     ...spawnField('primaryspawn', player.primaryspawn),
     ...spawnField('secondaryspawn', player.secondaryspawn),
     ...spawnField('tertiaryspawn', player.tertiaryspawn),
-    lastspawn,
-    lastusedmount,
-    lastusedvehicle,
-    playtime,
-    firstseen,
-    lastseen,
+    ...(lastspawn !== null ? { lastspawn } : {}),
+    ...(lastusedmount !== null ? { lastusedmount } : {}),
+    ...(lastusedvehicle !== null ? { lastusedvehicle } : {}),
+    ...(playtime !== null ? { playtime } : {}),
+    ...(firstseen !== null ? { firstseen } : {}),
+    ...(lastseen !== null ? { lastseen } : {}),
   };
 }
 
@@ -136,6 +110,12 @@ function numberOrNull(value: unknown): number | null {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+function uidOrNull(player: Record<string, unknown>, fallbackId: number | null): string | null {
+  const uid = stringOrNull(player.uid) ?? stringOrNull(player.UID);
+  if (uid !== null && uid.trim()) return uid.trim();
+  return fallbackId !== null ? String(fallbackId) : null;
 }
 
 function platformOrNull(value: unknown): string | number | null {

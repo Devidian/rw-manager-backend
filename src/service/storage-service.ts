@@ -115,9 +115,37 @@ function assertServerWriteAccess(
   });
 }
 
+function isSuperAdmin(steamId: string | undefined): boolean {
+  return !!AppConfig.superAdminId && steamId === AppConfig.superAdminId;
+}
+
+function dateMs(value: Date | string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? undefined : time;
+}
+
+function isUnavailableForSevenDays(server: ServerConfig, now = Date.now()): boolean {
+  if (server.status !== 'offline') return false;
+  const lastReachable = Math.max(
+    dateMs(server.lastSeen) ?? 0,
+    dateMs(server.lastChecked) ?? 0,
+    dateMs(server.queryDataUpdatedAt) ?? 0,
+  );
+  if (lastReachable <= 0) return false;
+  return now - lastReachable >= 7 * 24 * 60 * 60 * 1000;
+}
+
+function canListServer(server: ServerConfig, context: StorageRequestContext): boolean {
+  if (isSuperAdmin(context.userSteamId)) return true;
+  if (server.blocked === true) return false;
+  return !isUnavailableForSevenDays(server);
+}
+
 export async function listServers(context: StorageRequestContext): Promise<ServerDto[]> {
-  void context;
-  return (await listStoredServers()).map(mapServerToDto);
+  return (await listStoredServers())
+    .filter((server) => canListServer(server, context))
+    .map(mapServerToDto);
 }
 
 export async function createServer(
@@ -276,6 +304,28 @@ export async function unpinServer(
   await updateUser(user.id, { pinnedServers: user.pinnedServers });
 
   return mapPublicUserToDto(toPublicUser(user));
+}
+
+export async function setServerBlocked(
+  serverId: string,
+  blocked: boolean,
+  currentSteamId: string | undefined,
+): Promise<ServerDto> {
+  if (!isSuperAdmin(currentSteamId)) {
+    throw new Error('FORBIDDEN');
+  }
+  const current = await findServerById(serverId);
+  if (!current) {
+    throw new Error('SERVER_NOT_FOUND');
+  }
+  const server = await updateServer(current.id, {
+    blocked,
+    blockedAt: blocked ? new Date() : null,
+  });
+  if (!server) {
+    throw new Error('SERVER_NOT_FOUND');
+  }
+  return mapServerToDto(server);
 }
 
 export async function listUsers(currentSteamId: string): Promise<PublicUserDto[]> {

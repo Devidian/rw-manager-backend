@@ -76,6 +76,11 @@ const routeSpecs: RouteSpec[] = [
     pluginNames: ['ozlandclaim'],
     path: 'plugins/ozlandclaim/claim-sales',
   },
+  {
+    key: 'ozlandclaim.renewZones',
+    pluginNames: ['ozlandclaim'],
+    path: 'plugins/ozlandclaim/renew-zones',
+  },
 ];
 
 const QUERY_URL_PATTERN = /@queryUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;

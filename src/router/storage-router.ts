@@ -10,6 +10,7 @@ import { unpinServerHandler } from '../handler/unpin-server-handler.js';
 import { refreshServerQueryDataHandler } from '../handler/refresh-server-query-data-handler.js';
 import { getServerLiveStatusHandler } from '../handler/get-server-live-status-handler.js';
 import { getServerStatisticsHandler } from '../handler/get-server-statistics-handler.js';
+import { getGlobalStatisticsHandler } from '../handler/get-global-statistics-handler.js';
 import { getServerMapHandler } from '../handler/get-server-map-handler.js';
 import { listServerPluginsHandler } from '../handler/list-server-plugins-handler.js';
 import { getMapLayerCapabilitiesHandler } from '../handler/get-map-layer-capabilities-handler.js';
@@ -20,6 +21,7 @@ import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-o
 import { getAllPlayersHandler } from '../handler/get-all-players-handler.js';
 import { getServerConfigHandler } from '../handler/get-server-config-handler.js';
 import { getServerAdminListHandler } from '../handler/get-server-admin-list-handler.js';
+import { setServerBlockedHandler } from '../handler/set-server-blocked-handler.js';
 
 const storageRouter = Router();
 
@@ -28,6 +30,7 @@ const requireServerGetAuth =
   AppConfig.enableAuth && AppConfig.forceAuth ? requireAuth : noAuth;
 
 storageRouter.get('/server', requireServerGetAuth, listServersHandler);
+storageRouter.get('/statistics', requireServerGetAuth, getGlobalStatisticsHandler);
 storageRouter.post('/server/refresh-query-data', requireAuth, refreshServerQueryDataHandler);
 storageRouter.get('/server/:id/live', requireServerGetAuth, getServerLiveStatusHandler);
 storageRouter.get('/server/:id/statistics', requireServerGetAuth, getServerStatisticsHandler);
@@ -53,6 +56,7 @@ storageRouter.post('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAut
 storageRouter.delete('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, unpinServerHandler);
 
 if (AppConfig.superAdminId) {
+  storageRouter.patch('/server/:id/blocked', requireAuth, setServerBlockedHandler);
   storageRouter.get('/user', requireAuth, listUsersHandler);
   storageRouter.patch('/user/:id', requireAuth, updateStorageUserHandler);
   storageRouter.delete('/user/:id', requireAuth, deleteStorageUserHandler);

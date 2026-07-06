@@ -24,6 +24,8 @@ export interface ServerDto {
   queryData?: unknown;
   infoData?: unknown;
   onlinePlayers?: unknown[] | undefined;
+  blocked?: boolean | undefined;
+  blockedAt?: (string & Format<'date-time'>) | undefined;
   lastChecked?: (string & Format<'date-time'>) | undefined;
   errorMessage?: string | undefined;
   firstSeen?: (string & Format<'date-time'>) | undefined;

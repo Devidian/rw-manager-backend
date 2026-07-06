@@ -10,6 +10,7 @@ import type { MasterServerListEntry, MasterServerListResponse } from '../interfa
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
+import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
 const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
@@ -68,6 +69,15 @@ function playersFromPayload(payload: unknown): unknown[] | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
   const players = (payload as { players?: unknown }).players;
   return Array.isArray(players) ? players : undefined;
+}
+
+function onlinePlayerUids(players: unknown[] | undefined): string[] {
+  if (!players) return [];
+  return [...new Set(players.flatMap((player): string[] => {
+    if (!player || typeof player !== 'object') return [];
+    const uid = (player as { uid?: unknown; UID?: unknown }).uid ?? (player as { UID?: unknown }).UID;
+    return typeof uid === 'string' && uid.trim() ? [uid.trim()] : [];
+  }))];
 }
 
 function numberFromPayload(payload: unknown, key: string): number | undefined {
@@ -150,6 +160,10 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
     server.mapUrl = mapUrlFromInfo(info.data) ?? server.mapUrl;
   }
   server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
+  server.knownPlayers = mergeKnownPlayers(
+    server.knownPlayers,
+    observedPlayersFromValues(server.onlinePlayers, now),
+  );
   server.queryDataUpdatedAt = now;
 
   await recordServerStatisticsSample({
@@ -157,6 +171,7 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
     sampledAt: now,
     online: server.status === 'online',
     playerCount: playerCountFromQueryData(server.data, server.onlinePlayers),
+    onlinePlayerUids: onlinePlayerUids(server.onlinePlayers),
   });
 
   return data.ok || info.ok || playerlist.ok;

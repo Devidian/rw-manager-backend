@@ -21,9 +21,20 @@ function playerCountFromSample(sample: ServerStatisticsSample): number {
     : 0;
 }
 
+function uniqueStrings(values: unknown): string[] {
+  return Array.isArray(values)
+    ? [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim()))]
+    : [];
+}
+
+function normalizeSampleUids(sample: ServerStatisticsSample): string[] {
+  return uniqueStrings(sample.onlinePlayerUids);
+}
+
 function finalizeBucket(bucket: Omit<ServerStatisticsBucket, 'averagePlayers' | 'availability'>): ServerStatisticsBucket {
   return {
     ...bucket,
+    onlinePlayerUids: uniqueStrings(bucket.onlinePlayerUids),
     averagePlayers:
       bucket.sampleCount > 0
         ? bucket.playerSampleTotal / bucket.sampleCount
@@ -52,6 +63,7 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
   const hourStart = clampToHour(sample.sampledAt).toISOString();
   const id = bucketId(sample.serverId, hourStart);
   const playerCount = playerCountFromSample(sample);
+  const onlinePlayerUids = normalizeSampleUids(sample);
   const updatedAt = sample.sampledAt.toISOString();
   const mongo = getMongoCollections();
 
@@ -71,6 +83,9 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
         },
         $max: { maxPlayers: playerCount },
         $set: { updatedAt },
+        ...(onlinePlayerUids.length > 0
+          ? { $addToSet: { onlinePlayerUids: { $each: onlinePlayerUids } } }
+          : {}),
       },
       { upsert: true },
     );
@@ -90,6 +105,7 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
     onlineSampleCount: (existing?.onlineSampleCount ?? 0) + (sample.online ? 1 : 0),
     playerSampleTotal: (existing?.playerSampleTotal ?? 0) + playerCount,
     maxPlayers: Math.max(existing?.maxPlayers ?? 0, playerCount),
+    onlinePlayerUids: uniqueStrings([...(existing?.onlinePlayerUids ?? []), ...onlinePlayerUids]),
     updatedAt,
   });
 
@@ -136,4 +152,36 @@ export async function listServerStatisticsBuckets(params: {
       return true;
     })
     .sort((a, b) => a.hourStart.localeCompare(b.hourStart));
+}
+
+export async function listGlobalStatisticsBuckets(params: {
+  from?: Date;
+  to?: Date;
+}): Promise<ServerStatisticsBucket[]> {
+  const from = params.from?.toISOString();
+  const to = params.to?.toISOString();
+  const mongo = getMongoCollections();
+
+  if (mongo) {
+    const hourStart: Record<string, string> = {};
+    if (from) hourStart.$gte = from;
+    if (to) hourStart.$lt = to;
+    const query = Object.keys(hourStart).length > 0 ? { hourStart } : {};
+    const buckets = await mongo.serverStatistics
+      .find(query, { projection: { _id: 0 } })
+      .sort({ hourStart: 1, serverId: 1 })
+      .toArray();
+    return buckets.map((bucket) =>
+      finalizeBucket(stripMongoId(bucket as ServerStatisticsBucket & { _id?: unknown })),
+    );
+  }
+
+  return jsonBuckets()
+    .filter((bucket) => {
+      if (from && bucket.hourStart < from) return false;
+      if (to && bucket.hourStart >= to) return false;
+      return true;
+    })
+    .sort((a, b) => a.hourStart.localeCompare(b.hourStart) || a.serverId.localeCompare(b.serverId))
+    .map((bucket) => finalizeBucket(bucket));
 }

@@ -8,6 +8,7 @@ export interface ServerStatisticsBucket {
   maxPlayers: number;
   averagePlayers: number;
   availability: number;
+  onlinePlayerUids: string[];
   updatedAt: string;
 }
 
@@ -16,4 +17,5 @@ export interface ServerStatisticsSample {
   sampledAt: Date;
   online: boolean;
   playerCount: number;
+  onlinePlayerUids?: string[];
 }

@@ -6,6 +6,12 @@ const prepareServerRouteMock = jest.fn<() => Promise<{ id: string } | null>>();
 const serverRouteErrorMock = jest.fn<(error: unknown) => { status: number; error: string }>();
 const getCachedServerConfigMock = jest.fn<(serverId?: string) => Record<string, unknown>>();
 const getCachedServerAdminListMock = jest.fn<(serverId?: string) => string[]>();
+const getCachedServerPlayersMock = jest.fn<(serverId?: string) => Array<{ uid: string; name?: string }>>();
+const findServerByIdMock = jest.fn<(id: string) => Promise<{
+  onlinePlayers?: unknown[];
+  knownPlayers?: Array<{ uid: string; name?: string; platform?: string; lastseen?: number }>;
+  lastChecked?: string;
+} | undefined>>();
 const getCachedPluginDataMock = jest.fn<(serverId: string) => { plugins?: unknown[] } | undefined>();
 const getFirstCachedPluginDataMock = jest.fn<() => { plugins?: unknown[] } | undefined>();
 const getStoredServerMapMock = jest.fn<(serverId: string) => Promise<unknown>>();
@@ -22,6 +28,10 @@ jest.unstable_mockModule('../src/handler/server-route-context.js', () => ({
 jest.unstable_mockModule('../src/service/server-plugin-data-service.js', () => ({
   getCachedServerConfig: getCachedServerConfigMock,
   getCachedServerAdminList: getCachedServerAdminListMock,
+  getCachedServerPlayers: getCachedServerPlayersMock,
+}));
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({
+  findServerById: findServerByIdMock,
 }));
 jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   getCachedPluginData: getCachedPluginDataMock,
@@ -38,6 +48,7 @@ const { getServerConfigHandler } = await import('../src/handler/get-server-confi
 const { getServerAdminListHandler } = await import('../src/handler/get-server-admin-list-handler.js');
 const { listServerPluginsHandler } = await import('../src/handler/list-server-plugins-handler.js');
 const { getServerMapHandler } = await import('../src/handler/get-server-map-handler.js');
+const { getAllPlayersHandler } = await import('../src/handler/get-all-players-handler.js');
 
 describe('server data handlers with server id routes', () => {
   beforeEach(() => {
@@ -51,6 +62,12 @@ describe('server data handlers with server id routes', () => {
     ));
     getCachedServerConfigMock.mockReturnValue({ Server_Name: 'OZ' });
     getCachedServerAdminListMock.mockReturnValue(['steam-admin']);
+    getCachedServerPlayersMock.mockReturnValue([{ uid: 'db-1', name: 'Db Player' }]);
+    findServerByIdMock.mockResolvedValue({
+      knownPlayers: [{ uid: 'known-1', name: 'Known Offline', platform: 'Standalone', lastseen: 1782302400 }],
+      onlinePlayers: [{ uid: 'db-1' }, { uid: 'live-1', name: 'Live' }],
+      lastChecked: '2026-06-24T12:00:00.000Z',
+    });
     getCachedPluginDataMock.mockReturnValue({
       plugins: [
         { directory: 'OZShop', name: 'Shop', version: '1.0.0', valid: true },
@@ -114,6 +131,27 @@ describe('server data handlers with server id routes', () => {
     expect(getFirstCachedPluginDataMock).toHaveBeenCalledTimes(1);
     expect(response.json).toHaveBeenCalledWith({
       items: [{ directory: 'OZGPS', name: 'GPS', version: '1.0.0', valid: true }],
+    });
+  });
+
+  test('adds stored fallback and current live players to cached plugin player records', async () => {
+    const response = createResponse();
+    await getAllPlayersHandler(request(), response.res);
+
+    expect(getCachedServerPlayersMock).toHaveBeenCalledWith('server-1');
+    expect(findServerByIdMock).toHaveBeenCalledWith('server-1');
+    expect(response.json).toHaveBeenCalledWith({
+      items: [
+        { uid: 'db-1', name: 'Db Player' },
+        { uid: 'known-1', name: 'Known Offline', platform: 'Standalone', lastseen: 1782302400 },
+        {
+          uid: 'live-1',
+          name: 'Live',
+          platform: 'Standalone',
+          firstseen: 1782302400,
+          lastseen: 1782302400,
+        },
+      ],
     });
   });
 });
