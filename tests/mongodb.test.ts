@@ -77,6 +77,7 @@ function collection(name: string, count = 0) {
   return {
     name,
     createIndex: jest.fn(async () => undefined),
+    dropIndex: jest.fn(async () => undefined),
     estimatedDocumentCount: jest.fn(async () => count),
     bulkWrite: jest.fn(async () => undefined),
   };
@@ -144,7 +145,18 @@ describe('db/mongodb', () => {
       connectTimeoutMS: 5000,
     });
     expect(dbMock).toHaveBeenCalledWith('rw-manager-test');
+    expect(servers.dropIndex).toHaveBeenCalledWith('steamId_1');
     expect(servers.createIndex).toHaveBeenCalledWith({ id: 1 }, { unique: true });
+    expect(servers.createIndex).toHaveBeenCalledWith(
+      { ip: 1, port: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          ip: { $type: 'string' },
+          port: { $type: 'number' },
+        },
+      },
+    );
     expect(users.createIndex).toHaveBeenCalledWith({ username: 1 }, { unique: true });
     expect(statistics.createIndex).toHaveBeenCalledWith(
       { serverId: 1, hourStart: 1 },

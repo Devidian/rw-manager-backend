@@ -67,9 +67,24 @@ export async function closeMongoDb(): Promise<void> {
 }
 
 async function ensureIndexes(next: MongoCollections): Promise<void> {
+  try {
+    await next.servers.dropIndex('steamId_1');
+  } catch (error) {
+    if (!isIndexNotFoundError(error)) throw error;
+  }
+
   await Promise.all([
     next.servers.createIndex({ id: 1 }, { unique: true }),
-    next.servers.createIndex({ steamId: 1 }, { unique: true, sparse: true }),
+    next.servers.createIndex(
+      { ip: 1, port: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          ip: { $type: 'string' },
+          port: { $type: 'number' },
+        },
+      },
+    ),
     next.users.createIndex({ id: 1 }, { unique: true }),
     next.users.createIndex({ username: 1 }, { unique: true }),
     next.users.createIndex({ email: 1 }, { unique: true }),
@@ -77,6 +92,15 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
     next.serverStatistics.createIndex({ id: 1 }, { unique: true }),
     next.serverStatistics.createIndex({ serverId: 1, hourStart: 1 }, { unique: true }),
   ]);
+}
+
+function isIndexNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'codeName' in error &&
+    error.codeName === 'IndexNotFound'
+  );
 }
 
 async function seedMongoFromJson(next: MongoCollections): Promise<void> {

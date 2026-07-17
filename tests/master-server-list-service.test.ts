@@ -3,6 +3,8 @@ import { jest } from '@jest/globals';
 interface StoredServer {
   id: string;
   steamId?: string;
+  ip?: string;
+  port?: number;
   label: string;
   queryUrl: string;
   mapUrl?: string;
@@ -162,6 +164,8 @@ describe('master-server-list-service', () => {
       {
         id: '90285195499304980',
         steamId: '90285195499304980',
+        ip: '127.0.0.1',
+        port: 4255,
         label: 'Old',
         queryUrl: 'http://old.example.com',
         queryDataUpdatedAt: new Date().toISOString(),
@@ -173,7 +177,7 @@ describe('master-server-list-service', () => {
     global.fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       text: async () =>
-        '{"successful":true,"data":[{"steamid":90285195499304980,"name":"New","ip":"127.0.0.1","port":4255}]}',
+        '{"successful":true,"data":[{"steamid":90285195499304981,"name":"New","ip":"127.0.0.1","port":4255}]}',
     }) as typeof fetch;
 
     await expect(
@@ -188,6 +192,7 @@ describe('master-server-list-service', () => {
     expect(state.servers).toHaveLength(1);
     expect(state.servers[0]).toMatchObject({
       id: 'server-f8e7fa9ca73fd4b4943db61a',
+      steamId: '90285195499304981',
       name: 'New',
       label: 'Old',
       queryUrl: 'http://127.0.0.1:4254',

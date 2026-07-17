@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
-  findServerByMasterIdentity,
+  findServerByMasterEndpoint,
   listServers,
   replacePinnedServerId,
+  saveMasterServer,
   saveServer,
 } from '../db/manager-store.js';
 import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
@@ -218,16 +219,17 @@ async function runMasterServerListRefresh(options: {
     let refreshed = 0;
 
     for (const entry of entries) {
-      const steamId = steamIdOrUndefined(entry.steamid);
       const queryUrl = queryUrlFor(entry);
       const serverId = serverIdFor(entry);
       if (!serverId || !queryUrl) continue;
+      const ip = stringOrUndefined(entry.ip);
+      const port = numberOrUndefined(entry.port);
+      if (!ip || port === undefined) continue;
 
-      let server = await findServerByMasterIdentity({ serverId, steamId });
+      let server = await findServerByMasterEndpoint(ip, port);
       if (!server) {
         server = {
           id: serverId,
-          steamId,
           label: serverId,
           queryUrl,
           public: true,
@@ -246,7 +248,7 @@ async function runMasterServerListRefresh(options: {
       if (options.refreshQueryData && await refreshQueryData(server, now)) {
         refreshed += 1;
       }
-      await saveServer(server);
+      await saveMasterServer(server);
     }
 
     const result = { fetched: entries.length, inserted, updated, refreshed };

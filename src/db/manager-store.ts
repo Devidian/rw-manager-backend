@@ -107,26 +107,16 @@ export async function findServerById(id: string): Promise<ServerConfig | undefin
   return db.data.servers.find((server) => server.id === id);
 }
 
-export async function findServerByMasterIdentity(params: {
-  serverId: string;
-  steamId?: string;
-}): Promise<ServerConfig | undefined> {
+export async function findServerByMasterEndpoint(
+  ip: string,
+  port: number,
+): Promise<ServerConfig | undefined> {
   const mongo = getMongoCollections();
   if (mongo) {
-    const server = await mongo.servers.findOne({
-      $or: [
-        { id: params.serverId },
-        ...(params.steamId ? [{ steamId: params.steamId }, { id: params.steamId }] : []),
-      ],
-    }, { projection: { _id: 0 } });
+    const server = await mongo.servers.findOne({ ip, port }, { projection: { _id: 0 } });
     return server ? stripMongoId(server) as ServerConfig : undefined;
   }
-  return db.data.servers.find(
-    (candidate) =>
-      candidate.id === params.serverId ||
-      (params.steamId !== undefined &&
-        (candidate.steamId === params.steamId || candidate.id === params.steamId)),
-  );
+  return db.data.servers.find((candidate) => candidate.ip === ip && candidate.port === port);
 }
 
 export async function addServer(
@@ -156,6 +146,27 @@ export async function saveServer(server: ServerConfig): Promise<ServerConfig> {
     return server;
   }
   const index = db.data.servers.findIndex((entry) => entry.id === server.id);
+  if (index >= 0) {
+    db.data.servers[index] = server;
+  } else {
+    db.data.servers.push(server);
+  }
+  await db.write();
+  return server;
+}
+
+export async function saveMasterServer(server: ServerConfig): Promise<ServerConfig> {
+  if (!server.ip || !Number.isFinite(server.port)) return saveServer(server);
+
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await mongo.servers.replaceOne({ ip: server.ip, port: server.port }, server, { upsert: true });
+    return server;
+  }
+
+  const index = db.data.servers.findIndex(
+    (entry) => entry.ip === server.ip && entry.port === server.port,
+  );
   if (index >= 0) {
     db.data.servers[index] = server;
   } else {

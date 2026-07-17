@@ -7,6 +7,8 @@ type ServerRecord = {
   public: boolean;
   userId?: string;
   steamId?: string;
+  ip?: string;
+  port?: number;
   createdAt: Date;
 };
 
@@ -211,14 +213,17 @@ describe('manager-store', () => {
     await expect(store.listServers()).resolves.toEqual([
       expect.not.objectContaining({ _id: expect.anything() }),
     ]);
-    await expect(store.findServerByMasterIdentity({
-      serverId: 'mongo-server',
-      steamId: 'steam-server',
-    })).resolves.toMatchObject({ id: 'mongo-server' });
+    await expect(store.findServerByMasterEndpoint('127.0.0.1', 4255)).resolves.toMatchObject({
+      id: 'mongo-server',
+    });
     await expect(store.findServerById('mongo-server')).resolves.toMatchObject({
       id: 'mongo-server',
     });
-    await store.saveServer(server({ id: 'mongo-server' }));
+    await store.saveMasterServer(server({
+      id: 'mongo-server',
+      ip: '127.0.0.1',
+      port: 4255,
+    }));
     await store.removeServer('mongo-server');
 
     await expect(store.listUsers()).resolves.toEqual([
@@ -231,7 +236,7 @@ describe('manager-store', () => {
     await expect(store.deleteUserAndOwnedServers('mongo-user')).resolves.toBe(true);
 
     expect(collections.servers.replaceOne).toHaveBeenCalledWith(
-      { id: 'mongo-server' },
+      { ip: '127.0.0.1', port: 4255 },
       expect.objectContaining({ id: 'mongo-server' }),
       { upsert: true },
     );

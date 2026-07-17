@@ -116,6 +116,12 @@ The format follows Common Changelog principles and the project uses Semantic Ver
 
 ## Unreleased
 
+### Fixed
+
+* identify master-list servers by their IP and port instead of the transient
+  anonymous Steam server ID, and replace the server Steam-ID index with a
+  unique endpoint index.
+
 ### Added
 
 * Project-level agent rules aligned with the current TypeScript, Docker, Yarn, and release workflow.
