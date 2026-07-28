@@ -7,7 +7,14 @@ export function serverIdFromRequest(req: Request): string | undefined {
   return typeof raw === 'string' && raw.trim() ? raw : undefined;
 }
 
-export async function prepareServerRoute(req: Request): Promise<ServerConfig | undefined> {
+export interface ServerRouteOptions {
+  pluginDataMaximumAgeMs?: number;
+}
+
+export async function prepareServerRoute(
+  req: Request,
+  options: ServerRouteOptions = {},
+): Promise<ServerConfig | undefined> {
   const serverId = serverIdFromRequest(req);
   if (!serverId) return undefined;
   const [{ findServerById }, { ensurePluginDataForServer }] = await Promise.all([
@@ -16,7 +23,11 @@ export async function prepareServerRoute(req: Request): Promise<ServerConfig | u
   ]);
   const server = await findServerById(serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
-  await ensurePluginDataForServer(server);
+  if (options.pluginDataMaximumAgeMs === undefined) {
+    await ensurePluginDataForServer(server);
+  } else {
+    await ensurePluginDataForServer(server, options.pluginDataMaximumAgeMs);
+  }
   return server;
 }
 

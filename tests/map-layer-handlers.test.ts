@@ -26,7 +26,7 @@ jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({
   getUserFromBearerToken: getUserFromBearerTokenMock,
 }));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({
-  AppConfig: { mapRecentPlayerDays: 7 },
+  AppConfig: { mapRecentPlayerDays: 7, mapPlayerLayerCacheTtlMs: 30000 },
 }));
 
 const { getMapPlayersHandler } = await import('../src/handler/get-map-players-handler.js');

@@ -55,4 +55,21 @@ describe('server route context', () => {
     expect(serverRouteError(new Error('boom'))).toEqual({ status: 500, error: 'boom' });
     expect(serverRouteError('unknown')).toEqual({ status: 500, error: 'UNKNOWN_ERROR' });
   });
+
+  test('uses a route-specific plugin data maximum age when requested', async () => {
+    const server: ServerConfig = {
+      id: 'server-1',
+      label: 'Server',
+      public: true,
+      createdAt: new Date(),
+    };
+    findServerByIdMock.mockResolvedValueOnce(server);
+    ensurePluginDataForServerMock.mockResolvedValueOnce(undefined);
+
+    await expect(prepareServerRoute(
+      { params: { id: 'server-1' } } as unknown as Request,
+      { pluginDataMaximumAgeMs: 30000 },
+    )).resolves.toBe(server);
+    expect(ensurePluginDataForServerMock).toHaveBeenCalledWith(server, 30000);
+  });
 });

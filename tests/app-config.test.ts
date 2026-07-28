@@ -36,6 +36,7 @@ describe('AppConfig', () => {
     expect(AppConfig.playerListTimeoutMs).toBe(5000);
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(60000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(300000);
+    expect(AppConfig.mapPlayerLayerCacheTtlMs).toBe(30000);
     expect(AppConfig.masterServerListTimeoutMs).toBe(8000);
     expect(AppConfig.defaultUserRole).toBe('user');
     expect(AppConfig.superAdminId).toBe('');
@@ -62,6 +63,7 @@ describe('AppConfig', () => {
     process.env.PLAYERLIST_TIMEOUT_MS = '2000';
     process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '30000';
     process.env.PLUGIN_DATA_CACHE_TTL_MS = '120000';
+    process.env.MAP_PLAYER_LAYER_CACHE_TTL_MS = '45000';
     process.env.MASTER_SERVER_LIST_TIMEOUT_MS = '12000';
     process.env.DEFAULT_USER_ROLE = 'admin';
     process.env.SUPER_ADMIN_ID = 'steam-admin';
@@ -86,6 +88,7 @@ describe('AppConfig', () => {
     expect(AppConfig.playerListTimeoutMs).toBe(2000);
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(30000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(120000);
+    expect(AppConfig.mapPlayerLayerCacheTtlMs).toBe(45000);
     expect(AppConfig.masterServerListTimeoutMs).toBe(12000);
     expect(AppConfig.defaultUserRole).toBe('admin');
     expect(AppConfig.superAdminId).toBe('steam-admin');
@@ -105,6 +108,7 @@ describe('AppConfig', () => {
     process.env.PLAYERLIST_TIMEOUT_MS = '999';
     process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '9999';
     process.env.PLUGIN_DATA_CACHE_TTL_MS = '59999';
+    process.env.MAP_PLAYER_LAYER_CACHE_TTL_MS = '4999';
     process.env.MASTER_SERVER_LIST_TIMEOUT_MS = '999';
 
     expect(AppConfig.defaultUserRole).toBe('user');
@@ -118,6 +122,7 @@ describe('AppConfig', () => {
     expect(AppConfig.playerListTimeoutMs).toBe(5000);
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(60000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(300000);
+    expect(AppConfig.mapPlayerLayerCacheTtlMs).toBe(30000);
     expect(AppConfig.masterServerListTimeoutMs).toBe(8000);
   });
 });

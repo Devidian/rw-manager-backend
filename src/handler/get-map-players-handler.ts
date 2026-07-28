@@ -9,7 +9,9 @@ import { prepareServerRoute, serverRouteError } from './server-route-context.js'
 export async function getMapPlayersHandler(req: Request, res: Response) {
   try {
     const user = await getUserFromBearerToken(req.header('authorization'));
-    const server = await prepareServerRoute(req);
+    const server = await prepareServerRoute(req, {
+      pluginDataMaximumAgeMs: AppConfig.mapPlayerLayerCacheTtlMs,
+    });
     const items = server
       ? await getMapPlayers(user?.role === 'admin', undefined, new Date(), server.id)
       : await getMapPlayers(user?.role === 'admin');

@@ -118,6 +118,14 @@ export class AppConfig {
       Number.MAX_SAFE_INTEGER,
     );
   }
+  static get mapPlayerLayerCacheTtlMs(): number {
+    return AppConfig.boundedInteger(
+      env.MAP_PLAYER_LAYER_CACHE_TTL_MS,
+      30000,
+      5000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
   static get liveQueryProxyCacheTtlMs(): number {
     return AppConfig.boundedInteger(
       env.LIVE_QUERY_PROXY_CACHE_TTL_MS,

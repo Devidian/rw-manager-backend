@@ -171,9 +171,10 @@ function normalizedUrl(value: string | undefined): string | undefined {
 
 export async function ensurePluginDataForServer(
   server: ServerConfig,
+  maximumAgeMs?: number,
 ): Promise<PluginDataCacheEntry | undefined> {
   const cached = getCachedPluginData(server.id);
-  if (cached) return cached;
+  if (cached && (maximumAgeMs === undefined || Date.now() - cached.refreshedAtMs < maximumAgeMs)) return cached;
   return (await refreshPluginDataForServer(server)).entry;
 }
 
