@@ -117,6 +117,21 @@ POST /api/storage/server/refresh-query-data
 Map layer APIs prefer cached plugin-route data. Transitional local SQLite
 fallbacks remain only for migration parity checks.
 
+While a frontend map is open it connects to the authenticated, server-scoped
+WebSocket endpoint below. The first client frame selects exactly one server;
+the backend then refreshes only servers with active subscribers and emits
+small layer invalidations. REST map routes remain the payload source and the
+fallback when WebSocket upgrades are unavailable.
+
+```text
+WS /api/storage/map-live
+MAP_LIVE_REFRESH_INTERVAL_MS=2000
+```
+
+Reverse proxies must forward HTTP Upgrade and Connection headers for this
+path. `FORCE_AUTH=true` requires the existing bearer token in the initial
+subscription frame; tokens are never placed in the WebSocket URL.
+
 ## Runtime Baseline
 
 * Node.js 24 LTS

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+* add authenticated server-scoped live map layer WebSocket invalidations
+* refresh plugin map data only while the corresponding server has subscribers
+
 ## [0.5.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.4.0...rw-manager-backend-v0.5.0) (2026-07-06)
 
 

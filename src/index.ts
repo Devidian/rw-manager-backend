@@ -7,6 +7,7 @@ import api from './router/api-router.js';
 import { startManagerRefreshScheduler } from './service/manager-refresh-scheduler.js';
 import { bootstrapMongoDb, closeMongoDb } from './db/mongodb.js';
 import { getBackendInfo } from './service/backend-info-service.js';
+import { attachMapLiveService } from './service/map-live-service.js';
 
 const main = async () => {
   const app = express();
@@ -46,12 +47,20 @@ const main = async () => {
         cert: readFileSync('./cert/server.crt'),
       };
 
+  const server = !useSSL
+    ? http.createServer(app)
+    : https.createServer(options, app);
+  const mapLiveService = attachMapLiveService(server);
+  const stopMapLiveService = () => mapLiveService.close();
+  process.once('SIGINT', stopMapLiveService);
+  process.once('SIGTERM', stopMapLiveService);
+
   if (!useSSL) {
-    http.createServer(app).listen(3000, () => {
+    server.listen(3000, () => {
       defaultLogger.log(`HTTP server running on http://localhost:3000`);
     });
   } else
-    https.createServer(options, app).listen(3000, () => {
+    server.listen(3000, () => {
       defaultLogger.log(`HTTPS server running on https://localhost:3000`);
     });
 };

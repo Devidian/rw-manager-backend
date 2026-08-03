@@ -126,6 +126,14 @@ export class AppConfig {
       Number.MAX_SAFE_INTEGER,
     );
   }
+  static get mapLiveRefreshIntervalMs(): number {
+    return AppConfig.boundedInteger(
+      env.MAP_LIVE_REFRESH_INTERVAL_MS,
+      2000,
+      1000,
+      60000,
+    );
+  }
   static get liveQueryProxyCacheTtlMs(): number {
     return AppConfig.boundedInteger(
       env.LIVE_QUERY_PROXY_CACHE_TTL_MS,
