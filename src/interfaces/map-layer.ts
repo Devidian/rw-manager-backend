@@ -64,3 +64,11 @@ export interface MapMarketplaceOffer {
   sellerName: string;
   createdAt: string;
 }
+
+export interface MapLiveSnapshot {
+  capabilities: MapLayerCapabilities;
+  claims: MapClaim[];
+  players: MapPlayer[];
+  gpsGlobalMarkers: MapGpsMarker[];
+  marketplaceOffers: Record<string, MapMarketplaceOffer[]>;
+}

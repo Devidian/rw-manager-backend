@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
@@ -6,6 +5,15 @@ import { findServerById } from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { getUserFromBearerToken } from './auth-token-service.js';
+import type {
+  MapClaim,
+  MapGpsMarker,
+  MapLayerCapabilities,
+  MapLiveSnapshot,
+  MapMarketplaceOffer,
+  MapPlayer,
+} from '../interfaces/map-layer.js';
+import { mapLiveSnapshotFromEntry } from './map-layer-service.js';
 import {
   refreshPluginDataForServer,
   type PluginDataCacheEntry,
@@ -26,11 +34,32 @@ interface SubscribeMessage {
 }
 
 interface ServerSubscription {
-  sockets: Set<WebSocket>;
-  fingerprints?: Record<MapLiveLayer, string>;
+  subscribers: Map<WebSocket, MapLiveSubscriber>;
   sequence: number;
   timer?: ReturnType<typeof setTimeout>;
   running: boolean;
+}
+
+interface MapLiveSubscriber {
+  userSteamId?: string;
+  snapshot?: MapLiveSnapshot;
+}
+
+export interface MapEntityDelta<T, TId extends string | number> {
+  upserted: T[];
+  removedIds: TId[];
+}
+
+export interface MapMarketplaceAreaDelta extends MapEntityDelta<MapMarketplaceOffer, number> {
+  areaId: number;
+}
+
+export interface MapLiveChanges {
+  capabilities?: { value: MapLayerCapabilities };
+  claims?: MapEntityDelta<MapClaim, number>;
+  players?: MapEntityDelta<MapPlayer, string>;
+  gpsGlobalMarkers?: MapEntityDelta<MapGpsMarker, number>;
+  marketplaceOffers?: { areas: MapMarketplaceAreaDelta[] };
 }
 
 export interface MapLiveService {
@@ -41,10 +70,12 @@ const LIVE_PATH = '/api/storage/map-live';
 const MAX_MESSAGE_BYTES = 8192;
 const MAX_BUFFERED_BYTES = 65536;
 const SUBSCRIBE_TIMEOUT_MS = 10000;
+const HEARTBEAT_INTERVAL_MS = 25000;
 
 export function attachMapLiveService(server: HttpServer): MapLiveService {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   const subscriptions = new Map<string, ServerSubscription>();
+  const aliveSockets = new WeakSet<WebSocket>();
 
   const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (requestUrlPath(request) !== LIVE_PATH) {
@@ -58,18 +89,20 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
   server.on('upgrade', upgrade);
 
   webSocketServer.on('connection', (socket) => {
+    aliveSockets.add(socket);
+    socket.on('pong', () => aliveSockets.add(socket));
     let subscribedServerId: string | undefined;
     const subscribeTimeout = setTimeout(() => closeWithError(socket, 'subscribe_timeout'), SUBSCRIBE_TIMEOUT_MS);
 
     socket.once('message', (data) => {
       void parseAndAuthorizeSubscription(data)
-        .then(async (message) => {
+        .then(async ({ message, userSteamId }) => {
           const serverConfig = await findServerById(message.serverId);
           if (!serverConfig) throw new MapLiveProtocolError('server_not_found');
           clearTimeout(subscribeTimeout);
           subscribedServerId = message.serverId;
           const subscription = subscriptionFor(subscriptions, message.serverId);
-          subscription.sockets.add(socket);
+          subscription.subscribers.set(socket, { userSteamId });
           send(socket, {
             type: 'subscribed',
             schemaVersion: 1,
@@ -93,12 +126,18 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
     });
   });
 
+  const heartbeat = setInterval(() => {
+    runMapLiveHeartbeat(webSocketServer.clients, aliveSockets);
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeat.unref();
+
   return {
     close: () => {
       server.off('upgrade', upgrade);
+      clearInterval(heartbeat);
       for (const subscription of subscriptions.values()) {
         if (subscription.timer) clearTimeout(subscription.timer);
-        for (const socket of subscription.sockets) socket.close(1001, 'server_shutdown');
+        for (const socket of subscription.subscribers.keys()) socket.close(1001, 'server_shutdown');
       }
       subscriptions.clear();
       webSocketServer.close();
@@ -106,15 +145,32 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
   };
 }
 
-async function parseAndAuthorizeSubscription(data: RawData): Promise<SubscribeMessage> {
+export function runMapLiveHeartbeat(
+  sockets: Iterable<WebSocket>,
+  aliveSockets: WeakSet<WebSocket>,
+): void {
+  for (const socket of sockets) {
+    if (socket.readyState !== WebSocket.OPEN) continue;
+    if (!aliveSockets.has(socket)) {
+      socket.terminate();
+      continue;
+    }
+    aliveSockets.delete(socket);
+    socket.ping();
+  }
+}
+
+async function parseAndAuthorizeSubscription(
+  data: RawData,
+): Promise<{ message: SubscribeMessage; userSteamId?: string }> {
   const message = parseSubscribeMessage(data);
+  const user = message.token
+    ? await getUserFromBearerToken(`Bearer ${message.token}`)
+    : null;
   if (AppConfig.enableAuth && AppConfig.forceAuth) {
-    const user = await getUserFromBearerToken(
-      message.token ? `Bearer ${message.token}` : undefined,
-    );
     if (!user) throw new MapLiveProtocolError('unauthorized');
   }
-  return message;
+  return { message, userSteamId: user?.steamId };
 }
 
 export function parseSubscribeMessage(data: RawData): SubscribeMessage {
@@ -151,7 +207,7 @@ function startServerLoop(
 ): void {
   if (subscription.running || subscription.timer) return;
   const run = async () => {
-    if (!subscription.sockets.size) return;
+    if (!subscription.subscribers.size) return;
     subscription.running = true;
     try {
       const serverConfig = await findServerById(serverId);
@@ -165,7 +221,7 @@ function startServerLoop(
       });
     } finally {
       subscription.running = false;
-      if (subscription.sockets.size) {
+      if (subscription.subscribers.size) {
         subscription.timer = setTimeout(() => {
           subscription.timer = undefined;
           void run();
@@ -183,71 +239,94 @@ function publishChanges(
   subscription: ServerSubscription,
   entry: PluginDataCacheEntry,
 ): void {
-  const next = mapLayerFingerprints(entry);
-  const previous = subscription.fingerprints;
-  subscription.fingerprints = next;
-  if (!previous) return;
-  const layers = (Object.keys(next) as MapLiveLayer[])
-    .filter((layer) => next[layer] !== previous[layer]);
-  if (!layers.length) return;
+  const generatedAt = new Date();
+  const messages: Array<{ socket: WebSocket; layers: MapLiveLayer[]; changes: MapLiveChanges }> = [];
+  for (const [socket, subscriber] of subscription.subscribers) {
+    const next = mapLiveSnapshotFromEntry(entry, generatedAt, subscriber.userSteamId);
+    const previous = subscriber.snapshot;
+    subscriber.snapshot = next;
+    if (!previous) continue;
+    const changes = mapLiveChanges(previous, next);
+    const layers = Object.keys(changes) as MapLiveLayer[];
+    if (layers.length) messages.push({ socket, layers, changes });
+  }
+  if (!messages.length) return;
   subscription.sequence += 1;
-  const payload = JSON.stringify({
-    type: 'map.layers.changed',
-    schemaVersion: 1,
-    serverId,
-    sequence: subscription.sequence,
-    generatedAt: new Date().toISOString(),
-    layers,
-  });
-  for (const socket of subscription.sockets) {
+  for (const { socket, layers, changes } of messages) {
     if (socket.readyState !== WebSocket.OPEN) continue;
     if (socket.bufferedAmount > MAX_BUFFERED_BYTES) {
       socket.terminate();
       continue;
     }
-    socket.send(payload);
+    socket.send(JSON.stringify({
+      type: 'map.layers.changed',
+      schemaVersion: 1,
+      serverId,
+      sequence: subscription.sequence,
+      generatedAt: generatedAt.toISOString(),
+      layers,
+      changes,
+    }));
   }
 }
 
-export function mapLayerFingerprints(
-  entry: PluginDataCacheEntry,
-): Record<MapLiveLayer, string> {
-  const data = entry.data;
-  const marketplaceOffers = Object.fromEntries(
-    Object.entries(data)
-      .filter(([key]) => key.startsWith('ozmarketplace.offers.'))
-      .sort(([left], [right]) => left.localeCompare(right)),
+export function mapLiveChanges(previous: MapLiveSnapshot, next: MapLiveSnapshot): MapLiveChanges {
+  const changes: MapLiveChanges = {};
+  if (!sameValue(previous.capabilities, next.capabilities)) {
+    changes.capabilities = { value: next.capabilities };
+  }
+  const claims = entityDelta(previous.claims, next.claims, (item) => item.areaId);
+  if (hasEntityChanges(claims)) changes.claims = claims;
+  const players = entityDelta(previous.players, next.players, (item) => item.id);
+  if (hasEntityChanges(players)) changes.players = players;
+  const gpsGlobalMarkers = entityDelta(
+    previous.gpsGlobalMarkers,
+    next.gpsGlobalMarkers,
+    (item) => item.id,
   );
+  if (hasEntityChanges(gpsGlobalMarkers)) changes.gpsGlobalMarkers = gpsGlobalMarkers;
+
+  const areaIds = new Set([
+    ...Object.keys(previous.marketplaceOffers),
+    ...Object.keys(next.marketplaceOffers),
+  ]);
+  const areas = [...areaIds]
+    .map(Number)
+    .filter((areaId) => Number.isSafeInteger(areaId) && areaId > 0)
+    .sort((left, right) => left - right)
+    .flatMap((areaId): MapMarketplaceAreaDelta[] => {
+      const delta = entityDelta(
+        previous.marketplaceOffers[String(areaId)] ?? [],
+        next.marketplaceOffers[String(areaId)] ?? [],
+        (item) => item.id,
+      );
+      return hasEntityChanges(delta) ? [{ areaId, ...delta }] : [];
+    });
+  if (areas.length) changes.marketplaceOffers = { areas };
+  return changes;
+}
+
+function entityDelta<T, TId extends string | number>(
+  previous: T[],
+  next: T[],
+  id: (item: T) => TId,
+): MapEntityDelta<T, TId> {
+  const previousById = new Map(previous.map((item) => [id(item), item]));
+  const nextById = new Map(next.map((item) => [id(item), item]));
   return {
-    capabilities: fingerprint({ plugins: entry.plugins, keys: Object.keys(data).sort() }),
-    claims: fingerprint({
-      worldAreas: data['ozadminutils.worldAreas'],
-      claimSales: data['ozlandclaim.claimSales'],
-      renewZones: data['ozlandclaim.renewZones'],
-      marketplaceZones: data['ozmarketplace.zones'],
-      shopZones: data['ozshop.zones'],
-    }),
-    players: fingerprint({
-      playerlist: data['ozadminutils.playerlist'],
-      onlinePlayers: data.__onlinePlayers,
-    }),
-    gpsGlobalMarkers: fingerprint(data['ozgps.globalMarkers']),
-    marketplaceOffers: fingerprint(marketplaceOffers),
+    upserted: next.filter((item) => !sameValue(previousById.get(id(item)), item)),
+    removedIds: previous
+      .map(id)
+      .filter((itemId) => !nextById.has(itemId)),
   };
 }
 
-function fingerprint(value: unknown): string {
-  const serialized = JSON.stringify(withoutVolatileMetadata(value)) ?? 'undefined';
-  return createHash('sha256').update(serialized).digest('base64url');
+function hasEntityChanges<T, TId extends string | number>(delta: MapEntityDelta<T, TId>): boolean {
+  return delta.upserted.length > 0 || delta.removedIds.length > 0;
 }
 
-function withoutVolatileMetadata(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutVolatileMetadata);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => key !== 'generatedAt' && key !== 'generatedAtMs')
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, item]) => [key, withoutVolatileMetadata(item)]));
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function subscriptionFor(
@@ -256,7 +335,7 @@ function subscriptionFor(
 ): ServerSubscription {
   const existing = subscriptions.get(serverId);
   if (existing) return existing;
-  const created: ServerSubscription = { sockets: new Set(), sequence: 0, running: false };
+  const created: ServerSubscription = { subscribers: new Map(), sequence: 0, running: false };
   subscriptions.set(serverId, created);
   return created;
 }
@@ -268,8 +347,8 @@ function removeSubscriber(
 ): void {
   const subscription = subscriptions.get(serverId);
   if (!subscription) return;
-  subscription.sockets.delete(socket);
-  if (!subscription.sockets.size && !subscription.running) {
+  subscription.subscribers.delete(socket);
+  if (!subscription.subscribers.size && !subscription.running) {
     if (subscription.timer) clearTimeout(subscription.timer);
     subscriptions.delete(serverId);
   }

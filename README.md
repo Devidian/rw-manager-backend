@@ -120,8 +120,10 @@ fallbacks remain only for migration parity checks.
 While a frontend map is open it connects to the authenticated, server-scoped
 WebSocket endpoint below. The first client frame selects exactly one server;
 the backend then refreshes only servers with active subscribers and emits
-small layer invalidations. REST map routes remain the payload source and the
-fallback when WebSocket upgrades are unavailable.
+changed map entities as `upserted`/`removedIds` deltas. REST map routes supply
+the initial state and remain the fallback when WebSocket upgrades are
+unavailable. The backend sends protocol ping frames to keep healthy proxied
+connections alive and removes peers that stop answering with pong frames.
 
 ```text
 WS /api/storage/map-live

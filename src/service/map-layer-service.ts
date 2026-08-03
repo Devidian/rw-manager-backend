@@ -2,6 +2,7 @@ import type {
   MapClaim,
   MapGpsMarker,
   MapLayerCapabilities,
+  MapLiveSnapshot,
   MapMarketplaceOffer,
   MapPlayer,
 } from '../interfaces/map-layer.js';
@@ -28,8 +29,10 @@ export async function getMapLayerCapabilities(
   rootPath: string = AppConfig.rootPath,
   serverId?: string,
 ): Promise<MapLayerCapabilities> {
-  const entry = cachedEntry(serverId);
+  return mapLayerCapabilitiesFromEntry(cachedEntry(serverId));
+}
 
+function mapLayerCapabilitiesFromEntry(entry?: PluginDataCacheEntry): MapLayerCapabilities {
   return {
     schemaVersion: 1,
     worldName: cachedWorldName(entry),
@@ -44,6 +47,30 @@ export async function getMapLayerCapabilities(
     shop: cachedAreaIds('ozshop.zones', entry) !== null,
     players: cachedMapPlayers(true, new Date(), entry) !== null,
     gpsGlobalMarkers: cachedGpsGlobalMarkers(entry) !== null,
+  };
+}
+
+export function mapLiveSnapshotFromEntry(
+  entry: PluginDataCacheEntry,
+  now: Date = new Date(),
+  currentUserSteamId?: string,
+): MapLiveSnapshot {
+  const marketplaceOffers = Object.fromEntries(
+    Object.keys(entry.data)
+      .flatMap((key): Array<[string, MapMarketplaceOffer[]]> => {
+        const match = key.match(/^ozmarketplace\.offers\.(\d+)$/);
+        if (!match) return [];
+        const areaId = Number(match[1]);
+        const offers = cachedMarketplaceOffers(areaId, entry);
+        return offers === null ? [] : [[String(areaId), offers]];
+      }),
+  );
+  return {
+    capabilities: mapLayerCapabilitiesFromEntry(entry),
+    claims: cachedMapClaims(entry, currentUserSteamId) ?? [],
+    players: cachedMapPlayers(true, now, entry) ?? [],
+    gpsGlobalMarkers: cachedGpsGlobalMarkers(entry) ?? [],
+    marketplaceOffers,
   };
 }
 
