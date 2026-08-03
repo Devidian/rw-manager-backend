@@ -12,6 +12,8 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
+import { storedLiveStatusResponse } from './server-live-status-service.js';
+import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
 const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
@@ -175,7 +177,9 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
     onlinePlayerUids: onlinePlayerUids(server.onlinePlayers),
   });
 
-  return data.ok || info.ok || playerlist.ok;
+  // A completed attempt also produces a meaningful offline snapshot when all
+  // three game-server endpoints fail. Persist and publish that transition.
+  return true;
 }
 
 function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, now: Date): void {
@@ -245,10 +249,12 @@ async function runMasterServerListRefresh(options: {
       }
 
       applyMasterEntry(server, entry, now);
-      if (options.refreshQueryData && await refreshQueryData(server, now)) {
+      const queryRefreshed = options.refreshQueryData && await refreshQueryData(server, now);
+      if (queryRefreshed) {
         refreshed += 1;
       }
       await saveMasterServer(server);
+      if (queryRefreshed) publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
     }
 
     const result = { fetched: entries.length, inserted, updated, refreshed };
@@ -291,6 +297,7 @@ export async function refreshAllServerQueryData(): Promise<MasterServerListSyncR
       if (await refreshQueryData(server, now)) {
         refreshed += 1;
         await saveServer(server);
+        publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
       }
     }
     const result = { fetched: servers.length, inserted: 0, updated: 0, refreshed };

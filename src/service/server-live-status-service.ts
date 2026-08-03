@@ -5,6 +5,7 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
+import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 const QUERY_URL_PATTERN = /@queryUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
@@ -130,7 +131,7 @@ function isQueryDataFresh(server: ServerConfig, now: number): boolean {
   return now - updatedAt < AppConfig.serverQueryRefreshIntervalMs;
 }
 
-function storedLiveStatusResponse(server: ServerConfig): ServerLiveStatusResponse {
+export function storedLiveStatusResponse(server: ServerConfig): ServerLiveStatusResponse {
   const parsedLastChecked = server.lastChecked
     ? new Date(server.lastChecked)
     : new Date();
@@ -181,20 +182,28 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
 
   if (changed) {
     server.queryDataUpdatedAt = new Date(response.lastChecked);
-      await updateServer(server.id, {
-        data: server.data,
-        info: server.info,
-        label: server.label,
-        mapUrl: server.mapUrl,
-        backendUrl: server.backendUrl,
-        status: server.status,
-        lastChecked: server.lastChecked,
-        errorMessage: server.errorMessage,
-        onlinePlayers: server.onlinePlayers,
-        knownPlayers: server.knownPlayers,
-        queryDataUpdatedAt: server.queryDataUpdatedAt,
-      });
+    await updateServer(server.id, {
+      data: server.data,
+      info: server.info,
+      label: server.label,
+      mapUrl: server.mapUrl,
+      backendUrl: server.backendUrl,
+      status: server.status,
+      lastChecked: server.lastChecked,
+      errorMessage: server.errorMessage,
+      onlinePlayers: server.onlinePlayers,
+      knownPlayers: server.knownPlayers,
+      queryDataUpdatedAt: server.queryDataUpdatedAt,
+    });
+    publishServerLiveUpdate(server.id, response);
   }
+}
+
+export async function getStoredServerLiveStatus(serverId: string): Promise<ServerLiveStatusResponse> {
+  const server = await findServerById(serverId);
+  if (!server) throw new Error('SERVER_NOT_FOUND');
+  if (!server.queryUrl) throw new Error('QUERY_URL_MISSING');
+  return storedLiveStatusResponse(server);
 }
 
 async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusResponse> {

@@ -3,6 +3,7 @@ import typia from 'typia';
 import type { RequestWithUser } from '../interfaces/request-with-user.js';
 import type { UserResponse } from '../dto/user-response.js';
 import { pinServer } from '../service/storage-service.js';
+import { AppConfig } from '../utils/app-config.js';
 
 export async function pinServerHandler(req: Request, res: Response) {
   try {
@@ -28,6 +29,12 @@ export async function pinServerHandler(req: Request, res: Response) {
     }
     if (message === 'USER_NOT_FOUND') {
       return res.status(404).json({ error: 'user not found' });
+    }
+    if (message === 'PINNED_SERVER_LIMIT_REACHED') {
+      return res.status(409).json({
+        error: 'pinned server limit reached',
+        maxPinnedServers: AppConfig.maxPinnedServers,
+      });
     }
     return res.status(400).json({ error: message });
   }

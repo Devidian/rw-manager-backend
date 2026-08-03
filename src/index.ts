@@ -8,6 +8,7 @@ import { startManagerRefreshScheduler } from './service/manager-refresh-schedule
 import { bootstrapMongoDb, closeMongoDb } from './db/mongodb.js';
 import { getBackendInfo } from './service/backend-info-service.js';
 import { attachMapLiveService } from './service/map-live-service.js';
+import { attachServerStatusLiveService } from './service/server-status-live-service.js';
 
 const main = async () => {
   const app = express();
@@ -51,9 +52,13 @@ const main = async () => {
     ? http.createServer(app)
     : https.createServer(options, app);
   const mapLiveService = attachMapLiveService(server);
+  const serverStatusLiveService = attachServerStatusLiveService(server);
   const stopMapLiveService = () => mapLiveService.close();
   process.once('SIGINT', stopMapLiveService);
   process.once('SIGTERM', stopMapLiveService);
+  const stopServerStatusLiveService = () => serverStatusLiveService.close();
+  process.once('SIGINT', stopServerStatusLiveService);
+  process.once('SIGTERM', stopServerStatusLiveService);
 
   if (!useSSL) {
     server.listen(3000, () => {

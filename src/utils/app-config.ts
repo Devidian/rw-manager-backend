@@ -134,6 +134,15 @@ export class AppConfig {
       60000,
     );
   }
+  static get maxPinnedServers(): number {
+    return AppConfig.boundedInteger(env.MAX_PINNED_SERVERS, 50, 1, 1000);
+  }
+  static get serverLiveMaxServerIds(): number {
+    return Math.max(
+      AppConfig.maxPinnedServers,
+      AppConfig.boundedInteger(env.SERVER_LIVE_MAX_SERVER_IDS, 100, 1, 1000),
+    );
+  }
   static get liveQueryProxyCacheTtlMs(): number {
     return AppConfig.boundedInteger(
       env.LIVE_QUERY_PROXY_CACHE_TTL_MS,

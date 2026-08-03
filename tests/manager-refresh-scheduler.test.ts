@@ -121,4 +121,18 @@ describe('manager refresh scheduler', () => {
 
     scheduler?.stop();
   });
+
+  test('does not schedule another run when stopped during an active refresh', async () => {
+    process.env.ENABLE_STORAGE = 'true';
+    let resolveMaster: (() => void) | undefined;
+    refreshMasterServerListMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveMaster = () => resolve({});
+    }));
+    const scheduler = startManagerRefreshScheduler();
+    await jest.advanceTimersByTimeAsync(0);
+    scheduler?.stop();
+    resolveMaster?.();
+    await jest.advanceTimersByTimeAsync(300000);
+    expect(refreshMasterServerListMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -37,6 +37,8 @@ describe('AppConfig', () => {
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(60000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(300000);
     expect(AppConfig.mapPlayerLayerCacheTtlMs).toBe(30000);
+    expect(AppConfig.maxPinnedServers).toBe(50);
+    expect(AppConfig.serverLiveMaxServerIds).toBe(100);
     expect(AppConfig.masterServerListTimeoutMs).toBe(8000);
     expect(AppConfig.defaultUserRole).toBe('user');
     expect(AppConfig.superAdminId).toBe('');
@@ -64,6 +66,8 @@ describe('AppConfig', () => {
     process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '30000';
     process.env.PLUGIN_DATA_CACHE_TTL_MS = '120000';
     process.env.MAP_PLAYER_LAYER_CACHE_TTL_MS = '45000';
+    process.env.MAX_PINNED_SERVERS = '75';
+    process.env.SERVER_LIVE_MAX_SERVER_IDS = '90';
     process.env.MASTER_SERVER_LIST_TIMEOUT_MS = '12000';
     process.env.DEFAULT_USER_ROLE = 'admin';
     process.env.SUPER_ADMIN_ID = 'steam-admin';
@@ -78,6 +82,8 @@ describe('AppConfig', () => {
     expect(AppConfig.enableData).toBe(true);
     expect(AppConfig.enableAuth).toBe(true);
     expect(AppConfig.forceAuth).toBe(true);
+    expect(AppConfig.maxPinnedServers).toBe(75);
+    expect(AppConfig.serverLiveMaxServerIds).toBe(90);
     expect(AppConfig.mapTileRoot).toBe('/srv/map-tiles');
     expect(AppConfig.mapTileRootUrl).toBe('https://tiles.example.com/maps');
     expect(AppConfig.mapServerId).toBe('server-f8e7fa9ca73fd4b4943db61a');

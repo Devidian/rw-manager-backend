@@ -278,6 +278,9 @@ export async function pinServer(
     ? user.pinnedServers
     : [];
   if (!user.pinnedServers.includes(serverId)) {
+    if (user.pinnedServers.length >= AppConfig.maxPinnedServers) {
+      throw new Error('PINNED_SERVER_LIMIT_REACHED');
+    }
     user.pinnedServers.push(serverId);
     await updateUser(user.id, { pinnedServers: user.pinnedServers });
   }

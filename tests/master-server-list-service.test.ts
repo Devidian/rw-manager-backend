@@ -268,7 +268,7 @@ describe('master-server-list-service', () => {
     ).resolves.toMatchObject({
       fetched: 1,
       inserted: 1,
-      refreshed: 0,
+      refreshed: 1,
     });
     expect(state.servers[0]).toMatchObject({
       id: 'server-f8e7fa9ca73fd4b4943db61a',

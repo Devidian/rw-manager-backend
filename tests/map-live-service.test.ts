@@ -2,9 +2,11 @@ import {
   mapLiveChanges,
   parseSubscribeMessage,
   runMapLiveHeartbeat,
+  sendMapLiveDelta,
 } from '../src/service/map-live-service.js';
 import type { MapLiveSnapshot } from '../src/interfaces/map-layer.js';
 import { WebSocket } from 'ws';
+import { jest } from '@jest/globals';
 
 describe('map live WebSocket contract', () => {
   test('accepts one server-scoped subscribe message without requiring a token', () => {
@@ -26,6 +28,26 @@ describe('map live WebSocket contract', () => {
       schemaVersion: 1,
       serverId: 'x'.repeat(201),
     })))).toThrow('invalid_message');
+    for (const value of [
+      null,
+      { type: 'wrong', schemaVersion: 1, serverId: 'server-a' },
+      { type: 'subscribe', schemaVersion: 2, serverId: 'server-a' },
+      { type: 'subscribe', schemaVersion: 1, serverId: 1 },
+      { type: 'subscribe', schemaVersion: 1, serverId: ' ' },
+      { type: 'subscribe', schemaVersion: 1, serverId: 'server-a', token: 1 },
+    ]) expect(() => parseSubscribeMessage(Buffer.from(JSON.stringify(value)))).toThrow('invalid_message');
+    expect(() => parseSubscribeMessage(Buffer.from('{bad'))).toThrow('invalid_message');
+    expect(() => parseSubscribeMessage(Buffer.alloc(8193, 'x'))).toThrow('invalid_message');
+    expect(parseSubscribeMessage(Buffer.from(JSON.stringify({
+      type: 'subscribe', schemaVersion: 1, serverId: 'server-a', token: 'token',
+    })))).toMatchObject({ token: 'token' });
+  });
+
+  test('accepts all WebSocket raw-data representations', () => {
+    const json = JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a' });
+    expect(parseSubscribeMessage(json as never).serverId).toBe('server-a');
+    expect(parseSubscribeMessage(new TextEncoder().encode(json).buffer as never).serverId).toBe('server-a');
+    expect(parseSubscribeMessage([Buffer.from(json)] as never).serverId).toBe('server-a');
   });
 
   test('emits only changed and removed entities instead of whole layers', () => {
@@ -73,6 +95,37 @@ describe('map live WebSocket contract', () => {
 
     runMapLiveHeartbeat([socket], aliveSockets);
     expect(terminateCount).toBe(1);
+    runMapLiveHeartbeat([{ readyState: WebSocket.CLOSED } as WebSocket], aliveSockets);
+  });
+
+  test('covers capabilities, GPS, and marketplace removals', () => {
+    const first = snapshot();
+    const next = snapshot();
+    next.capabilities = { ...next.capabilities, worldName: 'Changed' };
+    next.gpsGlobalMarkers = [{ id: 4, name: 'Home', x: 1, z: 2 }];
+    next.marketplaceOffers = { invalid: [], '0': [] };
+    expect(mapLiveChanges(first, next)).toMatchObject({
+      capabilities: { value: next.capabilities },
+      gpsGlobalMarkers: { upserted: next.gpsGlobalMarkers, removedIds: [] },
+      marketplaceOffers: { areas: [{ areaId: 7, upserted: [], removedIds: [1] }] },
+    });
+    expect(mapLiveChanges(next, next)).toEqual({});
+  });
+
+  test('drops closed and backpressured map delta sockets', () => {
+    const message = {
+      type: 'map.layers.changed' as const, schemaVersion: 1 as const, serverId: 'server-a',
+      sequence: 1, generatedAt: '2026-08-03T12:00:00.000Z', layers: ['players' as const],
+      changes: {},
+    };
+    const closed = { readyState: WebSocket.CLOSED, send: jest.fn(), terminate: jest.fn() } as unknown as WebSocket;
+    sendMapLiveDelta(closed, message);
+    expect(closed.send).not.toHaveBeenCalled();
+    const blocked = {
+      readyState: WebSocket.OPEN, bufferedAmount: 65537, send: jest.fn(), terminate: jest.fn(),
+    } as unknown as WebSocket;
+    sendMapLiveDelta(blocked, message);
+    expect(blocked.terminate).toHaveBeenCalled();
   });
 });
 

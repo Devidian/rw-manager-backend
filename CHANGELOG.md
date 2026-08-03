@@ -7,10 +7,13 @@
 * add authenticated server-scoped live map layer WebSocket invalidations
 * refresh plugin map data only while the corresponding server has subscribers
 * include changed and removed map entities in compatible live events
+* stream dashboard server status snapshots and field deltas over one WebSocket
+* enforce a configurable account favorite limit, defaulting to 50 servers
 
 ### Fixed
 
 * keep proxied map WebSockets alive with ping/pong health checks
+* persist and publish offline status after failed scheduled query attempts
 
 ## [0.5.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.4.0...rw-manager-backend-v0.5.0) (2026-07-06)
 

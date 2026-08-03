@@ -71,6 +71,29 @@ describe('server-live-status-service', () => {
     global.fetch = originalFetch;
   });
 
+  test('normalizes every stored status fallback without querying the game server', async () => {
+    state.servers = [
+      {
+        id: 'server-1', label: 'Server', queryUrl: 'http://query.example', public: true,
+        createdAt: new Date().toISOString(), status: 'unknown', data: { playercount: 1 },
+        lastChecked: 'invalid', onlinePlayers: 'invalid' as never, errorMessage: 1 as never,
+      },
+    ];
+    await expect(service.getStoredServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online', queryData: { playercount: 1 }, lastChecked: expect.any(String),
+      onlinePlayers: undefined, errorMessage: undefined,
+    });
+    state.servers[0].status = 'offline';
+    state.servers[0].lastChecked = undefined;
+    await expect(service.getStoredServerLiveStatus('server-1')).resolves.toMatchObject({ status: 'offline' });
+    state.servers[0].status = 'online';
+    await expect(service.getStoredServerLiveStatus('server-1')).resolves.toMatchObject({ status: 'online' });
+
+    await expect(service.getStoredServerLiveStatus('missing')).rejects.toThrow('SERVER_NOT_FOUND');
+    state.servers[0].queryUrl = '';
+    await expect(service.getStoredServerLiveStatus('server-1')).rejects.toThrow('QUERY_URL_MISSING');
+  });
+
   test('fetches live status and caches repeated calls briefly', async () => {
     const fetchMock = jest
       .fn()

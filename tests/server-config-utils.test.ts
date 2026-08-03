@@ -4,6 +4,13 @@ import path from 'node:path';
 import { ServerConfig } from '../src/utils/server-config.js';
 
 describe('ServerConfig utility', () => {
+  const originalServerRoot = process.env.SERVER_ROOT;
+
+  afterEach(() => {
+    if (originalServerRoot === undefined) delete process.env.SERVER_ROOT;
+    else process.env.SERVER_ROOT = originalServerRoot;
+  });
+
   test('masks password properties and keeps raw admin strings', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rw-manager-config-'));
     await writeFile(
@@ -42,5 +49,14 @@ describe('ServerConfig utility', () => {
       Server_Admins: 'steam-1;steam-2',
     });
     expect(ServerConfig.getWorldName(root)).toBe('default');
+  });
+
+  test('uses the configured server root when no explicit path is provided', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rw-manager-config-'));
+    await writeFile(path.join(root, 'server.properties'), 'World_Name=Default Root World\n');
+    process.env.SERVER_ROOT = root;
+
+    expect(ServerConfig.getProperties()).toMatchObject({ World_Name: 'Default Root World' });
+    expect(ServerConfig.getWorldName()).toBe('Default Root World');
   });
 });

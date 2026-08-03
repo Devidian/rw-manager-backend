@@ -31,6 +31,12 @@ describe('get-server-live-status-handler', () => {
       status: 'online',
       lastChecked: '2026-06-24T12:00:00.000Z',
     });
+
+    await getServerLiveStatusHandler(
+      { params: { id: ['server-array'] } } as unknown as Request,
+      createResponse().res,
+    );
+    expect(getServerLiveStatusMock).toHaveBeenLastCalledWith('server-array');
   });
 
   test('maps known service errors to HTTP responses', async () => {

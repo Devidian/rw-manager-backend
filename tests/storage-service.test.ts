@@ -284,6 +284,21 @@ describe('storage-service', () => {
     expect(state.users[0].pinnedServers).toEqual([]);
   });
 
+  test('pinServer rejects new favorites at the configured limit but keeps idempotent pins', async () => {
+    process.env.MAX_PINNED_SERVERS = '1';
+    state.servers = [
+      createServerRecord({ id: 'server-1' }),
+      createServerRecord({ id: 'server-2' }),
+    ];
+    state.users = [createUserRecord({ id: 'user-1', pinnedServers: ['server-1'] })];
+
+    await expect(storageService.pinServer('server-1', { userId: 'user-1' }))
+      .resolves.toMatchObject({ pinnedServers: ['server-1'] });
+    await expect(storageService.pinServer('server-2', { userId: 'user-1' }))
+      .rejects.toThrow('PINNED_SERVER_LIMIT_REACHED');
+    expect(state.users[0].pinnedServers).toEqual(['server-1']);
+  });
+
   test('pinServer validates auth, server existence, and user existence', async () => {
     await expect(
       storageService.pinServer('server-1', {}),

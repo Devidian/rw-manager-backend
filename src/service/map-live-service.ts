@@ -1,5 +1,4 @@
-import type { Server as HttpServer, IncomingMessage } from 'node:http';
-import type { Duplex } from 'node:stream';
+import type { Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { findServerById } from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
@@ -14,6 +13,8 @@ import type {
   MapPlayer,
 } from '../interfaces/map-layer.js';
 import { mapLiveSnapshotFromEntry } from './map-layer-service.js';
+import { startWebSocketHeartbeat, runWebSocketHeartbeat } from './websocket-heartbeat-service.js';
+import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
 import {
   refreshPluginDataForServer,
   type PluginDataCacheEntry,
@@ -62,6 +63,16 @@ export interface MapLiveChanges {
   marketplaceOffers?: { areas: MapMarketplaceAreaDelta[] };
 }
 
+export interface MapLayersChangedMessage {
+  type: 'map.layers.changed';
+  schemaVersion: 1;
+  serverId: string;
+  sequence: number;
+  generatedAt: string;
+  layers: MapLiveLayer[];
+  changes: MapLiveChanges;
+}
+
 export interface MapLiveService {
   close: () => void;
 }
@@ -70,27 +81,14 @@ const LIVE_PATH = '/api/storage/map-live';
 const MAX_MESSAGE_BYTES = 8192;
 const MAX_BUFFERED_BYTES = 65536;
 const SUBSCRIBE_TIMEOUT_MS = 10000;
-const HEARTBEAT_INTERVAL_MS = 25000;
 
 export function attachMapLiveService(server: HttpServer): MapLiveService {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   const subscriptions = new Map<string, ServerSubscription>();
-  const aliveSockets = new WeakSet<WebSocket>();
-
-  const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-    if (requestUrlPath(request) !== LIVE_PATH) {
-      socket.destroy();
-      return;
-    }
-    webSocketServer.handleUpgrade(request, socket, head, (client) => {
-      webSocketServer.emit('connection', client, request);
-    });
-  };
-  server.on('upgrade', upgrade);
+  const unregisterEndpoint = registerWebSocketEndpoint(server, LIVE_PATH, webSocketServer);
+  const stopHeartbeat = startWebSocketHeartbeat(webSocketServer);
 
   webSocketServer.on('connection', (socket) => {
-    aliveSockets.add(socket);
-    socket.on('pong', () => aliveSockets.add(socket));
     let subscribedServerId: string | undefined;
     const subscribeTimeout = setTimeout(() => closeWithError(socket, 'subscribe_timeout'), SUBSCRIBE_TIMEOUT_MS);
 
@@ -126,15 +124,10 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
     });
   });
 
-  const heartbeat = setInterval(() => {
-    runMapLiveHeartbeat(webSocketServer.clients, aliveSockets);
-  }, HEARTBEAT_INTERVAL_MS);
-  heartbeat.unref();
-
   return {
     close: () => {
-      server.off('upgrade', upgrade);
-      clearInterval(heartbeat);
+      unregisterEndpoint();
+      stopHeartbeat();
       for (const subscription of subscriptions.values()) {
         if (subscription.timer) clearTimeout(subscription.timer);
         for (const socket of subscription.subscribers.keys()) socket.close(1001, 'server_shutdown');
@@ -145,20 +138,7 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
   };
 }
 
-export function runMapLiveHeartbeat(
-  sockets: Iterable<WebSocket>,
-  aliveSockets: WeakSet<WebSocket>,
-): void {
-  for (const socket of sockets) {
-    if (socket.readyState !== WebSocket.OPEN) continue;
-    if (!aliveSockets.has(socket)) {
-      socket.terminate();
-      continue;
-    }
-    aliveSockets.delete(socket);
-    socket.ping();
-  }
-}
+export const runMapLiveHeartbeat = runWebSocketHeartbeat;
 
 async function parseAndAuthorizeSubscription(
   data: RawData,
@@ -253,12 +233,7 @@ function publishChanges(
   if (!messages.length) return;
   subscription.sequence += 1;
   for (const { socket, layers, changes } of messages) {
-    if (socket.readyState !== WebSocket.OPEN) continue;
-    if (socket.bufferedAmount > MAX_BUFFERED_BYTES) {
-      socket.terminate();
-      continue;
-    }
-    socket.send(JSON.stringify({
+    sendMapLiveDelta(socket, {
       type: 'map.layers.changed',
       schemaVersion: 1,
       serverId,
@@ -266,8 +241,17 @@ function publishChanges(
       generatedAt: generatedAt.toISOString(),
       layers,
       changes,
-    }));
+    });
   }
+}
+
+export function sendMapLiveDelta(socket: WebSocket, message: MapLayersChangedMessage): void {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  if (socket.bufferedAmount > MAX_BUFFERED_BYTES) {
+    socket.terminate();
+    return;
+  }
+  socket.send(JSON.stringify(message));
 }
 
 export function mapLiveChanges(previous: MapLiveSnapshot, next: MapLiveSnapshot): MapLiveChanges {
@@ -351,14 +335,6 @@ function removeSubscriber(
   if (!subscription.subscribers.size && !subscription.running) {
     if (subscription.timer) clearTimeout(subscription.timer);
     subscriptions.delete(serverId);
-  }
-}
-
-function requestUrlPath(request: IncomingMessage): string | undefined {
-  try {
-    return new URL(request.url ?? '/', 'http://localhost').pathname;
-  } catch {
-    return undefined;
   }
 }
 

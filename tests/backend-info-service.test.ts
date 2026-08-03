@@ -11,9 +11,11 @@ describe('backend info service', () => {
     process.env.ENABLE_STORAGE = 'true';
     process.env.ENABLE_DATA = 'true';
     process.env.ENABLE_AUTH = 'true';
+    process.env.MAX_PINNED_SERVERS = '75';
 
     expect(getBackendInfo()).toEqual({
       ok: true,
+      limits: { maxPinnedServers: 75 },
       services: ['storage', 'data', 'auth'],
       version: 1,
     });
@@ -24,9 +26,11 @@ describe('backend info service', () => {
     process.env.ENABLE_DATA = 'false';
     process.env.ENABLE_AUTH = 'false';
     process.env.FORCE_AUTH = 'true';
+    process.env.MAX_PINNED_SERVERS = '50';
 
     expect(getBackendInfo()).toEqual({
       ok: true,
+      limits: { maxPinnedServers: 50 },
       services: ['forceAuth'],
       version: 1,
     });

@@ -45,6 +45,8 @@ MASTER_SERVER_LIST_REFRESH_INTERVAL_MS=300000
 SERVER_QUERY_REFRESH_INTERVAL_MS=86400000
 LIVE_QUERY_PROXY_CACHE_TTL_MS=5000
 LIVE_QUERY_PROXY_TIMEOUT_MS=8000
+MAX_PINNED_SERVERS=50
+SERVER_LIVE_MAX_SERVER_IDS=100
 ```
 
 MongoDB is the preferred manager storage backend. When `MONGODB_URI` is set,
@@ -83,6 +85,21 @@ backend and cached briefly per server:
 ```text
 GET /api/storage/server/:id/live
 ```
+
+Dashboard clients use one WebSocket instead of polling this route per server:
+
+```text
+WS /api/storage/server-live
+```
+
+The first frame subscribes with `server.status.subscribe`; later
+`server.status.set-servers` frames replace the complete dashboard server set
+without reconnecting. The backend sends an initial `server.status.snapshot`
+and then `server.status.changed` field deltas. REST remains available for
+manual refresh and fallback. `MAX_PINNED_SERVERS` is the authoritative account
+favorite limit (default `50`) exposed by `GET /api/` for the frontend.
+`SERVER_LIVE_MAX_SERVER_IDS` independently bounds favorites plus administered
+servers on one socket (default `100`, never lower than the favorite limit).
 
 This route fetches `queryUrl`, `queryUrl + /info`, and
 `queryUrl + /playerlist` server-side, coalesces concurrent requests, and uses
