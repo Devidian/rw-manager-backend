@@ -30,6 +30,21 @@ export interface PluginDataRefreshAllResult {
   skipped: number;
 }
 
+/**
+ * The bridge marks only fresh Admin Utils samples as online.  This is more
+ * current than the game query endpoint's player list and becomes an empty
+ * array immediately after a disconnect.
+ */
+export function liveOnlinePlayersFromEntry(entry: PluginDataCacheEntry): unknown[] | undefined {
+  const payload = entry.data['ozadminutils.playerlist'];
+  if (!payload || typeof payload !== 'object') return undefined;
+  const players = (payload as { players?: unknown }).players;
+  if (!Array.isArray(players)) return undefined;
+  return players.filter((player) =>
+    !!player && typeof player === 'object' && (player as { online?: unknown }).online === true,
+  );
+}
+
 interface PluginListResponse {
   plugins?: unknown;
 }
@@ -134,7 +149,14 @@ export async function refreshPluginDataForServer(
     )).filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
   );
   Object.assign(data, await fetchMarketplaceOffersByArea(pluginQueryUrl, data['ozmarketplace.zones']));
-  data.__onlinePlayers = server.onlinePlayers;
+  const liveOnlinePlayers = liveOnlinePlayersFromEntry({
+    serverId: server.id,
+    refreshedAtMs: 0,
+    expiresAtMs: 0,
+    plugins,
+    data,
+  });
+  data.__onlinePlayers = liveOnlinePlayers ?? server.onlinePlayers;
 
   const now = Date.now();
   const entry: PluginDataCacheEntry = {

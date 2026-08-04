@@ -4,6 +4,7 @@ import {
   ensurePluginDataForServer,
   getFirstCachedPluginData,
   getCachedPluginData,
+  liveOnlinePlayersFromEntry,
   refreshPluginDataForServer,
 } from '../src/service/plugin-data-cache-service.js';
 import type { ServerConfig } from '../src/interfaces/server-config.js';
@@ -70,7 +71,7 @@ describe('plugin data cache service', () => {
         ],
       }))
       .mockResolvedValueOnce(response({ areas: [{ id: 42, name: 'Spawn Claim' }] }))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000 }] }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }] }))
       .mockResolvedValueOnce(response({ config: { Server_Admins: 'steam-admin' } }))
       .mockResolvedValueOnce(response({ markers: [{ id: 1, name: 'Spawn' }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 42 }] }))
@@ -84,13 +85,13 @@ describe('plugin data cache service', () => {
     expect(result.entry?.plugins).toHaveLength(5);
     expect(result.entry?.data).toEqual({
       'ozadminutils.worldAreas': { areas: [{ id: 42, name: 'Spawn Claim' }] },
-      'ozadminutils.playerlist': { players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000 }] },
+      'ozadminutils.playerlist': { players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }] },
       'ozadminutils.serverConfig': { config: { Server_Admins: 'steam-admin' } },
       'ozgps.globalMarkers': { markers: [{ id: 1, name: 'Spawn' }] },
       'ozmarketplace.zones': { zones: [{ areaId: 42 }] },
       'ozshop.zones': { zones: [{ areaId: 42 }] },
       'ozmarketplace.offers.42': { offers: [{ id: 7, itemName: 'Stone' }] },
-      __onlinePlayers: [{ uid: 'p1' }],
+      __onlinePlayers: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }],
     });
     expect(getCachedPluginData('server-1')?.data).toEqual(result.entry?.data);
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -133,6 +134,50 @@ describe('plugin data cache service', () => {
       'https://query.example/plugins/ozmarketplace/offers?areaId=42',
       expect.any(Object),
     );
+  });
+
+  test('prefers fresh bridge presence over the delayed query player list', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response({
+        schemaVersion: 1,
+        plugins: [{ directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true }],
+      }))
+      .mockResolvedValueOnce(response({ areas: [] }))
+      .mockResolvedValueOnce(response({
+        players: [
+          { uid: 'offline-player', name: 'Offline' },
+          { uid: 'live-player', name: 'Live', online: true },
+        ],
+      }))
+      .mockResolvedValueOnce(response({ config: {} })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    const result = await refreshPluginDataForServer(server({ onlinePlayers: [{ uid: 'stale-player' }] }));
+
+    expect(result.entry?.data.__onlinePlayers).toEqual([{ uid: 'live-player', name: 'Live', online: true }]);
+    expect(liveOnlinePlayersFromEntry(result.entry!)).toEqual([{ uid: 'live-player', name: 'Live', online: true }]);
+  });
+
+  test('ignores missing and malformed bridge presence payloads', () => {
+    const entry = (data: Record<string, unknown>) => ({
+      serverId: 'server-1',
+      refreshedAtMs: 0,
+      expiresAtMs: 0,
+      plugins: [],
+      data,
+    });
+
+    expect(liveOnlinePlayersFromEntry(entry({}))).toBeUndefined();
+    expect(liveOnlinePlayersFromEntry(entry({ 'ozadminutils.playerlist': 'invalid' }))).toBeUndefined();
+    expect(liveOnlinePlayersFromEntry(entry({
+      'ozadminutils.playerlist': { players: 'invalid' },
+    }))).toBeUndefined();
+    expect(liveOnlinePlayersFromEntry(entry({
+      'ozadminutils.playerlist': {
+        players: [null, 'invalid', { uid: 'offline-player' }, { uid: 'live-player', online: true }],
+      },
+    }))).toEqual([{ uid: 'live-player', online: true }]);
   });
 
   test('reports unavailable plugin list without caching partial data', async () => {

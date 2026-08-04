@@ -357,6 +357,7 @@ function mockPluginRouteResponses(): void {
         posx: 11,
         posz: 22,
         lastseen: 1767225600,
+        online: true,
       }],
     }))
     .mockResolvedValueOnce(response({ config: { Server_Admins: 'steam-admin' } }))

@@ -12,13 +12,17 @@ import type {
   MapMarketplaceOffer,
   MapPlayer,
 } from '../interfaces/map-layer.js';
+import type { ServerConfig } from '../interfaces/server-config.js';
 import { mapLiveSnapshotFromEntry } from './map-layer-service.js';
 import { startWebSocketHeartbeat, runWebSocketHeartbeat } from './websocket-heartbeat-service.js';
 import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
 import {
+  liveOnlinePlayersFromEntry,
   refreshPluginDataForServer,
   type PluginDataCacheEntry,
 } from './plugin-data-cache-service.js';
+import { storedLiveStatusResponse } from './server-live-status-service.js';
+import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 export type MapLiveLayer =
   | 'capabilities'
@@ -193,7 +197,10 @@ function startServerLoop(
       const serverConfig = await findServerById(serverId);
       if (!serverConfig) throw new Error('SERVER_NOT_FOUND');
       const result = await refreshPluginDataForServer(serverConfig);
-      if (result.entry) publishChanges(serverId, subscription, result.entry);
+      if (result.entry) {
+        publishLivePlayerStatus(serverId, serverConfig, result.entry);
+        publishChanges(serverId, subscription, result.entry);
+      }
     } catch (error) {
       defaultLogger.warn('Map live refresh failed:', {
         serverId,
@@ -212,6 +219,20 @@ function startServerLoop(
     }
   };
   void run();
+}
+
+function publishLivePlayerStatus(
+  serverId: string,
+  serverConfig: ServerConfig,
+  entry: PluginDataCacheEntry,
+): void {
+  const onlinePlayers = liveOnlinePlayersFromEntry(entry);
+  if (onlinePlayers === undefined) return;
+  publishServerLiveUpdate(serverId, {
+    ...storedLiveStatusResponse(serverConfig),
+    onlinePlayers,
+    lastChecked: new Date().toISOString() as ReturnType<typeof storedLiveStatusResponse>['lastChecked'],
+  });
 }
 
 function publishChanges(
