@@ -15,6 +15,32 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.6.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.5.0...rw-manager-backend-v0.6.0) (2026-08-04)
+
+
+### Added
+
+* stream dashboard server status updates ([d9a3064](https://github.com/Devidian/rw-manager-backend/commit/d9a30640cf5bc0033f49f28b81af2ff1dd2f26e9))
+* stream server-scoped map invalidations ([a11a968](https://github.com/Devidian/rw-manager-backend/commit/a11a96848c90921eedc78d929e44a5b044ec0cf6))
+
+
+### Fixed
+
+* publish fresh bridge player presence ([8fb567e](https://github.com/Devidian/rw-manager-backend/commit/8fb567e94f6c2704fbf78fc41d91c7b4c259a993))
+* reconcile servers by endpoint identity ([cdbc141](https://github.com/Devidian/rw-manager-backend/commit/cdbc14119d8dfbd1c7304731a53b7c70aa568a9b))
+* refresh player map layer cache every 30 seconds ([2563cf8](https://github.com/Devidian/rw-manager-backend/commit/2563cf80c617ab0bda03a944b9c08b84fe34a3b8))
+* stream live map entity deltas ([39f9500](https://github.com/Devidian/rw-manager-backend/commit/39f9500d862ca5e2da5a200b372d0232cbadf07d))
+
+
+### Build
+
+* update action versions ([2f06624](https://github.com/Devidian/rw-manager-backend/commit/2f06624233ac7e0b0bd1d08833c188e39f6a4d56))
+
+
+### Maintenance
+
+* add codex custom agents ([b805918](https://github.com/Devidian/rw-manager-backend/commit/b8059189c23ca87415f2de8a40c66ef97ef242df))
+
 ## [0.5.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.4.0...rw-manager-backend-v0.5.0) (2026-07-06)
 
 
