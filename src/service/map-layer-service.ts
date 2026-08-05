@@ -20,6 +20,8 @@ const SECTOR_SIZE_BLOCKS = 8192;
 interface LandClaimSettings {
   areaPermissions: Set<string>;
   colors: Record<string, { border: string; fill: string }>;
+  leaseholdPermission: string;
+  leaseholdOccupied: { border: string; fill: string };
   owner: { border: string; fill: string };
   other: { border: string; fill: string };
   sale: { border: string; fill: string };
@@ -119,6 +121,8 @@ function landClaimSettingsFromValues(values: Map<string, string>): LandClaimSett
     trap: get('specialTrapAreaPermission', 'ozlc-special-trap'),
     renew: get('specialRenewAreaPermission', 'ozlc-special-renew'),
     special: get('specialAreaPermission', 'ozlc-special'),
+    cityCore: get('specialCityCorePermission', 'ozlc-special-city-core'),
+    cityLeasehold: get('specialCityLeaseholdPermission', 'ozlc-special-city-leasehold'),
     default: get('defaultAreaPermission', 'ozlc-guest'),
   };
   const color = (key: string, fallback: string) => packedRgba(get(key, fallback), fallback);
@@ -147,6 +151,18 @@ function landClaimSettingsFromValues(values: Map<string, string>): LandClaimSett
       border: color('specialAreaBorderColor', '0xFFFFFF10'),
       fill: color('specialAreaFrameColor', '0xFFFFFF50'),
     },
+    cityCore: {
+      border: color('cityCoreBorderColor', '0x7B61FF10'),
+      fill: color('cityCoreFrameColor', '0x7B61FF50'),
+    },
+    cityLeaseholdAvailable: {
+      border: color('cityLeaseholdAvailableBorderColor', '0x00BFA510'),
+      fill: color('cityLeaseholdAvailableFrameColor', '0x00BFA550'),
+    },
+    cityLeaseholdOccupied: {
+      border: color('cityLeaseholdOccupiedBorderColor', '0xFF980010'),
+      fill: color('cityLeaseholdOccupiedFrameColor', '0xFF980050'),
+    },
     other: {
       border: color('otherAreaBorderColor', '0x0010E010'),
       fill: color('otherAreaFrameColor', '0x0010E050'),
@@ -169,8 +185,12 @@ function landClaimSettingsFromValues(values: Map<string, string>): LandClaimSett
       [permission.trap]: colors.trap,
       [permission.renew]: colors.renew,
       [permission.special]: colors.special,
+      [permission.cityCore]: colors.cityCore,
+      [permission.cityLeasehold]: colors.cityLeaseholdAvailable,
       [permission.default]: colors.other,
     },
+    leaseholdPermission: permission.cityLeasehold,
+    leaseholdOccupied: colors.cityLeaseholdOccupied,
     owner: colors.owner,
     other: colors.other,
     sale: colors.sale,
@@ -387,6 +407,8 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
     const salePrice = sales.get(id);
     const renewZone = renewZones.get(id);
     const isOwner = currentUserSteamId !== undefined && ownerUid === currentUserSteamId;
+    const occupiedLeasehold = permission === settings.leaseholdPermission
+      && typeof ownerName === 'string' && ownerName.trim() !== '';
     const colors = salePrice !== undefined
       ? settings.sale
       : renewZone
@@ -394,6 +416,8 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
             border: renewZone.borderColor ?? settings.colors[permission]?.border ?? settings.other.border,
             fill: renewZone.fillColor ?? settings.colors[permission]?.fill ?? settings.other.fill,
           }
+      : occupiedLeasehold
+        ? settings.leaseholdOccupied
       : isOwner
         ? settings.owner
         : settings.colors[permission] ?? settings.other;

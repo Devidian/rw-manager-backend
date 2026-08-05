@@ -61,6 +61,38 @@ describe('map layer service', () => {
     await expect(getMapMarketplaceOffers(42)).resolves.toBeNull();
   });
 
+  test('maps configured city and leasehold colors from Land Claim settings', async () => {
+    const root = await createWorld();
+    mockPluginRouteResponses(true);
+
+    await refreshPluginDataForServer({
+      id: 'server-1',
+      label: 'Server',
+      queryUrl: 'https://query.example',
+      onlinePlayers: [{ uid: 'player-1' }],
+      public: true,
+      createdAt: new Date(),
+    });
+
+    await expect(getMapClaims(root, 'server-1', 'player-1')).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        areaId: 45,
+        borderColor: '#7B61FF10',
+        fillColor: '#7B61FF50',
+      }),
+      expect.objectContaining({
+        areaId: 46,
+        borderColor: '#00BFA510',
+        fillColor: '#00BFA550',
+      }),
+      expect.objectContaining({
+        areaId: 47,
+        borderColor: '#FF980010',
+        fillColor: '#FF980050',
+      }),
+    ]));
+  });
+
   test('normalizes cached plugin route data for map layers', async () => {
     process.env.MAP_RECENT_PLAYER_DAYS = '7';
     const root = await createWorld();
@@ -278,7 +310,7 @@ async function createWorld(): Promise<string> {
   return root;
 }
 
-function mockPluginRouteResponses(): void {
+function mockPluginRouteResponses(includeCityAreas = false): void {
   global.fetch = jest
     .fn()
     .mockResolvedValueOnce(response({
@@ -299,6 +331,14 @@ function mockPluginRouteResponses(): void {
         otherAreaFrameColor: '0x55667788',
         ownerAreaBorderColor: '0x99AABBCC',
         ownerAreaFrameColor: '0xDDEEFF00',
+        specialCityCorePermission: 'custom-city-core',
+        specialCityLeaseholdPermission: 'custom-city-leasehold',
+        cityCoreBorderColor: '0x7B61FF10',
+        cityCoreFrameColor: '0x7B61FF50',
+        cityLeaseholdAvailableBorderColor: '0x00BFA510',
+        cityLeaseholdAvailableFrameColor: '0x00BFA550',
+        cityLeaseholdOccupiedBorderColor: '0xFF980010',
+        cityLeaseholdOccupiedFrameColor: '0xFF980050',
       },
       worldName: 'Test World',
       areas: [
@@ -347,6 +387,49 @@ function mockPluginRouteResponses(): void {
           ownerName: 'Other Player',
           createdAt: '2026-01-01T00:00:03.000Z',
         },
+        ...(includeCityAreas ? [
+          {
+            id: 45,
+            name: 'City Core',
+            permission: 'custom-city-core',
+            priority: 0,
+            startX: 128,
+            startY: 0,
+            startZ: 0,
+            endX: 159.99,
+            endY: 64,
+            endZ: 31.99,
+            createdAt: '2026-01-01T00:00:05.000Z',
+          },
+          {
+            id: 46,
+            name: 'Available Leasehold',
+            permission: 'custom-city-leasehold',
+            priority: 0,
+            startX: 160,
+            startY: 0,
+            startZ: 0,
+            endX: 191.99,
+            endY: 64,
+            endZ: 31.99,
+            createdAt: '2026-01-01T00:00:06.000Z',
+          },
+          {
+            id: 47,
+            name: 'Occupied Leasehold',
+            permission: 'custom-city-leasehold',
+            priority: 0,
+            startX: 192,
+            startY: 0,
+            startZ: 0,
+            endX: 223.99,
+            endY: 64,
+            endZ: 31.99,
+            ownerUid: 'player-1',
+            ownerName: 'Cached Player',
+            createdAt: '2026-01-01T00:00:07.000Z',
+          },
+        ] : []),
       ],
     }))
     .mockResolvedValueOnce(response({
