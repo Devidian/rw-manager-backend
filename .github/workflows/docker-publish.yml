@@ -41,6 +41,16 @@ jobs:
           echo "version=$RAW_VERSION" >> "$GITHUB_OUTPUT"
           echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
           echo "minor=$MINOR" >> "$GITHUB_OUTPUT"
+          {
+            echo 'tags<<EOF'
+            echo "devidian/rw-manager-backend:$RAW_VERSION"
+            if [[ "$RAW_VERSION" != *-* ]]; then
+              echo "devidian/rw-manager-backend:$MINOR"
+              echo "devidian/rw-manager-backend:$MAJOR"
+              echo 'devidian/rw-manager-backend:latest'
+            fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -61,8 +71,4 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            devidian/rw-manager-backend:${{ steps.version.outputs.version }}
-            devidian/rw-manager-backend:${{ steps.version.outputs.minor }}
-            devidian/rw-manager-backend:${{ steps.version.outputs.major }}
-            devidian/rw-manager-backend:latest
+          tags: ${{ steps.version.outputs.tags }}

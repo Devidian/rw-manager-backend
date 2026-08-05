@@ -22,3 +22,4 @@ existing map-layer contract so the Manager frontend renders the new zones.
 - [ ] Add map-layer coverage for core, available leasehold, and occupied leasehold colors.
 - [ ] Run backend tests and build.
 - [ ] Publish matching RC images and verify the Dev map response.
+- [x] Keep RC publication isolated from stable Docker tags.
