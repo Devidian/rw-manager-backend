@@ -12,6 +12,7 @@
 
 ### Fixed
 
+* exclude persisted servers with invalid query URLs from the validated server-list response
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 

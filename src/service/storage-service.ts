@@ -142,9 +142,19 @@ function canListServer(server: ServerConfig, context: StorageRequestContext): bo
   return !isUnavailableForSevenDays(server);
 }
 
+function hasValidQueryUrl(server: ServerConfig): boolean {
+  if (typeof server.queryUrl !== 'string' || !server.queryUrl.trim()) return false;
+  try {
+    new URL(server.queryUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function listServers(context: StorageRequestContext): Promise<ServerDto[]> {
   return (await listStoredServers())
-    .filter((server) => canListServer(server, context))
+    .filter((server) => canListServer(server, context) && hasValidQueryUrl(server))
     .map(mapServerToDto);
 }
 

@@ -202,6 +202,21 @@ describe('storage-service', () => {
     jest.useRealTimers();
   });
 
+  test('listServers excludes legacy records with an invalid queryUrl', async () => {
+    state.servers = [
+      createServerRecord({ id: 'valid' }),
+      createServerRecord({ id: 'empty', queryUrl: '' }),
+      createServerRecord({ id: 'object', queryUrl: { host: 'query.example.com' } }),
+      createServerRecord({ id: 'malformed', queryUrl: 'not a url' }),
+    ];
+
+    await expect(storageService.listServers({})).resolves.toEqual([
+      { id: 'valid', label: 'Server', blocked: undefined, blockedAt: undefined },
+    ]);
+    expect(mapServerToDtoMock).toHaveBeenCalledTimes(1);
+    expect(mapServerToDtoMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ id: 'valid' }));
+  });
+
   test('setServerBlocked is restricted to the super admin', async () => {
     state.servers = [createServerRecord({ id: 'server-1' })];
     updateServerMock.mockImplementation(async (id: string, patch: Partial<StoredServer>) => {
