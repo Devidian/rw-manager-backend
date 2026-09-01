@@ -142,20 +142,25 @@ function canListServer(server: ServerConfig, context: StorageRequestContext): bo
   return !isUnavailableForSevenDays(server);
 }
 
-function hasValidQueryUrl(server: ServerConfig): boolean {
-  if (typeof server.queryUrl !== 'string' || !server.queryUrl.trim()) return false;
+function normalizedQueryUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const queryUrl = value.trim();
+  if (!queryUrl) return undefined;
   try {
-    new URL(server.queryUrl);
-    return true;
+    new URL(queryUrl);
+    return queryUrl;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
 export async function listServers(context: StorageRequestContext): Promise<ServerDto[]> {
   return (await listStoredServers())
-    .filter((server) => canListServer(server, context) && hasValidQueryUrl(server))
-    .map(mapServerToDto);
+    .flatMap((server): ServerDto[] => {
+      if (!canListServer(server, context)) return [];
+      const queryUrl = normalizedQueryUrl(server.queryUrl);
+      return queryUrl ? [mapServerToDto({ ...server, queryUrl })] : [];
+    });
 }
 
 export async function createServer(

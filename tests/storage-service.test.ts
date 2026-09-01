@@ -208,13 +208,19 @@ describe('storage-service', () => {
       createServerRecord({ id: 'empty', queryUrl: '' }),
       createServerRecord({ id: 'object', queryUrl: { host: 'query.example.com' } }),
       createServerRecord({ id: 'malformed', queryUrl: 'not a url' }),
+      createServerRecord({ id: 'trimmed', queryUrl: ' https://trimmed.example.com/path ' }),
     ];
 
     await expect(storageService.listServers({})).resolves.toEqual([
       { id: 'valid', label: 'Server', blocked: undefined, blockedAt: undefined },
+      { id: 'trimmed', label: 'Server', blocked: undefined, blockedAt: undefined },
     ]);
-    expect(mapServerToDtoMock).toHaveBeenCalledTimes(1);
+    expect(mapServerToDtoMock).toHaveBeenCalledTimes(2);
     expect(mapServerToDtoMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ id: 'valid' }));
+    expect(mapServerToDtoMock.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      id: 'trimmed',
+      queryUrl: 'https://trimmed.example.com/path',
+    }));
   });
 
   test('setServerBlocked is restricted to the super admin', async () => {
