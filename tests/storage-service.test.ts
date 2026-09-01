@@ -209,6 +209,8 @@ describe('storage-service', () => {
       createServerRecord({ id: 'object', queryUrl: { host: 'query.example.com' } }),
       createServerRecord({ id: 'malformed', queryUrl: 'not a url' }),
       createServerRecord({ id: 'trimmed', queryUrl: ' https://trimmed.example.com/path ' }),
+      createServerRecord({ id: 'private-ip', queryUrl: 'http://192.168.1.42:4254' }),
+      createServerRecord({ id: 'localhost', queryUrl: 'http://localhost:4254' }),
     ];
 
     await expect(storageService.listServers({})).resolves.toEqual([

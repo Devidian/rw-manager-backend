@@ -16,6 +16,7 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import type { CreateServerRequest } from '../dto/create-server-request.js';
 import type { PublicUserDto } from '../dto/public-user-dto.js';
 import type { ServerDto } from '../dto/server-dto.js';
+import { _isFormatUrl } from 'typia/lib/internal/_isFormatUrl.js';
 import type { UpdateServerRequest } from '../dto/update-server-request.js';
 import type { UpdateStorageUserRequest } from '../dto/update-storage-user-request.js';
 import { mapPublicUserToDto } from '../mapper/user-mapper.js';
@@ -148,7 +149,8 @@ function normalizedQueryUrl(value: unknown): string | undefined {
   if (!queryUrl) return undefined;
   try {
     new URL(queryUrl);
-    return queryUrl;
+    // Keep this prefilter aligned with typia.assert<ListServersResponse>.
+    return _isFormatUrl(queryUrl) ? queryUrl : undefined;
   } catch {
     return undefined;
   }

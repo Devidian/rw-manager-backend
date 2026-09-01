@@ -13,7 +13,7 @@
 ### Fixed
 
 * exclude persisted servers with invalid query URLs from the validated server-list response
-* trim persisted query URLs before the validated server-list response is serialized
+* exclude persisted query URLs that fail Typia URL-format validation before serialization
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
