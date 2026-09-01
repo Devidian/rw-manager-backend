@@ -2,9 +2,11 @@ import { jest } from '@jest/globals';
 import type { ServerConfig } from '../src/interfaces/server-config.js';
 
 const listServersMock = jest.fn<() => Promise<ServerConfig[]>>();
+const updateServerMock = jest.fn();
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   listServers: listServersMock,
+  updateServer: updateServerMock,
 }));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({
   AppConfig: {
@@ -30,10 +32,10 @@ describe('plugin data cache refresh for online servers', () => {
     jest.clearAllMocks();
     global.fetch = jest.fn(async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.endsWith('/plugins/ozadminutils/plugins')) {
+      if (url.endsWith('/pluginlist')) {
         return response({
           plugins: [
-            { directory: 'OZAdminUtils', name: 'OZAdminUtils', version: '1.0.0', valid: true },
+            { name: 'OZ - Admin Utils', version: 'Version: 1.0.0' },
           ],
         });
       }
@@ -57,7 +59,7 @@ describe('plugin data cache refresh for online servers', () => {
       skipped: 1,
     });
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://query.example/server-1/plugins/ozadminutils/plugins',
+      'https://query.example/server-1/pluginlist',
       expect.any(Object),
     );
   });
@@ -78,5 +80,6 @@ function response(payload: unknown): Response {
   return {
     ok: true,
     json: async () => payload,
+    text: async () => JSON.stringify(payload),
   } as Response;
 }

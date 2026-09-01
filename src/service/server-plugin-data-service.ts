@@ -5,6 +5,7 @@ import {
   getFirstCachedPluginData,
   type PluginDataCacheEntry,
 } from './plugin-data-cache-service.js';
+import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 
 export function getCachedServerPlayers(serverId?: string): DbPlayer[] {
   const payload = cacheEntry(serverId)?.data['ozadminutils.playerlist'];
@@ -27,6 +28,8 @@ export function getCachedServerConfig(serverId?: string): WorldServerConfig {
 }
 
 export function getCachedServerAdminList(serverId?: string): string[] {
+  const nativeInfo = parseNativeAdminUtilsInfo(cacheEntry(serverId)?.data['ozadminutils.info']);
+  if (nativeInfo) return nativeInfo.admins;
   const admins = getCachedServerConfig(serverId).Server_Admins;
   return typeof admins === 'string'
     ? admins.split(';').map((item) => item.trim()).filter(Boolean)

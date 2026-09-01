@@ -52,7 +52,7 @@ describe('plugin data cache service', () => {
     expect(result.entry?.plugins).toHaveLength(1);
     expect(result.entry?.data.__onlinePlayers).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://query.example/plugins/ozadminutils/plugins',
+      'https://query.example/pluginlist',
       expect.any(Object),
     );
   });
@@ -66,7 +66,7 @@ describe('plugin data cache service', () => {
           { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
           { directory: 'OZGPS', name: 'OZ - GPS', version: '1', valid: true },
           { directory: 'OZMarketplace', name: 'OZ - Marketplace', version: '1', valid: true },
-          { directory: 'OZShop', name: 'OZShop', version: '1', valid: true },
+          { directory: 'OZShop', name: 'OZ - Shop', version: '1', valid: true },
           { directory: 'Broken', valid: false },
         ],
       }))
@@ -76,17 +76,29 @@ describe('plugin data cache service', () => {
       .mockResolvedValueOnce(response({ markers: [{ id: 1, name: 'Spawn' }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 42 }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 42 }] }))
+      .mockResolvedValueOnce(response({
+        schemaVersion: 1,
+        mapUrl: 'https://map.example.com/',
+        adminUid: '76561198000000000',
+        admins: ['76561198000000001'],
+      }))
       .mockResolvedValueOnce(response({ offers: [{ id: 7, itemName: 'Stone' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
     const result = await refreshPluginDataForServer(server({ onlinePlayers: [{ uid: 'p1' }] }));
 
     expect(result.refreshed).toBe(true);
-    expect(result.entry?.plugins).toHaveLength(5);
+    expect(result.entry?.plugins).toHaveLength(4);
     expect(result.entry?.data).toEqual({
       'ozadminutils.worldAreas': { areas: [{ id: 42, name: 'Spawn Claim' }] },
       'ozadminutils.playerlist': { players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }] },
       'ozadminutils.serverConfig': { config: { Server_Admins: 'steam-admin' } },
+      'ozadminutils.info': {
+        schemaVersion: 1,
+        mapUrl: 'https://map.example.com/',
+        adminUid: '76561198000000000',
+        admins: ['76561198000000001'],
+      },
       'ozgps.globalMarkers': { markers: [{ id: 1, name: 'Spawn' }] },
       'ozmarketplace.zones': { zones: [{ areaId: 42 }] },
       'ozshop.zones': { zones: [{ areaId: 42 }] },
@@ -96,42 +108,47 @@ describe('plugin data cache service', () => {
     expect(getCachedPluginData('server-1')?.data).toEqual(result.entry?.data);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://query.example/plugins/ozadminutils/plugins',
+      'https://query.example/pluginlist',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://query.example/plugins/ozadminutils/world-areas',
+      'https://query.example/plugins/oz---admin-utils/world-areas',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://query.example/plugins/ozadminutils/playerlist',
+      'https://query.example/plugins/oz---admin-utils/playerlist',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      'https://query.example/plugins/ozadminutils/server-config',
+      'https://query.example/plugins/oz---admin-utils/server-config',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      'https://query.example/plugins/ozgps/marker?type=global',
+      'https://query.example/plugins/oz---gps/marker?type=global',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
-      'https://query.example/plugins/ozmarketplace/zones',
+      'https://query.example/plugins/oz---marketplace/zones',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       7,
-      'https://query.example/plugins/ozshop/zones',
+      'https://query.example/plugins/oz---shop/zones',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
-      'https://query.example/plugins/ozmarketplace/offers?areaId=42',
+      'https://query.example/plugins/oz---admin-utils/info',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      'https://query.example/plugins/oz---marketplace/offers?areaId=42',
       expect.any(Object),
     );
   });
@@ -218,7 +235,6 @@ describe('plugin data cache service', () => {
 
     await refreshPluginDataForServer(server({ onlinePlayers: [] }));
     expect(getFirstCachedPluginData()?.plugins).toEqual([{
-      directory: 'OZGPS',
       name: 'OZ - GPS',
       version: undefined,
       valid: true,
@@ -285,7 +301,7 @@ describe('plugin data cache service', () => {
     expect(players[0].secondaryspawn).toBeUndefined();
   });
 
-  test('uses queryUrl from server info before the direct query URL', async () => {
+  test('uses the configured queryUrl and ignores legacy server-info markers', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(response({
       schemaVersion: 1,
       plugins: [],
@@ -300,7 +316,7 @@ describe('plugin data cache service', () => {
     }));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://bridge.example/dev/plugins/ozadminutils/plugins',
+      'https://query.example/pluginlist',
       expect.any(Object),
     );
   });
@@ -318,7 +334,7 @@ describe('plugin data cache service', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test('does not derive plugin bridge URL from legacy backend map URL', async () => {
+  test('does not derive native plugin URL from legacy backend map URL', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(response({
       schemaVersion: 1,
       plugins: [],
@@ -331,7 +347,7 @@ describe('plugin data cache service', () => {
     }));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://query.example/plugins/ozadminutils/plugins',
+      'https://query.example/pluginlist',
       expect.any(Object),
     );
   });

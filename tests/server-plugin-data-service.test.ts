@@ -46,6 +46,12 @@ describe('server plugin data service', () => {
             Server_Name: 'Land of OZ',
           },
         },
+        'ozadminutils.info': {
+          schemaVersion: 1,
+          mapUrl: 'https://map.example.com/main/',
+          adminUid: 'steam-owner',
+          admins: ['steam-admin'],
+        },
         'ozadminutils.playerlist': {
           players: [
             null,

@@ -1,14 +1,15 @@
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
-import { listServers } from '../db/manager-store.js';
+import { listServers, updateServer } from '../db/manager-store.js';
+import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
+import {
+  nativePluginRouteId,
+  parseNativePluginList,
+  type QueryPluginInfo,
+} from './native-plugin-list.js';
 
-export interface QueryPluginInfo {
-  directory?: string;
-  name?: string;
-  version?: string;
-  valid: boolean;
-}
+export type { QueryPluginInfo } from './native-plugin-list.js';
 
 export interface PluginDataCacheEntry {
   serverId: string;
@@ -45,60 +46,59 @@ export function liveOnlinePlayersFromEntry(entry: PluginDataCacheEntry): unknown
   );
 }
 
-interface PluginListResponse {
-  plugins?: unknown;
-}
-
 interface RouteSpec {
   key: string;
-  pluginNames: string[];
+  pluginRouteId: string;
   path: string;
 }
 
 const routeSpecs: RouteSpec[] = [
   {
     key: 'ozadminutils.worldAreas',
-    pluginNames: ['ozadminutils'],
-    path: 'plugins/ozadminutils/world-areas',
+    pluginRouteId: 'oz---admin-utils',
+    path: 'world-areas',
   },
   {
     key: 'ozadminutils.playerlist',
-    pluginNames: ['ozadminutils'],
-    path: 'plugins/ozadminutils/playerlist',
+    pluginRouteId: 'oz---admin-utils',
+    path: 'playerlist',
   },
   {
     key: 'ozadminutils.serverConfig',
-    pluginNames: ['ozadminutils'],
-    path: 'plugins/ozadminutils/server-config',
+    pluginRouteId: 'oz---admin-utils',
+    path: 'server-config',
   },
   {
     key: 'ozgps.globalMarkers',
-    pluginNames: ['ozgps'],
-    path: 'plugins/ozgps/marker?type=global',
+    pluginRouteId: 'oz---gps',
+    path: 'marker?type=global',
   },
   {
     key: 'ozmarketplace.zones',
-    pluginNames: ['ozmarketplace'],
-    path: 'plugins/ozmarketplace/zones',
+    pluginRouteId: 'oz---marketplace',
+    path: 'zones',
   },
   {
     key: 'ozshop.zones',
-    pluginNames: ['ozshop'],
-    path: 'plugins/ozshop/zones',
+    pluginRouteId: 'oz---shop',
+    path: 'zones',
   },
   {
     key: 'ozlandclaim.claimSales',
-    pluginNames: ['ozlandclaim'],
-    path: 'plugins/ozlandclaim/claim-sales',
+    pluginRouteId: 'oz---land-claim',
+    path: 'claim-sales',
   },
   {
     key: 'ozlandclaim.renewZones',
-    pluginNames: ['ozlandclaim'],
-    path: 'plugins/ozlandclaim/renew-zones',
+    pluginRouteId: 'oz---land-claim',
+    path: 'renew-zones',
+  },
+  {
+    key: 'ozadminutils.info',
+    pluginRouteId: 'oz---admin-utils',
+    path: 'info',
   },
 ];
-
-const QUERY_URL_PATTERN = /@queryUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
 
 const cache = new Map<string, PluginDataCacheEntry>();
 
@@ -124,7 +124,7 @@ export function clearPluginDataCache(): void {
 export async function refreshPluginDataForServer(
   server: ServerConfig,
 ): Promise<PluginDataRefreshResult> {
-  const pluginQueryUrl = pluginQueryUrlForServer(server);
+  const pluginQueryUrl = normalizedUrl(server.queryUrl);
   if (!pluginQueryUrl) {
     return { refreshed: false, skippedReason: 'queryUrlMissing' };
   }
@@ -137,18 +137,23 @@ export async function refreshPluginDataForServer(
   const availablePlugins = new Set(
     plugins
       .filter((plugin) => plugin.valid)
-      .flatMap((plugin) => [plugin.name, plugin.directory])
-      .filter((value): value is string => typeof value === 'string')
-      .map(normalizePluginName),
+      .flatMap((plugin) => plugin.name ? [nativePluginRouteId(plugin.name)] : []),
   );
   const data = Object.fromEntries(
     (await Promise.all(
       routeSpecs
-        .filter((spec) => spec.pluginNames.some((name) => availablePlugins.has(name)))
-        .map(async (spec) => [spec.key, await fetchPluginRoute(pluginQueryUrl, spec.path)] as const),
+        .filter((spec) => availablePlugins.has(spec.pluginRouteId))
+        .map(async (spec) => [
+          spec.key,
+          await fetchPluginRoute(pluginQueryUrl, `plugins/${spec.pluginRouteId}/${spec.path}`),
+        ] as const),
     )).filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
   );
   Object.assign(data, await fetchMarketplaceOffersByArea(pluginQueryUrl, data['ozmarketplace.zones']));
+  const nativeInfo = parseNativeAdminUtilsInfo(data['ozadminutils.info']);
+  if (nativeInfo && (server.mapUrl !== nativeInfo.mapUrl || server.adminUid !== nativeInfo.adminUid)) {
+    await updateServer(server.id, { mapUrl: nativeInfo.mapUrl, adminUid: nativeInfo.adminUid });
+  }
   const liveOnlinePlayers = liveOnlinePlayersFromEntry({
     serverId: server.id,
     refreshedAtMs: 0,
@@ -168,18 +173,6 @@ export async function refreshPluginDataForServer(
   };
   cache.set(server.id, entry);
   return { refreshed: true, entry };
-}
-
-function pluginQueryUrlForServer(server: ServerConfig): string | undefined {
-  return queryUrlFromInfo(server.info)
-    ?? normalizedUrl(server.queryUrl);
-}
-
-function queryUrlFromInfo(info: unknown): string | undefined {
-  if (!info || typeof info !== 'object') return undefined;
-  const description = stringOrUndefined((info as { description?: unknown }).description);
-  const match = description?.match(QUERY_URL_PATTERN);
-  return normalizedUrl(match?.[1] ?? match?.[2]);
 }
 
 function normalizedUrl(value: string | undefined): string | undefined {
@@ -206,7 +199,7 @@ async function fetchMarketplaceOffersByArea(
 ): Promise<Record<string, unknown>> {
   const areaIds = areaIdsFromZonesPayload(zonesPayload);
   const entries = await Promise.all(areaIds.map(async (areaId): Promise<[string, unknown] | null> => {
-    const payload = await fetchPluginRoute(queryUrl, `plugins/ozmarketplace/offers?areaId=${areaId}`);
+    const payload = await fetchPluginRoute(queryUrl, `plugins/oz---marketplace/offers?areaId=${areaId}`);
     return payload === undefined ? null : [`ozmarketplace.offers.${areaId}`, payload];
   }));
   return Object.fromEntries(entries.filter((entry): entry is [string, unknown] => entry !== null));
@@ -234,21 +227,15 @@ export async function refreshPluginDataForOnlineServers(): Promise<PluginDataRef
 }
 
 async function fetchPluginList(queryUrl: string): Promise<QueryPluginInfo[] | undefined> {
-  const result = await fetchJson(buildRouteUrl(queryUrl, 'plugins/ozadminutils/plugins'));
-  if (!result.ok) return undefined;
-  const plugins = (result.data as PluginListResponse).plugins;
-  if (!Array.isArray(plugins)) return undefined;
-  return plugins.flatMap((plugin): QueryPluginInfo[] => {
-    if (!plugin || typeof plugin !== 'object') return [];
-    const value = plugin as Record<string, unknown>;
-    if (typeof value.valid !== 'boolean') return [];
-    return [{
-      directory: stringOrUndefined(value.directory),
-      name: stringOrUndefined(value.name),
-      version: stringOrUndefined(value.version),
-      valid: value.valid,
-    }];
-  });
+  try {
+    const response = await fetch(buildRouteUrl(queryUrl, 'pluginlist'), {
+      signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
+    });
+    if (!response.ok) return undefined;
+    return parseNativePluginList(await response.text());
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchPluginRoute(queryUrl: string, routePath: string): Promise<unknown | undefined> {
@@ -280,12 +267,4 @@ async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { o
 
 function buildRouteUrl(queryUrl: string, routePath: string): string {
   return new URL(routePath, `${queryUrl.replace(/\/+$/, '')}/`).toString();
-}
-
-function normalizePluginName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function stringOrUndefined(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }

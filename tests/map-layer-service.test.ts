@@ -217,7 +217,7 @@ describe('map layer service', () => {
           { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', valid: true },
           { directory: 'OZGPS', name: 'OZ - GPS', valid: true },
           { directory: 'OZMarketplace', name: 'OZ - Marketplace', valid: true },
-          { directory: 'OZShop', name: 'OZShop', valid: true },
+          { directory: 'OZShop', name: 'OZ - Shop', valid: true },
           { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
         ],
       }))
@@ -247,6 +247,12 @@ describe('map layer service', () => {
       .mockResolvedValueOnce(response({ zones: [{ areaId: 3 }] }))
       .mockResolvedValueOnce(response({ listings: [{ areaId: 3, price: 5, status: 'INACTIVE' }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 'bad' }, { areaId: 3, nextRenewalAt: 0 }] }))
+      .mockResolvedValueOnce(response({
+        schemaVersion: 1,
+        mapUrl: 'https://map.example.com/',
+        adminUid: '76561198000000000',
+        admins: [],
+      }))
       .mockResolvedValueOnce(response({
         offers: [
           { id: 'bad' },
@@ -318,7 +324,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', valid: true },
         { directory: 'OZGPS', name: 'OZ - GPS', valid: true },
         { directory: 'OZMarketplace', name: 'OZ - Marketplace', valid: true },
-        { directory: 'OZShop', name: 'OZShop', valid: true },
+        { directory: 'OZShop', name: 'OZ - Shop', valid: true },
         { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
       ],
     }))
@@ -473,6 +479,12 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         borderColor: '#00C2A89C',
         frameColor: '#00C2A8AA',
       }],
+    }))
+    .mockResolvedValueOnce(response({
+      schemaVersion: 1,
+      mapUrl: 'https://map.example.com/',
+      adminUid: '76561198000000000',
+      admins: ['76561198000000001'],
     }))
     .mockResolvedValueOnce(response({
       offers: [{
