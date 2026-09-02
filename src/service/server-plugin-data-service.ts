@@ -6,6 +6,7 @@ import {
   type PluginDataCacheEntry,
 } from './plugin-data-cache-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
+import { platformFromUid } from './observed-player-service.js';
 
 export function getCachedServerPlayers(serverId?: string): DbPlayer[] {
   const payload = cacheEntry(serverId)?.data['ozadminutils.playerlist'];
@@ -74,6 +75,7 @@ function normalizeDbPlayer(value: unknown): DbPlayer | null {
   const firstseen = numberOrNull(player.firstseen);
   const lastseen = numberOrNull(player.lastseen) ?? numberOrNull(player.lastTimeOnline);
   if (uid === null) return null;
+  const resolvedPlatform = platform ?? platformFromUid(uid);
   return {
     uid,
     ...(id !== null ? { id } : {}),
@@ -85,7 +87,7 @@ function normalizeDbPlayer(value: unknown): DbPlayer | null {
     ...(roty !== null ? { roty } : {}),
     ...(rotz !== null ? { rotz } : {}),
     ...(rotw !== null ? { rotw } : {}),
-    ...(platform !== null ? { platform } : {}),
+    platform: resolvedPlatform,
     ...(permissiongroup !== null ? { permissiongroup } : {}),
     ...(health !== null ? { health } : {}),
     ...(hunger !== null ? { hunger } : {}),

@@ -111,6 +111,7 @@ describe('server plugin data service', () => {
       {
         id: 7,
         uid: '7',
+        platform: 'Standalone',
         name: 'Map Only Player',
         permissiongroup: 'admin',
         playtime: 42,
@@ -119,6 +120,7 @@ describe('server plugin data service', () => {
       {
         id: 8,
         uid: 'uid-8',
+        platform: 'Standalone',
         name: 'Upper UID Player',
       },
     ]);
