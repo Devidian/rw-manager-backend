@@ -33,12 +33,14 @@ describe('AppConfig', () => {
     expect(AppConfig.serverQueryRefreshIntervalMs).toBe(600000);
     expect(AppConfig.serverInfoRefreshOnStartupMs).toBe(600000);
     expect(AppConfig.playerListRefreshIntervalMs).toBe(180000);
+    expect(AppConfig.activePlayerListRefreshIntervalMs).toBe(30000);
+    expect(AppConfig.playerListRefreshConcurrency).toBe(20);
     expect(AppConfig.playerListTimeoutMs).toBe(5000);
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(60000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(300000);
     expect(AppConfig.mapPlayerLayerCacheTtlMs).toBe(30000);
     expect(AppConfig.maxPinnedServers).toBe(50);
-    expect(AppConfig.serverLiveMaxServerIds).toBe(100);
+    expect(AppConfig.serverLiveMaxServerIds).toBe(1000);
     expect(AppConfig.masterServerListTimeoutMs).toBe(8000);
     expect(AppConfig.defaultUserRole).toBe('user');
     expect(AppConfig.superAdminId).toBe('');
@@ -62,6 +64,8 @@ describe('AppConfig', () => {
     process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '120000';
     process.env.SERVER_INFO_REFRESH_ON_STARTUP_MS = '120000';
     process.env.PLAYERLIST_REFRESH_INTERVAL_MS = '10000';
+    process.env.ACTIVE_PLAYERLIST_REFRESH_INTERVAL_MS = '15000';
+    process.env.PLAYERLIST_REFRESH_CONCURRENCY = '25';
     process.env.PLAYERLIST_TIMEOUT_MS = '2000';
     process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '30000';
     process.env.PLUGIN_DATA_CACHE_TTL_MS = '120000';
@@ -91,6 +95,8 @@ describe('AppConfig', () => {
     expect(AppConfig.serverQueryRefreshIntervalMs).toBe(120000);
     expect(AppConfig.serverInfoRefreshOnStartupMs).toBe(120000);
     expect(AppConfig.playerListRefreshIntervalMs).toBe(10000);
+    expect(AppConfig.activePlayerListRefreshIntervalMs).toBe(15000);
+    expect(AppConfig.playerListRefreshConcurrency).toBe(25);
     expect(AppConfig.playerListTimeoutMs).toBe(2000);
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(30000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(120000);
@@ -111,6 +117,8 @@ describe('AppConfig', () => {
     process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '59999';
     process.env.SERVER_INFO_REFRESH_ON_STARTUP_MS = '59999';
     process.env.PLAYERLIST_REFRESH_INTERVAL_MS = '4999';
+    process.env.ACTIVE_PLAYERLIST_REFRESH_INTERVAL_MS = '4999';
+    process.env.PLAYERLIST_REFRESH_CONCURRENCY = '0';
     process.env.PLAYERLIST_TIMEOUT_MS = '999';
     process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '9999';
     process.env.PLUGIN_DATA_CACHE_TTL_MS = '59999';
@@ -125,6 +133,8 @@ describe('AppConfig', () => {
     expect(AppConfig.serverQueryRefreshIntervalMs).toBe(600000);
     expect(AppConfig.serverInfoRefreshOnStartupMs).toBe(600000);
     expect(AppConfig.playerListRefreshIntervalMs).toBe(180000);
+    expect(AppConfig.activePlayerListRefreshIntervalMs).toBe(30000);
+    expect(AppConfig.playerListRefreshConcurrency).toBe(20);
     expect(AppConfig.playerListTimeoutMs).toBe(5000);
     expect(AppConfig.pluginDataRefreshIntervalMs).toBe(60000);
     expect(AppConfig.pluginDataCacheTtlMs).toBe(300000);

@@ -1,4 +1,4 @@
-import { findServerById, updateServer } from '../db/manager-store.js';
+import { findServerById, listServers, updateServer } from '../db/manager-store.js';
 import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
 import type { ServerLiveStatusResponse } from '../dto/server-live-status-response.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
@@ -17,6 +17,7 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<ServerLiveStatusResponse>>();
+const playerListRefreshAttemptedAt = new Map<string, number>();
 
 async function fetchJson(
   url: string,
@@ -201,6 +202,65 @@ function playerCountFromLiveStatus(response: ServerLiveStatusResponse): number {
   return queryCount ?? 0;
 }
 
+function playerListRefreshIntervalMs(server: ServerConfig): number {
+  return Array.isArray(server.onlinePlayers) && server.onlinePlayers.length > 0
+    ? AppConfig.activePlayerListRefreshIntervalMs
+    : AppConfig.playerListRefreshIntervalMs;
+}
+
+function lastPlayerListRefreshAt(server: ServerConfig): number {
+  const attemptedAt = playerListRefreshAttemptedAt.get(server.id);
+  if (attemptedAt !== undefined) return attemptedAt;
+  const lastChecked = server.lastChecked ? new Date(server.lastChecked).getTime() : Number.NaN;
+  return Number.isFinite(lastChecked) ? lastChecked : 0;
+}
+
+async function refreshOnlinePlayersForServer(server: ServerConfig, now: number): Promise<boolean> {
+  if (!server.queryUrl || server.status !== 'online') return false;
+  if (now - lastPlayerListRefreshAt(server) < playerListRefreshIntervalMs(server)) return false;
+  playerListRefreshAttemptedAt.set(server.id, now);
+
+  const playerlistResult = await fetchJson(
+    buildPlayerListUrl(server.queryUrl),
+    AppConfig.playerListTimeoutMs,
+  );
+  const onlinePlayers = playerlistResult.ok ? playersFromPayload(playerlistResult.data) : undefined;
+  if (onlinePlayers === undefined) return false;
+
+  const lastChecked = new Date(now);
+  server.onlinePlayers = onlinePlayers;
+  server.knownPlayers = mergeKnownPlayers(
+    server.knownPlayers,
+    observedPlayersFromValues(onlinePlayers, lastChecked.toISOString()),
+  );
+  server.lastChecked = lastChecked;
+  await updateServer(server.id, {
+    onlinePlayers: server.onlinePlayers,
+    knownPlayers: server.knownPlayers,
+    lastChecked: server.lastChecked,
+  });
+  publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
+  return true;
+}
+
+export async function refreshDueServerPlayerLists(): Promise<{ checked: number; refreshed: number }> {
+  const now = Date.now();
+  const servers = await listServers();
+  let refreshed = 0;
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(AppConfig.playerListRefreshConcurrency, servers.length) },
+    async () => {
+      while (nextIndex < servers.length) {
+        const server = servers[nextIndex++];
+        if (await refreshOnlinePlayersForServer(server, now)) refreshed += 1;
+      }
+    },
+  );
+  await Promise.all(workers);
+  return { checked: servers.length, refreshed };
+}
+
 export async function getServerLiveStatus(serverId: string): Promise<ServerLiveStatusResponse> {
   const server = await findServerById(serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
@@ -257,4 +317,5 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
 export function clearServerLiveStatusCache(): void {
   cache.clear();
   inflight.clear();
+  playerListRefreshAttemptedAt.clear();
 }

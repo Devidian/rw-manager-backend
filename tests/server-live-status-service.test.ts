@@ -82,6 +82,23 @@ describe('server-live-status-service', () => {
     });
   });
 
+  test('refreshes active server player lists independently of the full query interval', async () => {
+    state.servers[0].status = 'online';
+    state.servers[0].onlinePlayers = [{ uid: 'previous-player' }];
+    state.servers[0].lastChecked = new Date(0).toISOString();
+    global.fetch = jest.fn().mockResolvedValueOnce(response({
+      players: [{ uid: 'current-player', name: 'Current' }],
+    })) as typeof fetch;
+
+    await expect(service.refreshDueServerPlayerLists()).resolves.toEqual({ checked: 1, refreshed: 1 });
+
+    expect(global.fetch).toHaveBeenCalledWith('http://query.example/playerlist', expect.any(Object));
+    expect(state.servers[0]).toMatchObject({
+      onlinePlayers: [{ uid: 'current-player', name: 'Current' }],
+      status: 'online',
+    });
+  });
+
   test('does not accept description markers as native configuration', async () => {
     global.fetch = jest.fn()
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 1 }))

@@ -4,6 +4,7 @@ import {
   refreshAllServerQueryData,
   refreshMasterServerList,
 } from './master-server-list-service.js';
+import { refreshDueServerPlayerLists } from './server-live-status-service.js';
 import { refreshPluginDataForOnlineServers } from './plugin-data-cache-service.js';
 
 export interface ManagerRefreshScheduler {
@@ -23,6 +24,11 @@ export function startManagerRefreshScheduler(): ManagerRefreshScheduler | null {
     AppConfig.serverQueryRefreshIntervalMs,
     () => refreshAllServerQueryData(),
   );
+  const playerList = startLoop(
+    'player list',
+    AppConfig.activePlayerListRefreshIntervalMs,
+    refreshDueServerPlayerLists,
+  );
   const pluginData = startLoop(
     'plugin data',
     AppConfig.pluginDataRefreshIntervalMs,
@@ -33,6 +39,7 @@ export function startManagerRefreshScheduler(): ManagerRefreshScheduler | null {
     stop: () => {
       master.stop();
       query.stop();
+      playerList.stop();
       pluginData.stop();
     },
   };

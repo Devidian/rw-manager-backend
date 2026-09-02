@@ -43,10 +43,13 @@ such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 MASTER_SERVER_LIST_URL=https://api.rising-world.net/v5/serverlist
 MASTER_SERVER_LIST_REFRESH_INTERVAL_MS=300000
 SERVER_QUERY_REFRESH_INTERVAL_MS=86400000
+PLAYERLIST_REFRESH_INTERVAL_MS=180000
+ACTIVE_PLAYERLIST_REFRESH_INTERVAL_MS=30000
+PLAYERLIST_REFRESH_CONCURRENCY=20
 LIVE_QUERY_PROXY_CACHE_TTL_MS=5000
 LIVE_QUERY_PROXY_TIMEOUT_MS=8000
 MAX_PINNED_SERVERS=50
-SERVER_LIVE_MAX_SERVER_IDS=100
+SERVER_LIVE_MAX_SERVER_IDS=1000
 ```
 
 MongoDB is the preferred manager storage backend. When `MONGODB_URI` is set,
@@ -78,6 +81,11 @@ The backend derives `queryUrl` as `http://<ip>:<port - 1>`. Query `data` and
 stored as `adminUid`. During the transition, `@mapUrl:[url]` inside
 `info.description` is stored as `mapUrl`.
 
+Player lists use a two-phase refresh: empty servers are checked every
+`PLAYERLIST_REFRESH_INTERVAL_MS`, while servers with at least one online player
+are checked every `ACTIVE_PLAYERLIST_REFRESH_INTERVAL_MS`.
+`PLAYERLIST_REFRESH_CONCURRENCY` bounds simultaneous game-server requests.
+
 The frontend must not call the HTTP-only Rising World query server directly
 from an HTTPS deployment. Live status requests are proxied through the manager
 backend and cached briefly per server:
@@ -86,20 +94,20 @@ backend and cached briefly per server:
 GET /api/storage/server/:id/live
 ```
 
-Dashboard clients use one WebSocket instead of polling this route per server:
+Clients use one WebSocket for server-status snapshots and player-list deltas:
 
 ```text
 WS /api/storage/server-live
 ```
 
 The first frame subscribes with `server.status.subscribe`; later
-`server.status.set-servers` frames replace the complete dashboard server set
+`server.status.set-servers` frames replace the complete subscribed server set
 without reconnecting. The backend sends an initial `server.status.snapshot`
 and then `server.status.changed` field deltas. REST remains available for
 manual refresh and fallback. `MAX_PINNED_SERVERS` is the authoritative account
 favorite limit (default `50`) exposed by `GET /api/` for the frontend.
 `SERVER_LIVE_MAX_SERVER_IDS` independently bounds favorites plus administered
-servers on one socket (default `100`, never lower than the favorite limit).
+servers on one socket (default `1000`, never lower than the favorite limit).
 
 This route fetches `queryUrl`, `queryUrl + /info`, and
 `queryUrl + /playerlist` server-side, coalesces concurrent requests, and uses

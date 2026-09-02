@@ -94,6 +94,17 @@ export class AppConfig {
       Number.MAX_SAFE_INTEGER,
     );
   }
+  static get activePlayerListRefreshIntervalMs(): number {
+    return AppConfig.boundedInteger(
+      env.ACTIVE_PLAYERLIST_REFRESH_INTERVAL_MS,
+      30000,
+      5000,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+  static get playerListRefreshConcurrency(): number {
+    return AppConfig.boundedInteger(env.PLAYERLIST_REFRESH_CONCURRENCY, 20, 1, 100);
+  }
   static get playerListTimeoutMs(): number {
     return AppConfig.boundedInteger(
       env.PLAYERLIST_TIMEOUT_MS,
@@ -140,7 +151,7 @@ export class AppConfig {
   static get serverLiveMaxServerIds(): number {
     return Math.max(
       AppConfig.maxPinnedServers,
-      AppConfig.boundedInteger(env.SERVER_LIVE_MAX_SERVER_IDS, 100, 1, 1000),
+      AppConfig.boundedInteger(env.SERVER_LIVE_MAX_SERVER_IDS, 1000, 1, 1000),
     );
   }
   static get liveQueryProxyCacheTtlMs(): number {
