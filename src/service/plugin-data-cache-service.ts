@@ -31,11 +31,7 @@ export interface PluginDataRefreshAllResult {
   skipped: number;
 }
 
-/**
- * The bridge marks only fresh Admin Utils samples as online.  This is more
- * current than the game query endpoint's player list and becomes an empty
- * array immediately after a disconnect.
- */
+/** Native Admin Utils samples contain current connection state. */
 export function liveOnlinePlayersFromEntry(entry: PluginDataCacheEntry): unknown[] | undefined {
   const payload = entry.data['ozadminutils.playerlist'];
   if (!payload || typeof payload !== 'object') return undefined;

@@ -12,11 +12,12 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
+import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { storedLiveStatusResponse } from './server-live-status-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
-const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
+const NATIVE_ADMIN_UTILS_ROUTE = 'plugins/oz---admin-utils';
 
 export interface MasterServerListSyncResult {
   fetched: number;
@@ -44,28 +45,6 @@ function steamIdOrUndefined(value: unknown): string | undefined {
       ? String(value)
       : stringOrUndefined(value);
   return serialized && STEAM_ID_PATTERN.test(serialized) ? serialized : undefined;
-}
-
-function mapUrlFromInfo(info: unknown): string | undefined {
-  if (!info || typeof info !== 'object') return undefined;
-  const description = stringOrUndefined((info as { description?: unknown }).description);
-  const match = description?.match(MAP_URL_PATTERN);
-  if (!match) return undefined;
-  try {
-    return new URL(match[1] ?? match[2]).toString();
-  } catch {
-    return undefined;
-  }
-}
-
-function adminUidFromInfo(info: unknown): string | undefined {
-  if (!info || typeof info !== 'object') return undefined;
-  return steamIdOrUndefined((info as { contact?: unknown }).contact);
-}
-
-function labelFromInfo(info: unknown): string | undefined {
-  if (!info || typeof info !== 'object') return undefined;
-  return stringOrUndefined((info as { shortname?: unknown }).shortname);
 }
 
 function playersFromPayload(payload: unknown): unknown[] | undefined {
@@ -148,8 +127,8 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
 
   const [data, info, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
-    fetchJson(new URL('info', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
-    fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/playerlist`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
 
   server.status = data.ok ? 'online' : 'offline';
@@ -158,9 +137,9 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   if (data.ok) server.data = data.data;
   if (info.ok) {
     server.info = info.data;
-    server.label = labelFromInfo(info.data) ?? server.label;
-    server.adminUid = adminUidFromInfo(info.data) ?? server.adminUid;
-    server.mapUrl = mapUrlFromInfo(info.data) ?? server.mapUrl;
+    const nativeInfo = parseNativeAdminUtilsInfo(info.data);
+    server.adminUid = nativeInfo?.adminUid ?? server.adminUid;
+    server.mapUrl = nativeInfo?.mapUrl ?? server.mapUrl;
   }
   server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
   server.knownPlayers = mergeKnownPlayers(

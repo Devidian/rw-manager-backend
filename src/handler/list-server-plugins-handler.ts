@@ -10,13 +10,10 @@ export async function listServerPluginsHandler(req: Request, res: Response) {
     const entry = server ? getCachedPluginData(server.id) : getFirstCachedPluginData();
     const response: ListServerPluginsResponse = {
       items: (entry?.plugins ?? []).flatMap((plugin) =>
-        typeof plugin.directory === 'string'
-          ? [{
-              directory: plugin.directory,
-              name: plugin.name,
-              version: plugin.version,
-              valid: plugin.valid,
-            }]
+        typeof plugin.valid === 'boolean' &&
+        (plugin.name === undefined || typeof plugin.name === 'string') &&
+        (plugin.version === undefined || typeof plugin.version === 'string')
+          ? [{ name: plugin.name, version: plugin.version, valid: plugin.valid }]
           : [],
       ),
     };

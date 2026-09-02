@@ -240,6 +240,11 @@ function cachedGpsGlobalMarkers(entry?: PluginDataCacheEntry): MapGpsMarker[] | 
     if (!marker || typeof marker !== 'object') return [];
     const value = marker as Record<string, unknown>;
     const { id, name, x, y, z, icon, color, createdAt } = value;
+    const normalizedCreatedAt = typeof createdAt === 'number'
+      ? epochMilliseconds(createdAt)
+      : typeof createdAt === 'string'
+        ? createdAt
+        : undefined;
     if (
       typeof id !== 'number' ||
       !Number.isSafeInteger(id) ||
@@ -252,7 +257,7 @@ function cachedGpsGlobalMarkers(entry?: PluginDataCacheEntry): MapGpsMarker[] | 
       !Number.isFinite(z) ||
       typeof icon !== 'string' ||
       typeof color !== 'string' ||
-      typeof createdAt !== 'string'
+      !normalizedCreatedAt
     ) return [];
     return [{
       id,
@@ -262,7 +267,7 @@ function cachedGpsGlobalMarkers(entry?: PluginDataCacheEntry): MapGpsMarker[] | 
       z,
       icon,
       color,
-      createdAt,
+      createdAt: normalizedCreatedAt,
     }];
   });
 }
@@ -389,26 +394,34 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
   return areas.flatMap((area): MapClaim[] => {
     if (!area || typeof area !== 'object') return [];
     const value = area as Record<string, unknown>;
-    const { id, name, permission, ownerUid, ownerName, startX, startZ, endX, endZ, createdAt } = value;
+    const { id, name, defaultPermission, start, end } = value;
     if (
       typeof id !== 'number' ||
       !Number.isSafeInteger(id) ||
       id <= 0 ||
       typeof name !== 'string' ||
-      typeof permission !== 'string' ||
+      typeof defaultPermission !== 'string' ||
+      !start ||
+      typeof start !== 'object' ||
+      !end ||
+      typeof end !== 'object'
+    ) return [];
+    const startX = (start as { x?: unknown }).x;
+    const startZ = (start as { z?: unknown }).z;
+    const endX = (end as { x?: unknown }).x;
+    const endZ = (end as { z?: unknown }).z;
+    if (
       typeof startX !== 'number' ||
       typeof startZ !== 'number' ||
       typeof endX !== 'number' ||
       typeof endZ !== 'number'
     ) return [];
+    const permission = defaultPermission;
     if (!permission.startsWith('ozlc') && !settings.areaPermissions.has(permission)) return [];
     const geometry = normalizeCachedArea(startX, startZ, endX, endZ);
     if (!geometry) return [];
     const salePrice = sales.get(id);
     const renewZone = renewZones.get(id);
-    const isOwner = currentUserSteamId !== undefined && ownerUid === currentUserSteamId;
-    const occupiedLeasehold = permission === settings.leaseholdPermission
-      && typeof ownerName === 'string' && ownerName.trim() !== '';
     const colors = salePrice !== undefined
       ? settings.sale
       : renewZone
@@ -416,18 +429,12 @@ function cachedMapClaims(entry?: PluginDataCacheEntry, currentUserSteamId?: stri
             border: renewZone.borderColor ?? settings.colors[permission]?.border ?? settings.other.border,
             fill: renewZone.fillColor ?? settings.colors[permission]?.fill ?? settings.other.fill,
           }
-      : occupiedLeasehold
-        ? settings.leaseholdOccupied
-      : isOwner
-        ? settings.owner
-        : settings.colors[permission] ?? settings.other;
+      : settings.colors[permission] ?? settings.other;
     return [{
       areaId: id,
       name,
       permission,
       ...geometry,
-      ownerName: typeof ownerName === 'string' && ownerName ? ownerName : undefined,
-      createdAt: typeof createdAt === 'string' ? createdAt : undefined,
       borderColor: colors.border,
       fillColor: colors.fill,
       forSale: salePrice !== undefined,

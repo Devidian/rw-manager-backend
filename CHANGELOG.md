@@ -12,6 +12,7 @@
 
 ### Fixed
 
+* use only native Admin Utils routes for plugin inventory, map layers, server metadata, and complete persisted player data
 * recover the native game plugin inventory from literal newlines in manifest
   strings and extract its comment-prefixed manifest version
 * exclude persisted servers with invalid query URLs from the validated server-list response

@@ -5,10 +5,10 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
+import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
-const MAP_URL_PATTERN = /@mapUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
-const QUERY_URL_PATTERN = /@queryUrl\s*:\s*(?:\[\s*([^\]\s]+)\s*]|(\S+))/i;
+const NATIVE_ADMIN_UTILS_ROUTE = 'plugins/oz---admin-utils';
 
 interface CacheEntry {
   expiresAt: number;
@@ -37,20 +37,11 @@ async function fetchJson(
 }
 
 function buildInfoUrl(queryUrl: string): string {
-  return new URL('info', `${queryUrl.replace(/\/+$/, '')}/`).toString();
+  return new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${queryUrl.replace(/\/+$/, '')}/`).toString();
 }
 
 function buildPlayerListUrl(queryUrl: string): string {
-  return new URL('playerlist', `${queryUrl.replace(/\/+$/, '')}/`).toString();
-}
-
-function normalizedUrl(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  try {
-    return new URL(value).toString();
-  } catch {
-    return undefined;
-  }
+  return new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/playerlist`, `${queryUrl.replace(/\/+$/, '')}/`).toString();
 }
 
 function playersFromPayload(payload: unknown): unknown[] | undefined {
@@ -80,48 +71,6 @@ function stringOrUndefined(value: unknown): string | undefined {
 
 function arrayOrUndefined(value: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
-}
-
-function mapUrlFromInfo(info: unknown): string | undefined {
-  if (!info || typeof info !== 'object') return undefined;
-  const description = stringOrUndefined((info as { description?: unknown }).description);
-  const match = description?.match(MAP_URL_PATTERN);
-  if (!match) return undefined;
-  return normalizedUrl(match[1] ?? match[2]);
-}
-
-function queryUrlFromInfo(info: unknown): string | undefined {
-  if (!info || typeof info !== 'object') return undefined;
-  const description = stringOrUndefined((info as { description?: unknown }).description);
-  const match = description?.match(QUERY_URL_PATTERN);
-  if (!match) return undefined;
-  return normalizedUrl(match[1] ?? match[2]);
-}
-
-async function reachableQueryUrl(candidate: string): Promise<boolean> {
-  const result = await fetchJson(candidate);
-  return result.ok;
-}
-
-async function selectQueryUrl(derivedQueryUrl: string): Promise<{
-  queryUrl: string;
-  infoData?: unknown;
-}> {
-  const infoResult = await fetchJson(buildInfoUrl(derivedQueryUrl));
-  if (!infoResult.ok) return { queryUrl: derivedQueryUrl };
-
-  const override = queryUrlFromInfo(infoResult.data);
-  if (!override || override === derivedQueryUrl) {
-    return { queryUrl: derivedQueryUrl, infoData: infoResult.data };
-  }
-  if (await reachableQueryUrl(override)) {
-    return { queryUrl: override, infoData: infoResult.data };
-  }
-  defaultLogger.warn('Ignoring unreachable query URL override:', {
-    derivedQueryUrl,
-    override,
-  });
-  return { queryUrl: derivedQueryUrl, infoData: infoResult.data };
 }
 
 function isQueryDataFresh(server: ServerConfig, now: number): boolean {
@@ -175,8 +124,9 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
 
   if (response.infoData !== undefined) {
     server.info = response.infoData;
-    server.label = stringOrUndefined((response.infoData as { shortname?: unknown }).shortname) ?? server.label;
-    server.mapUrl = mapUrlFromInfo(response.infoData) ?? server.mapUrl;
+    const nativeInfo = parseNativeAdminUtilsInfo(response.infoData);
+    server.mapUrl = nativeInfo?.mapUrl ?? server.mapUrl;
+    server.adminUid = nativeInfo?.adminUid ?? server.adminUid;
     changed = true;
   }
 
@@ -208,14 +158,11 @@ export async function getStoredServerLiveStatus(serverId: string): Promise<Serve
 
 async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusResponse> {
   const startedAt = Date.now();
-  const selected = await selectQueryUrl(queryUrl);
-  defaultLogger.debug(`Live server query started: ${selected.queryUrl}`);
+  defaultLogger.debug(`Live server query started: ${queryUrl}`);
   const [queryResult, infoResult, playerlistResult] = await Promise.all([
-    fetchJson(selected.queryUrl),
-    selected.infoData === undefined
-      ? fetchJson(buildInfoUrl(selected.queryUrl))
-      : Promise.resolve({ ok: true, data: selected.infoData } as const),
-    fetchJson(buildPlayerListUrl(selected.queryUrl), AppConfig.playerListTimeoutMs),
+    fetchJson(queryUrl),
+    fetchJson(buildInfoUrl(queryUrl)),
+    fetchJson(buildPlayerListUrl(queryUrl), AppConfig.playerListTimeoutMs),
   ]);
 
   const lastChecked = new Date().toISOString() as ServerLiveStatusResponse['lastChecked'];
@@ -237,7 +184,7 @@ async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusRespon
   if (onlinePlayers !== undefined) response.onlinePlayers = onlinePlayers;
 
   defaultLogger.debug('Live server query completed:', {
-    queryUrl: selected.queryUrl,
+    queryUrl,
     status: response.status,
     durationMs: Date.now() - startedAt,
   });

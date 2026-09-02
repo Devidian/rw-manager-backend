@@ -98,9 +98,10 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          shortname: 'Short Server',
-          contact: '76561198000000000',
-          description: 'Welcome @mapUrl: [ https://map.example.com/ ]',
+          schemaVersion: 1,
+          mapUrl: 'https://map.example.com/',
+          adminUid: '76561198000000000',
+          admins: [],
         }),
       })
       .mockResolvedValueOnce({
@@ -122,7 +123,7 @@ describe('master-server-list-service', () => {
       id: 'server-f8e7fa9ca73fd4b4943db61a',
       steamId: '90285195499304980',
       name: 'Server',
-      label: 'Short Server',
+      label: 'server-f8e7fa9ca73fd4b4943db61a',
       queryUrl: 'http://127.0.0.1:4254',
       mapUrl: 'https://map.example.com/',
       status: 'online',
@@ -138,11 +139,7 @@ describe('master-server-list-service', () => {
       lastChecked: expect.any(Date),
       adminUid: '76561198000000000',
       data: { players: 3 },
-      info: {
-        shortname: 'Short Server',
-        contact: '76561198000000000',
-        description: 'Welcome @mapUrl: [ https://map.example.com/ ]',
-      },
+      info: { schemaVersion: 1, mapUrl: 'https://map.example.com/', adminUid: '76561198000000000', admins: [] },
       public: true,
     });
     expect(writeMock).toHaveBeenCalledTimes(2);
@@ -361,7 +358,7 @@ describe('master-server-list-service', () => {
           lastseen: expect.any(Number),
         },
       ],
-      label: 'Short Server 1',
+      label: 'Server 1',
       adminUid: '76561198000000000',
       mapUrl: 'https://old-map.example/',
       backendUrl: 'https://old-map.example/',
@@ -377,7 +374,7 @@ describe('master-server-list-service', () => {
     expect(writeMock).toHaveBeenCalled();
   });
 
-  test('refreshAllServerQueryData accepts bare mapUrl markers and updates changed shortnames', async () => {
+  test('refreshAllServerQueryData reads map configuration from native Admin Utils info', async () => {
     state.servers = [
       {
         id: 'server-1',
@@ -397,8 +394,10 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          shortname: 'New Shortname',
-          description: '@mapUrl:https://map.example.com/',
+          schemaVersion: 1,
+          mapUrl: 'https://map.example.com/',
+          adminUid: '76561198000000000',
+          admins: [],
         }),
       })
       .mockResolvedValueOnce({
@@ -411,7 +410,7 @@ describe('master-server-list-service', () => {
       refreshed: 1,
     });
     expect(state.servers[0]).toMatchObject({
-      label: 'New Shortname',
+      label: 'Old Shortname',
       mapUrl: 'https://map.example.com/',
     });
   });

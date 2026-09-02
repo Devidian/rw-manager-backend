@@ -70,8 +70,8 @@ describe('server data handlers with server id routes', () => {
     });
     getCachedPluginDataMock.mockReturnValue({
       plugins: [
-        { directory: 'OZShop', name: 'Shop', version: '1.0.0', valid: true },
-        { directory: 42, name: 'bad' },
+        { name: 'Shop', version: '1.0.0', valid: true },
+        { name: 'bad', valid: 'invalid' },
       ],
     });
     getFirstCachedPluginDataMock.mockReturnValue({ plugins: [] });
@@ -97,7 +97,7 @@ describe('server data handlers with server id routes', () => {
     expect(getFirstCachedPluginDataMock).not.toHaveBeenCalled();
     expect(pluginsResponse.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(pluginsResponse.json).toHaveBeenCalledWith({
-      items: [{ directory: 'OZShop', name: 'Shop', version: '1.0.0', valid: true }],
+      items: [{ name: 'Shop', version: '1.0.0', valid: true }],
     });
 
     const mapResponse = createResponse();
@@ -121,7 +121,7 @@ describe('server data handlers with server id routes', () => {
   test('lists plugins from the first cache entry when no server route is selected', async () => {
     prepareServerRouteMock.mockResolvedValueOnce(null);
     getFirstCachedPluginDataMock.mockReturnValueOnce({
-      plugins: [{ directory: 'OZGPS', name: 'GPS', version: '1.0.0', valid: true }],
+      plugins: [{ name: 'GPS', version: '1.0.0', valid: true }],
     });
 
     const response = createResponse();
@@ -130,7 +130,7 @@ describe('server data handlers with server id routes', () => {
     expect(getCachedPluginDataMock).not.toHaveBeenCalled();
     expect(getFirstCachedPluginDataMock).toHaveBeenCalledTimes(1);
     expect(response.json).toHaveBeenCalledWith({
-      items: [{ directory: 'OZGPS', name: 'GPS', version: '1.0.0', valid: true }],
+      items: [{ name: 'GPS', version: '1.0.0', valid: true }],
     });
   });
 

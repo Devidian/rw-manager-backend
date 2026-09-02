@@ -34,14 +34,14 @@ describe('map and plugin handlers', () => {
   test('plugin handler returns inventory and handles service errors', async () => {
     const response = createResponse();
     getFirstCachedPluginDataMock.mockReturnValue({
-      plugins: [{ directory: 'OZAdminUtils', valid: true }],
+      plugins: [{ name: 'OZ - Admin Utils', valid: true }],
     });
 
     await listServerPluginsHandler({} as Request, response.res);
 
     expect(response.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(response.json).toHaveBeenCalledWith({
-      items: [{ directory: 'OZAdminUtils', valid: true }],
+      items: [{ name: 'OZ - Admin Utils', valid: true }],
     });
 
     getFirstCachedPluginDataMock.mockImplementationOnce(() => {

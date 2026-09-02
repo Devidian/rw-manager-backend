@@ -87,8 +87,8 @@ describe('map layer service', () => {
       }),
       expect.objectContaining({
         areaId: 47,
-        borderColor: '#FF980010',
-        fillColor: '#FF980050',
+        borderColor: '#00BFA510',
+        fillColor: '#00BFA550',
       }),
     ]));
   });
@@ -147,8 +147,6 @@ describe('map layer service', () => {
         minZ: 32,
         width: 32,
         depth: 64,
-        ownerName: 'Cached Player',
-        createdAt: '2026-01-01T00:00:02.000Z',
         borderColor: '#00FFFF10',
         fillColor: '#00FFFF50',
         forSale: true,
@@ -166,10 +164,8 @@ describe('map layer service', () => {
         minZ: 0,
         width: 32,
         depth: 32,
-        ownerName: 'Cached Player',
-        createdAt: '2026-01-01T00:00:04.000Z',
-        borderColor: '#99AABBCC',
-        fillColor: '#DDEEFF00',
+        borderColor: '#11223344',
+        fillColor: '#55667788',
         forSale: false,
         salePrice: undefined,
         renewZone: false,
@@ -185,8 +181,6 @@ describe('map layer service', () => {
         minZ: 0,
         width: 32,
         depth: 32,
-        ownerName: 'Other Player',
-        createdAt: '2026-01-01T00:00:03.000Z',
         borderColor: '#11223344',
         fillColor: '#55667788',
         forSale: false,
@@ -227,12 +221,12 @@ describe('map layer service', () => {
           otherAreaBorderColor: 'invalid',
         },
         worldName: 'Test World',
-        areas: [
+        areas: nativeAreas([
           { id: 0, name: 'Bad ID', permission: 'custom-guest', startX: 0, startZ: 0, endX: 32, endZ: 32 },
           { id: 1, name: 'Foreign', permission: 'foreign', startX: 0, startZ: 0, endX: 32, endZ: 32 },
           { id: 2, name: 'Bad Geometry', permission: 'custom-guest', startX: 0, startZ: 0, endX: 30, endZ: 32 },
           { id: 3, name: 'Valid', permission: 'custom-guest', startX: 0, startZ: 0, endX: 32, endZ: 32 },
-        ],
+        ]),
       }))
       .mockResolvedValueOnce(response({
         players: [
@@ -347,7 +341,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         cityLeaseholdOccupiedFrameColor: '0xFF980050',
       },
       worldName: 'Test World',
-      areas: [
+      areas: nativeAreas([
         {
           id: 42,
           name: 'Cached Claim',
@@ -375,8 +369,6 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
           endY: 64,
           endZ: 31.99,
           ownerUid: 'player-1',
-          ownerName: 'Cached Player',
-          createdAt: '2026-01-01T00:00:04.000Z',
         },
         {
           id: 43,
@@ -390,8 +382,6 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
           endY: 64,
           endZ: 31.99,
           ownerUid: 'player-2',
-          ownerName: 'Other Player',
-          createdAt: '2026-01-01T00:00:03.000Z',
         },
         ...(includeCityAreas ? [
           {
@@ -436,7 +426,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
             createdAt: '2026-01-01T00:00:07.000Z',
           },
         ] : []),
-      ],
+      ]),
     }))
     .mockResolvedValueOnce(response({
       players: [{
@@ -505,6 +495,15 @@ function response(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function nativeAreas(areas: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return areas.map(({ permission, startX, startY, startZ, endX, endY, endZ, ...area }) => ({
+    ...area,
+    defaultPermission: permission,
+    start: { x: startX, y: startY, z: startZ },
+    end: { x: endX, y: endY, z: endZ },
+  }));
 }
 
 function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
