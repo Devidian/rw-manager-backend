@@ -79,7 +79,9 @@ function escapeLiteralStringNewlines(raw: string): string {
 
 function manifestVersion(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const match = value.match(/(?:^|\n)\s*Version\s*:\s*([^\s]+)/i);
+  // The game currently puts the complete plugin manifest into `version`; its
+  // generated lines are comment-prefixed, for example `* Version: 0.23.14`.
+  const match = value.match(/(?:^|\n)\s*(?:\*\s*)?Version\s*:\s*([^\s]+)/i);
   return match?.[1];
 }
 

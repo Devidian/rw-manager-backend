@@ -12,6 +12,8 @@
 
 ### Fixed
 
+* recover the native game plugin inventory from literal newlines in manifest
+  strings and extract its comment-prefixed manifest version
 * exclude persisted servers with invalid query URLs from the validated server-list response
 * exclude persisted query URLs that fail Typia URL-format validation before serialization
 * keep proxied map WebSockets alive with ping/pong health checks

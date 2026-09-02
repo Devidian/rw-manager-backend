@@ -20,7 +20,7 @@ describe('native plugin list', () => {
   });
 
   test('repairs only literal newlines within JSON strings', () => {
-    const raw = '{"plugincount":1,"plugins":[{"name":"OZ - GPS","version":"OZ - GPS\nVersion: 0.8.0"}]}';
+    const raw = '{"plugincount":1,"plugins":[{"name":"OZ - GPS","version":"* Plugin: OZ - GPS\n* Version: 0.8.0\n* Load Order: 1"}]}';
     expect(parseNativePluginList(raw)).toEqual([
       { name: 'OZ - GPS', version: '0.8.0', valid: true },
     ]);
