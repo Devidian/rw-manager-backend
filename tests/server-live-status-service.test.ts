@@ -41,7 +41,7 @@ describe('server-live-status-service', () => {
 
   afterAll(() => { global.fetch = originalFetch; });
 
-  test('fetches game status plus native Admin Utils metadata and persisted players', async () => {
+  test('fetches game status, native Admin Utils metadata, and game-owned online players', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 9 }))
       .mockResolvedValueOnce(response({
@@ -50,28 +50,28 @@ describe('server-live-status-service', () => {
         adminUid: '76561198000000000',
         admins: [],
       }))
-      .mockResolvedValueOnce(response({ players: [{ uid: '76561198000000000', name: 'Alice', connected: true }] })) as typeof fetch;
+      .mockResolvedValueOnce(response({ players: [{ uid: '76561198000000000', name: 'Alice' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'online',
       queryData: { name: 'Server', playercount: 9 },
       infoData: { schemaVersion: 1, mapUrl: 'https://map.example/' },
-      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice', connected: true }],
+      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
     });
     await service.getServerLiveStatus('server-1');
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example/plugins/oz---admin-utils/info', expect.any(Object));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/plugins/oz---admin-utils/playerlist', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/playerlist', expect.any(Object));
     expect(state.servers[0]).toMatchObject({
       mapUrl: 'https://map.example/', adminUid: '76561198000000000', status: 'online',
-      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice', connected: true }],
+      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
     });
   });
 
-  test('uses native player data as the online signal when the game query fails', async () => {
+  test('uses the game player list as the online signal when the game query fails', async () => {
     global.fetch = jest.fn()
       .mockResolvedValueOnce(response({}, 500))
       .mockResolvedValueOnce(response({}, 404))

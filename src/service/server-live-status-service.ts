@@ -41,7 +41,7 @@ function buildInfoUrl(queryUrl: string): string {
 }
 
 function buildPlayerListUrl(queryUrl: string): string {
-  return new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/playerlist`, `${queryUrl.replace(/\/+$/, '')}/`).toString();
+  return new URL('playerlist', `${queryUrl.replace(/\/+$/, '')}/`).toString();
 }
 
 function playersFromPayload(payload: unknown): unknown[] | undefined {

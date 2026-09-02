@@ -106,7 +106,7 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ players: [{ uid: 'player-1' }] }),
+        json: async () => ({ players: [{ uid: 'player-1', connected: true }] }),
       }) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -127,7 +127,7 @@ describe('master-server-list-service', () => {
       queryUrl: 'http://127.0.0.1:4254',
       mapUrl: 'https://map.example.com/',
       status: 'online',
-      onlinePlayers: [{ uid: 'player-1' }],
+      onlinePlayers: [{ uid: 'player-1', connected: true }],
       knownPlayers: [
         {
           uid: 'player-1',
@@ -148,9 +148,9 @@ describe('master-server-list-service', () => {
       serverId: 'server-f8e7fa9ca73fd4b4943db61a',
       sampleCount: 1,
       onlineSampleCount: 1,
-      playerSampleTotal: 3,
-      maxPlayers: 3,
-      averagePlayers: 3,
+      playerSampleTotal: 1,
+      maxPlayers: 1,
+      averagePlayers: 1,
       availability: 100,
       onlinePlayerUids: ['player-1'],
     });
@@ -337,7 +337,7 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ players: [{ uid: 'player-5' }] }),
+        json: async () => ({ players: [{ uid: 'player-5', connected: true }] }),
       }) as typeof fetch;
 
     await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({
@@ -349,7 +349,7 @@ describe('master-server-list-service', () => {
     expect(state.servers[0]).toMatchObject({
       data: { players: 5 },
       status: 'online',
-      onlinePlayers: [{ uid: 'player-5' }],
+      onlinePlayers: [{ uid: 'player-5', connected: true }],
       knownPlayers: [
         {
           uid: 'player-5',
@@ -369,7 +369,7 @@ describe('master-server-list-service', () => {
       serverId: 'server-1',
       sampleCount: 1,
       onlineSampleCount: 1,
-      playerSampleTotal: 5,
+      playerSampleTotal: 1,
     });
     expect(writeMock).toHaveBeenCalled();
   });

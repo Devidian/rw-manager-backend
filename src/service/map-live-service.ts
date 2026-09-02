@@ -17,7 +17,7 @@ import { mapLiveSnapshotFromEntry } from './map-layer-service.js';
 import { startWebSocketHeartbeat, runWebSocketHeartbeat } from './websocket-heartbeat-service.js';
 import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
 import {
-  liveOnlinePlayersFromEntry,
+  onlinePlayersFromEntry,
   refreshPluginDataForServer,
   type PluginDataCacheEntry,
 } from './plugin-data-cache-service.js';
@@ -226,7 +226,7 @@ function publishLivePlayerStatus(
   serverConfig: ServerConfig,
   entry: PluginDataCacheEntry,
 ): void {
-  const onlinePlayers = liveOnlinePlayersFromEntry(entry);
+  const onlinePlayers = onlinePlayersFromEntry(entry);
   if (onlinePlayers === undefined) return;
   publishServerLiveUpdate(serverId, {
     ...storedLiveStatusResponse(serverConfig),

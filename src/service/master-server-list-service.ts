@@ -69,9 +69,9 @@ function numberFromPayload(payload: unknown, key: string): number | undefined {
 }
 
 function playerCountFromQueryData(queryData: unknown, onlinePlayers: unknown[] | undefined): number {
-  return numberFromPayload(queryData, 'playercount')
+  return onlinePlayers?.length
+    ?? numberFromPayload(queryData, 'playercount')
     ?? numberFromPayload(queryData, 'players')
-    ?? onlinePlayers?.length
     ?? 0;
 }
 
@@ -128,7 +128,7 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   const [data, info, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
     fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
-    fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/playerlist`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
 
   server.status = data.ok ? 'online' : 'offline';

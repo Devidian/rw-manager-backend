@@ -14,7 +14,7 @@ const refreshPluginDataForServer = jest.fn(async () => {
   if (state.refreshMode === 'slow') await new Promise<void>((resolve) => { resolveSlowRefresh = resolve; });
   return { entry: {} };
 });
-const liveOnlinePlayersFromEntry = jest.fn(() => undefined);
+const onlinePlayersFromEntry = jest.fn(() => undefined);
 const publishServerLiveUpdate = jest.fn();
 const mapLiveSnapshotFromEntry = jest.fn(() => state.snapshotCall++ === 0 ? snapshot() : changedSnapshot());
 
@@ -22,7 +22,7 @@ jest.unstable_mockModule('../src/db/manager-store.js', () => ({ findServerById }
 jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({ getUserFromBearerToken }));
 jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   refreshPluginDataForServer,
-  liveOnlinePlayersFromEntry,
+  onlinePlayersFromEntry,
 }));
 jest.unstable_mockModule('../src/service/map-layer-service.js', () => ({ mapLiveSnapshotFromEntry }));
 jest.unstable_mockModule('../src/service/server-live-status-service.js', () => ({
@@ -55,7 +55,7 @@ describe('map live endpoint integration', () => {
     state.refreshMode = 'normal';
     authState.user = null;
     resolveSlowRefresh = undefined;
-    liveOnlinePlayersFromEntry.mockReturnValue(undefined);
+    onlinePlayersFromEntry.mockReturnValue(undefined);
     server = http.createServer((_request, response) => response.end('ok'));
     closeLive = attachMapLiveService(server).close;
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -93,7 +93,7 @@ describe('map live endpoint integration', () => {
   });
 
   test('publishes fresh bridge presence to server-status subscribers', async () => {
-    liveOnlinePlayersFromEntry.mockReturnValue([{ uid: 'live-player', name: 'Live', online: true }]);
+    onlinePlayersFromEntry.mockReturnValue([{ uid: 'live-player', name: 'Live' }]);
     const socket = await connect(`${baseUrl}/api/storage/map-live`);
     const subscribedMessage = messages(socket, 1);
     socket.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a' }));

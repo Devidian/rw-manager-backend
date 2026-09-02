@@ -4,7 +4,7 @@ import {
   ensurePluginDataForServer,
   getFirstCachedPluginData,
   getCachedPluginData,
-  liveOnlinePlayersFromEntry,
+  onlinePlayersFromEntry,
   refreshPluginDataForServer,
 } from '../src/service/plugin-data-cache-service.js';
 import type { ServerConfig } from '../src/interfaces/server-config.js';
@@ -38,12 +38,11 @@ describe('plugin data cache service', () => {
   });
 
   test('discovers plugins even when no online players are known', async () => {
-    const fetchMock = jest.fn().mockResolvedValueOnce(response({
-      schemaVersion: 1,
-      plugins: [
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ schemaVersion: 1, plugins: [
         { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
-      ],
-    })) as typeof fetch;
+      ] }))
+      .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
     global.fetch = fetchMock;
 
     const result = await refreshPluginDataForServer(server({ onlinePlayers: [] }));
@@ -55,6 +54,7 @@ describe('plugin data cache service', () => {
       'https://query.example/pluginlist',
       expect.any(Object),
     );
+    expect(fetchMock).toHaveBeenCalledWith('https://query.example/playerlist', expect.any(Object));
   });
 
   test('discovers plugins and caches available plugin route data', async () => {
@@ -70,6 +70,7 @@ describe('plugin data cache service', () => {
           { directory: 'Broken', valid: false },
         ],
       }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'online-p1', name: 'Online Player' }] }))
       .mockResolvedValueOnce(response({ areas: [{ id: 42, name: 'Spawn Claim' }] }))
       .mockResolvedValueOnce(response({ players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }] }))
       .mockResolvedValueOnce(response({ config: { Server_Admins: 'steam-admin' } }))
@@ -103,7 +104,7 @@ describe('plugin data cache service', () => {
       'ozmarketplace.zones': { zones: [{ areaId: 42 }] },
       'ozshop.zones': { zones: [{ areaId: 42 }] },
       'ozmarketplace.offers.42': { offers: [{ id: 7, itemName: 'Stone' }] },
-      __onlinePlayers: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }],
+      __onlinePlayers: [{ uid: 'online-p1', name: 'Online Player' }],
     });
     expect(getCachedPluginData('server-1')?.data).toEqual(result.entry?.data);
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -113,53 +114,59 @@ describe('plugin data cache service', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://query.example/plugins/oz---admin-utils/world-areas',
+      'https://query.example/playerlist',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://query.example/plugins/oz---admin-utils/playerlist',
+      'https://query.example/plugins/oz---admin-utils/world-areas',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      'https://query.example/plugins/oz---admin-utils/server-config',
+      'https://query.example/plugins/oz---admin-utils/playerlist',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      'https://query.example/plugins/oz---gps/marker?type=global',
+      'https://query.example/plugins/oz---admin-utils/server-config',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
-      'https://query.example/plugins/oz---marketplace/zones',
+      'https://query.example/plugins/oz---gps/marker?type=global',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       7,
-      'https://query.example/plugins/oz---shop/zones',
+      'https://query.example/plugins/oz---marketplace/zones',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
-      'https://query.example/plugins/oz---admin-utils/info',
+      'https://query.example/plugins/oz---shop/zones',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       9,
+      'https://query.example/plugins/oz---admin-utils/info',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
       'https://query.example/plugins/oz---marketplace/offers?areaId=42',
       expect.any(Object),
     );
   });
 
-  test('prefers fresh bridge presence over the delayed query player list', async () => {
+  test('uses the game-owned player list instead of persisted plugin players', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response({
         schemaVersion: 1,
         plugins: [{ directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true }],
       }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'live-player', name: 'Live' }] }))
       .mockResolvedValueOnce(response({ areas: [] }))
       .mockResolvedValueOnce(response({
         players: [
@@ -172,11 +179,11 @@ describe('plugin data cache service', () => {
 
     const result = await refreshPluginDataForServer(server({ onlinePlayers: [{ uid: 'stale-player' }] }));
 
-    expect(result.entry?.data.__onlinePlayers).toEqual([{ uid: 'live-player', name: 'Live', online: true }]);
-    expect(liveOnlinePlayersFromEntry(result.entry!)).toEqual([{ uid: 'live-player', name: 'Live', online: true }]);
+    expect(result.entry?.data.__onlinePlayers).toEqual([{ uid: 'live-player', name: 'Live' }]);
+    expect(onlinePlayersFromEntry(result.entry!)).toEqual([{ uid: 'live-player', name: 'Live' }]);
   });
 
-  test('ignores missing and malformed bridge presence payloads', () => {
+  test('reads only the cached game player list', () => {
     const entry = (data: Record<string, unknown>) => ({
       serverId: 'server-1',
       refreshedAtMs: 0,
@@ -185,16 +192,10 @@ describe('plugin data cache service', () => {
       data,
     });
 
-    expect(liveOnlinePlayersFromEntry(entry({}))).toBeUndefined();
-    expect(liveOnlinePlayersFromEntry(entry({ 'ozadminutils.playerlist': 'invalid' }))).toBeUndefined();
-    expect(liveOnlinePlayersFromEntry(entry({
-      'ozadminutils.playerlist': { players: 'invalid' },
-    }))).toBeUndefined();
-    expect(liveOnlinePlayersFromEntry(entry({
-      'ozadminutils.playerlist': {
-        players: [null, 'invalid', { uid: 'offline-player' }, { uid: 'live-player', online: true }],
-      },
-    }))).toEqual([{ uid: 'live-player', online: true }]);
+    expect(onlinePlayersFromEntry(entry({}))).toBeUndefined();
+    expect(onlinePlayersFromEntry(entry({ 'ozadminutils.playerlist': { players: [{ uid: 'persisted' }] } }))).toBeUndefined();
+    expect(onlinePlayersFromEntry(entry({ __onlinePlayers: 'invalid' }))).toBeUndefined();
+    expect(onlinePlayersFromEntry(entry({ __onlinePlayers: [{ uid: 'live-player' }] }))).toEqual([{ uid: 'live-player' }]);
   });
 
   test('reports unavailable plugin list without caching partial data', async () => {
@@ -254,6 +255,7 @@ describe('plugin data cache service', () => {
           { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
         ],
       }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'player-55', name: 'Player 55' }] }))
       .mockResolvedValueOnce(response({ areas: [] }))
       .mockResolvedValueOnce(response({
         players: [{
@@ -331,7 +333,7 @@ describe('plugin data cache service', () => {
     await refreshPluginDataForServer(server({ onlinePlayers: [] }));
     await expect(ensurePluginDataForServer(server({ onlinePlayers: [] })))
       .resolves.toBe(getCachedPluginData('server-1'));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test('does not derive native plugin URL from legacy backend map URL', async () => {
