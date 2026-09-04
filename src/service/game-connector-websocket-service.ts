@@ -49,8 +49,7 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
         .then(({ provisioned, serverId }) => {
           clearTimeout(timeout);
           if (provisioned) {
-            send(socket, { type: 'connector.provisioned', schemaVersion: 1, credential: provisioned });
-            socket.close(1000, 'provisioned');
+            sendThenClose(socket, { type: 'connector.provisioned', schemaVersion: 1, credential: provisioned }, 'provisioned');
             return;
           }
           const previous = sessions.get(serverId!);
@@ -185,6 +184,18 @@ function constantTimeEquals(expected: string, actual: string): boolean {
 
 function send(socket: WebSocket, value: unknown): void {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value));
+}
+
+/** Wait for the provisioning frame to flush before closing the one-shot socket. */
+function sendThenClose(socket: WebSocket, value: unknown, reason: string): void {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify(value), (error) => {
+    if (error) {
+      socket.terminate();
+      return;
+    }
+    socket.close(1000, reason);
+  });
 }
 
 function closeWithError(socket: WebSocket, code: string): void {
