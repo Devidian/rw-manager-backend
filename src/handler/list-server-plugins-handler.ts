@@ -9,6 +9,7 @@ export async function listServerPluginsHandler(req: Request, res: Response) {
     const server = await prepareServerRoute(req);
     const entry = server ? getCachedPluginData(server.id) : getFirstCachedPluginData();
     const response: ListServerPluginsResponse = {
+      available: entry !== undefined,
       items: (entry?.plugins ?? []).flatMap((plugin) =>
         typeof plugin.valid === 'boolean' &&
         (plugin.name === undefined || typeof plugin.name === 'string') &&

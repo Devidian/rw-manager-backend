@@ -212,9 +212,10 @@ describe('map layer service', () => {
           { directory: 'OZGPS', name: 'OZ - GPS', valid: true },
           { directory: 'OZMarketplace', name: 'OZ - Marketplace', valid: true },
           { directory: 'OZShop', name: 'OZ - Shop', valid: true },
-          { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
-        ],
-      }))
+        { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
+      ],
+    }))
+      .mockResolvedValueOnce(response({ players: [] }))
       .mockResolvedValueOnce(response({
         settings: {
           defaultAreaPermission: 'custom-guest',
@@ -322,6 +323,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
       ],
     }))
+    .mockResolvedValueOnce(response({ players: [{ uid: 'player-1', name: 'Cached Player' }] }))
     .mockResolvedValueOnce(response({
       settings: {
         allowClaimSale: 'true',

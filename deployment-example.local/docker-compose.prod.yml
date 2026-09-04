@@ -30,6 +30,8 @@ services:
       FORCE_AUTH: true
       DEFAULT_USER_ROLE: user
       AUTH_SESSION_SECRET: change-me
+      GAME_CONNECTOR_CREDENTIAL_KEY: ${GAME_CONNECTOR_CREDENTIAL_KEY:?set a 32+ character secret}
+      GAME_CONNECTOR_TRUSTED_PROXY_IPS: ${GAME_CONNECTOR_TRUSTED_PROXY_IPS:?set nginx container IP}
       SUPER_ADMIN_ID: ""
       ENABLE_LOG_COLORS: true
       LOG_LEVEL: info

@@ -33,6 +33,16 @@ export class AppConfig {
   static get forceAuth(): boolean {
     return (env.FORCE_AUTH ?? 'false') === 'true';
   }
+  static get gameConnectorCredentialKey(): string | undefined {
+    const value = env.GAME_CONNECTOR_CREDENTIAL_KEY?.trim();
+    return value && value.length >= 32 ? value : undefined;
+  }
+  static get gameConnectorTrustedProxyIps(): string[] {
+    return (env.GAME_CONNECTOR_TRUSTED_PROXY_IPS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
   static get mapTileRoot(): string | undefined {
     return env.MAP_TILE_ROOT;
   }

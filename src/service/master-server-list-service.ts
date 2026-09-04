@@ -13,6 +13,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
+import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
 import { storedLiveStatusResponse } from './server-live-status-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
@@ -97,9 +98,11 @@ function shouldRefreshQueryData(server: ServerConfig, now: Date): boolean {
   return now.getTime() - previous >= AppConfig.serverQueryRefreshIntervalMs;
 }
 
-async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+async function fetchJson(url: string, authorization?: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: authorization ? { Authorization: authorization } : undefined,
+    });
     if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
     return { ok: true, data: await response.json() };
   } catch {
@@ -127,7 +130,10 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
 
   const [data, info, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
-    fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchJson(
+      new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString(),
+      gameConnectorAuthorizationHeader(server),
+    ),
     fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
 

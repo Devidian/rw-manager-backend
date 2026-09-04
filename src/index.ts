@@ -9,6 +9,7 @@ import { bootstrapMongoDb, closeMongoDb } from './db/mongodb.js';
 import { getBackendInfo } from './service/backend-info-service.js';
 import { attachMapLiveService } from './service/map-live-service.js';
 import { attachServerStatusLiveService } from './service/server-status-live-service.js';
+import { attachGameConnectorWebSocketService } from './service/game-connector-websocket-service.js';
 
 const main = async () => {
   const app = express();
@@ -53,12 +54,16 @@ const main = async () => {
     : https.createServer(options, app);
   const mapLiveService = attachMapLiveService(server);
   const serverStatusLiveService = attachServerStatusLiveService(server);
+  const gameConnectorWebSocketService = attachGameConnectorWebSocketService(server);
   const stopMapLiveService = () => mapLiveService.close();
   process.once('SIGINT', stopMapLiveService);
   process.once('SIGTERM', stopMapLiveService);
   const stopServerStatusLiveService = () => serverStatusLiveService.close();
+  const stopGameConnectorWebSocketService = () => gameConnectorWebSocketService.close();
   process.once('SIGINT', stopServerStatusLiveService);
   process.once('SIGTERM', stopServerStatusLiveService);
+  process.once('SIGINT', stopGameConnectorWebSocketService);
+  process.once('SIGTERM', stopGameConnectorWebSocketService);
 
   if (!useSSL) {
     server.listen(3000, () => {

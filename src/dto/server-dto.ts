@@ -31,6 +31,8 @@ export interface ServerDto {
   firstSeen?: (string & Format<'date-time'>) | undefined;
   lastSeen?: (string & Format<'date-time'>) | undefined;
   queryDataUpdatedAt?: (string & Format<'date-time'>) | undefined;
+  pluginListAvailable?: boolean | undefined;
+  ozToolsInstalled?: boolean | undefined;
   public: boolean;
   createdAt: string & Format<'date-time'>;
   userId?: string | undefined;

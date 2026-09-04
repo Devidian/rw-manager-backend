@@ -9,6 +9,7 @@ import {
 } from '../src/service/plugin-data-cache-service.js';
 import type { ServerConfig } from '../src/interfaces/server-config.js';
 import { getCachedServerPlayers } from '../src/service/server-plugin-data-service.js';
+import { encryptGameConnectorCredential } from '../src/service/game-connector-credential-service.js';
 
 function server(input: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -156,6 +157,38 @@ describe('plugin data cache service', () => {
       10,
       'https://query.example/plugins/oz---marketplace/offers?areaId=42',
       expect.any(Object),
+    );
+  });
+
+  test('keeps game-owned routes unauthenticated and sends the paired credential only to plugin routes', async () => {
+    process.env.GAME_CONNECTOR_CREDENTIAL_KEY = 'connector-test-key-with-at-least-32-characters';
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ schemaVersion: 1, plugins: [
+        { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
+      ] }))
+      .mockResolvedValueOnce(response({ players: [] }))
+      .mockResolvedValueOnce(response({ areas: [] }))
+      .mockResolvedValueOnce(response({ players: [] }))
+      .mockResolvedValueOnce(response({ config: {} }))
+      .mockResolvedValueOnce(response({ schemaVersion: 1 })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await refreshPluginDataForServer(server({
+      connectorCredential: encryptGameConnectorCredential(
+        'paired-credential',
+        process.env.GAME_CONNECTOR_CREDENTIAL_KEY,
+      ),
+    }));
+
+    expect(fetchMock.mock.calls[0]).toEqual([
+      'https://query.example/pluginlist',
+      expect.not.objectContaining({ headers: expect.anything() }),
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ headers: undefined }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://query.example/plugins/oz---admin-utils/world-areas',
+      expect.objectContaining({ headers: { Authorization: 'Bearer paired-credential' } }),
     );
   });
 

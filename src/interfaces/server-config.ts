@@ -30,6 +30,7 @@ export interface ServerConfig {
   firstSeen?: Date | string;
   lastSeen?: Date | string;
   queryDataUpdatedAt?: Date | string;
+  connectorCredential?: string;
   public: boolean;
   createdAt: Date;
   userId?: string; // for backend-server with login, every user should have own server-list

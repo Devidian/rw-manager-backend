@@ -6,6 +6,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
+import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 const NATIVE_ADMIN_UTILS_ROUTE = 'plugins/oz---admin-utils';
@@ -22,10 +23,12 @@ const playerListRefreshAttemptedAt = new Map<string, number>();
 async function fetchJson(
   url: string,
   timeoutMs: number = AppConfig.liveQueryProxyTimeoutMs,
+  authorization?: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
+      headers: authorization ? { Authorization: authorization } : undefined,
     });
     if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
     return { ok: true, data: await response.json() };
@@ -157,12 +160,13 @@ export async function getStoredServerLiveStatus(serverId: string): Promise<Serve
   return storedLiveStatusResponse(server);
 }
 
-async function fetchLiveStatus(queryUrl: string): Promise<ServerLiveStatusResponse> {
+async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusResponse> {
+  const queryUrl = server.queryUrl;
   const startedAt = Date.now();
   defaultLogger.debug(`Live server query started: ${queryUrl}`);
   const [queryResult, infoResult, playerlistResult] = await Promise.all([
     fetchJson(queryUrl),
-    fetchJson(buildInfoUrl(queryUrl)),
+    fetchJson(buildInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs, gameConnectorAuthorizationHeader(server)),
     fetchJson(buildPlayerListUrl(queryUrl), AppConfig.playerListTimeoutMs),
   ]);
 
@@ -290,7 +294,7 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
   const existing = inflight.get(serverId);
   if (existing) return existing;
 
-  const request = fetchLiveStatus(server.queryUrl)
+  const request = fetchLiveStatus(server)
     .then(async (response) => {
       await persistLiveStatus(server, response);
       await recordServerStatisticsSample({

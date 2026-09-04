@@ -3,6 +3,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { listServers, updateServer } from '../db/manager-store.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
+import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
 import {
   nativePluginRouteId,
   parseNativePluginList,
@@ -139,11 +140,11 @@ export async function refreshPluginDataForServer(
         .filter((spec) => availablePlugins.has(spec.pluginRouteId))
         .map(async (spec) => [
           spec.key,
-          await fetchPluginRoute(pluginQueryUrl, `plugins/${spec.pluginRouteId}/${spec.path}`),
+          await fetchPluginRoute(pluginQueryUrl, `plugins/${spec.pluginRouteId}/${spec.path}`, server),
         ] as const),
     )).filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
   );
-  Object.assign(data, await fetchMarketplaceOffersByArea(pluginQueryUrl, data['ozmarketplace.zones']));
+  Object.assign(data, await fetchMarketplaceOffersByArea(pluginQueryUrl, data['ozmarketplace.zones'], server));
   const nativeInfo = parseNativeAdminUtilsInfo(data['ozadminutils.info']);
   if (nativeInfo && (server.mapUrl !== nativeInfo.mapUrl || server.adminUid !== nativeInfo.adminUid)) {
     await updateServer(server.id, { mapUrl: nativeInfo.mapUrl, adminUid: nativeInfo.adminUid });
@@ -183,10 +184,11 @@ export async function ensurePluginDataForServer(
 async function fetchMarketplaceOffersByArea(
   queryUrl: string,
   zonesPayload: unknown,
+  server: ServerConfig,
 ): Promise<Record<string, unknown>> {
   const areaIds = areaIdsFromZonesPayload(zonesPayload);
   const entries = await Promise.all(areaIds.map(async (areaId): Promise<[string, unknown] | null> => {
-    const payload = await fetchPluginRoute(queryUrl, `plugins/oz---marketplace/offers?areaId=${areaId}`);
+    const payload = await fetchPluginRoute(queryUrl, `plugins/oz---marketplace/offers?areaId=${areaId}`, server);
     return payload === undefined ? null : [`ozmarketplace.offers.${areaId}`, payload];
   }));
   return Object.fromEntries(entries.filter((entry): entry is [string, unknown] => entry !== null));
@@ -232,8 +234,8 @@ async function fetchOnlinePlayerList(queryUrl: string): Promise<unknown[] | unde
   return Array.isArray(players) ? players : undefined;
 }
 
-async function fetchPluginRoute(queryUrl: string, routePath: string): Promise<unknown | undefined> {
-  const result = await fetchJson(buildRouteUrl(queryUrl, routePath));
+async function fetchPluginRoute(queryUrl: string, routePath: string, server: ServerConfig): Promise<unknown | undefined> {
+  const result = await fetchJson(buildRouteUrl(queryUrl, routePath), gameConnectorAuthorizationHeader(server));
   if (!result.ok) {
     defaultLogger.warn('Plugin data route refresh failed:', {
       routePath,
@@ -244,10 +246,11 @@ async function fetchPluginRoute(queryUrl: string, routePath: string): Promise<un
   return result.data;
 }
 
-async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+async function fetchJson(url: string, authorization?: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
+      headers: authorization ? { Authorization: authorization } : undefined,
     });
     if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
     return { ok: true, data: await response.json() };

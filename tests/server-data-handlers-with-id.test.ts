@@ -97,6 +97,7 @@ describe('server data handlers with server id routes', () => {
     expect(getFirstCachedPluginDataMock).not.toHaveBeenCalled();
     expect(pluginsResponse.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(pluginsResponse.json).toHaveBeenCalledWith({
+      available: true,
       items: [{ name: 'Shop', version: '1.0.0', valid: true }],
     });
 
@@ -130,6 +131,7 @@ describe('server data handlers with server id routes', () => {
     expect(getCachedPluginDataMock).not.toHaveBeenCalled();
     expect(getFirstCachedPluginDataMock).toHaveBeenCalledTimes(1);
     expect(response.json).toHaveBeenCalledWith({
+      available: true,
       items: [{ name: 'GPS', version: '1.0.0', valid: true }],
     });
   });

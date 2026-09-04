@@ -228,9 +228,14 @@ function publishLivePlayerStatus(
 ): void {
   const onlinePlayers = onlinePlayersFromEntry(entry);
   if (onlinePlayers === undefined) return;
+  const livePlayers = onlinePlayers.map((player) => (
+    player && typeof player === 'object'
+      ? { ...(player as Record<string, unknown>), online: true }
+      : player
+  ));
   publishServerLiveUpdate(serverId, {
     ...storedLiveStatusResponse(serverConfig),
-    onlinePlayers,
+    onlinePlayers: livePlayers,
     lastChecked: new Date().toISOString() as ReturnType<typeof storedLiveStatusResponse>['lastChecked'],
   });
 }

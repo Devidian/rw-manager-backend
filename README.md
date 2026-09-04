@@ -201,6 +201,16 @@ services:
 
 ### Auth-enabled deployment behind a reverse proxy
 
+The game-server connector uses `WS /ws`. nginx must proxy that exact path to
+the backend with HTTP Upgrade and `X-Real-IP $remote_addr`. Set
+`GAME_CONNECTOR_CREDENTIAL_KEY` to a 32+ character deployment secret and
+`GAME_CONNECTOR_TRUSTED_PROXY_IPS` to the exact nginx container IP; the
+connector fails closed when either is absent. Its first frame is either
+`connector.provision` (`schemaVersion: 1`) with the game runtime port, which
+only pairs a uniquely matched master-list peer-IP-and-port tuple and stores the generated credential encrypted, or
+`connector.authenticate` with that credential. An authenticated session may
+register its bounded event list with `connector.features`.
+
 ```yml
 services:
   app:
