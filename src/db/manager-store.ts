@@ -16,6 +16,7 @@ type ServerPatch = Partial<
     ServerConfig,
     | 'label'
     | 'queryUrl'
+    | 'queryUrlExplicit'
     | 'backendUrl'
     | 'mapUrl'
     | 'public'
@@ -130,6 +131,7 @@ export async function addServer(
     id: v4(),
     label,
     queryUrl,
+    queryUrlExplicit: true,
     backendUrl,
     public: isPublic,
     userId,

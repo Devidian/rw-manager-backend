@@ -1,6 +1,6 @@
 {
   "name": "rw-manager-backend",
-  "version": "0.6.1-rc.13",
+  "version": "0.6.1-rc.14",
   "type": "module",
   "packageManager": "yarn@4.16.0",
   "engines": {

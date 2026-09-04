@@ -183,7 +183,9 @@ function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, no
   server.mods = booleanOrUndefined(entry.mods) ?? server.mods;
   server.password = booleanOrUndefined(entry.password) ?? server.password;
   server.whitelist = booleanOrUndefined(entry.whitelist) ?? server.whitelist;
-  server.queryUrl = queryUrl ?? server.queryUrl;
+  // The master list supplies a useful default only. A query URL deliberately
+  // configured by an administrator may point at a reverse-proxy prefix.
+  if (!server.queryUrlExplicit) server.queryUrl = queryUrl ?? server.queryUrl;
   server.lastSeen = now;
 }
 

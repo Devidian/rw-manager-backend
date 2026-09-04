@@ -251,6 +251,7 @@ export async function patchServer(
   const server = await updateServer(current.id, {
     label: patch.label,
     queryUrl: patch.queryUrl,
+    queryUrlExplicit: patch.queryUrl === undefined ? undefined : true,
     backendUrl: patch.backendUrl === undefined ? undefined : nextBackendUrl,
     public: patch.public,
   });

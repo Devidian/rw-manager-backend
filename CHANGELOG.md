@@ -12,6 +12,7 @@
 
 ### Fixed
 
+* preserve explicitly configured server query URLs, including reverse-proxy path prefixes, during master-list refreshes
 * derive Steam or Standalone platform labels from native player UIDs
 * use only native Admin Utils routes for plugin inventory, map layers, server metadata, and complete persisted player data
 * recover the native game plugin inventory from literal newlines in manifest

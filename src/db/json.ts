@@ -38,6 +38,7 @@ export async function addServer(
     id: v4(),
     label,
     queryUrl,
+    queryUrlExplicit: true,
     backendUrl,
     public: isPublic,
     userId,

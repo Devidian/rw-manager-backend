@@ -15,7 +15,9 @@ export interface ServerConfig {
   password?: boolean;
   whitelist?: boolean;
   adminUid?: string;
-  queryUrl: string
+  queryUrl: string;
+  /** A user-managed query URL must not be replaced by the master-list default. */
+  queryUrlExplicit?: boolean;
   mapUrl?: string;
   backendUrl?: string; // Deprecated game-backend URL retained for stored legacy records.
   data?: unknown;

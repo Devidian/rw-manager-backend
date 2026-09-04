@@ -206,6 +206,29 @@ describe('master-server-list-service', () => {
     expect(state.users[0].pinnedServers).toEqual(['server-f8e7fa9ca73fd4b4943db61a']);
   });
 
+  test('refreshMasterServerList preserves an explicitly configured query URL', async () => {
+    state.servers = [{
+      id: 'server-f8e7fa9ca73fd4b4943db61a',
+      ip: '127.0.0.1',
+      port: 4255,
+      label: 'Proxied',
+      queryUrl: 'https://query.example/dev',
+      queryUrlExplicit: true,
+      public: true,
+      createdAt: new Date().toISOString(),
+    }];
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        '{"successful":true,"data":[{"steamid":90285195499304981,"name":"Proxied","ip":"127.0.0.1","port":4255}]}',
+    }) as typeof fetch;
+
+    await service.refreshMasterServerList();
+
+    expect(state.servers[0].queryUrl).toBe('https://query.example/dev');
+    expect(state.servers[0].queryUrlExplicit).toBe(true);
+  });
+
   test('refreshMasterServerList tolerates invalid master responses and entries', async () => {
     global.fetch = jest.fn().mockResolvedValueOnce({
       ok: false,
