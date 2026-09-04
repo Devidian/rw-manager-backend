@@ -8,6 +8,7 @@ import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
+import { hasActiveGameConnectorFeature, registerGameConnectorEventHandler } from './game-connector-websocket-service.js';
 
 const NATIVE_ADMIN_UTILS_ROUTE = 'plugins/oz---admin-utils';
 
@@ -19,6 +20,10 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<ServerLiveStatusResponse>>();
 const playerListRefreshAttemptedAt = new Map<string, number>();
+
+registerGameConnectorEventHandler(async (serverId, event, data) => {
+  if (event === 'playerStatus') await acceptConnectorPlayerStatus(serverId, data);
+});
 
 async function fetchJson(
   url: string,
@@ -41,6 +46,10 @@ async function fetchJson(
 }
 
 function buildInfoUrl(queryUrl: string): string {
+  return new URL('info', `${queryUrl.replace(/\/+$/, '')}/`).toString();
+}
+
+function buildNativeAdminUtilsInfoUrl(queryUrl: string): string {
   return new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${queryUrl.replace(/\/+$/, '')}/`).toString();
 }
 
@@ -164,9 +173,10 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
   const queryUrl = server.queryUrl;
   const startedAt = Date.now();
   defaultLogger.debug(`Live server query started: ${queryUrl}`);
-  const [queryResult, infoResult, playerlistResult] = await Promise.all([
+  const [queryResult, infoResult, nativeInfoResult, playerlistResult] = await Promise.all([
     fetchJson(queryUrl),
-    fetchJson(buildInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs, gameConnectorAuthorizationHeader(server)),
+    fetchJson(buildInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs),
+    fetchJson(buildNativeAdminUtilsInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs, gameConnectorAuthorizationHeader(server)),
     fetchJson(buildPlayerListUrl(queryUrl), AppConfig.playerListTimeoutMs),
   ]);
 
@@ -186,6 +196,13 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
   }
 
   if (infoResult.ok) response.infoData = infoResult.data;
+  if (nativeInfoResult.ok) {
+    const nativeInfo = parseNativeAdminUtilsInfo(nativeInfoResult.data);
+    if (nativeInfo) {
+      server.mapUrl = nativeInfo.mapUrl ?? server.mapUrl;
+      server.adminUid = nativeInfo.adminUid ?? server.adminUid;
+    }
+  }
   if (onlinePlayers !== undefined) response.onlinePlayers = onlinePlayers;
 
   defaultLogger.debug('Live server query completed:', {
@@ -221,6 +238,7 @@ function lastPlayerListRefreshAt(server: ServerConfig): number {
 
 async function refreshOnlinePlayersForServer(server: ServerConfig, now: number): Promise<boolean> {
   if (!server.queryUrl || server.status !== 'online') return false;
+  if (hasActiveGameConnectorFeature(server.id, 'playerStatus')) return false;
   if (now - lastPlayerListRefreshAt(server) < playerListRefreshIntervalMs(server)) return false;
   playerListRefreshAttemptedAt.set(server.id, now);
 
@@ -245,6 +263,44 @@ async function refreshOnlinePlayersForServer(server: ServerConfig, now: number):
   });
   publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
   return true;
+}
+
+/** Accepts only a complete, bounded runtime player-list snapshot from the authenticated game connector. */
+export async function acceptConnectorPlayerStatus(serverId: string, payload: unknown): Promise<void> {
+  const players = connectorOnlinePlayers(payload);
+  if (players === undefined) throw new Error('INVALID_PLAYER_STATUS');
+  const server = await findServerById(serverId);
+  if (!server) return;
+  const lastChecked = new Date();
+  server.onlinePlayers = players;
+  server.knownPlayers = mergeKnownPlayers(
+    server.knownPlayers,
+    observedPlayersFromValues(players, lastChecked.toISOString()),
+  );
+  server.status = 'online';
+  server.lastChecked = lastChecked;
+  server.errorMessage = undefined;
+  await updateServer(server.id, {
+    onlinePlayers: server.onlinePlayers,
+    knownPlayers: server.knownPlayers,
+    status: server.status,
+    lastChecked: server.lastChecked,
+    errorMessage: undefined,
+  });
+  const response = storedLiveStatusResponse(server);
+  cache.set(server.id, { expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs, response });
+  publishServerLiveUpdate(server.id, response);
+}
+
+function connectorOnlinePlayers(payload: unknown): unknown[] | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = payload as { schemaVersion?: unknown; players?: unknown };
+  if (value.schemaVersion !== 1 || !Array.isArray(value.players) || value.players.length > 500) return undefined;
+  const players = value.players.filter((player): player is Record<string, unknown> => (
+    !!player && typeof player === 'object' && typeof (player as { uid?: unknown }).uid === 'string'
+  ));
+  if (players.length !== value.players.length) return undefined;
+  return players.filter((player) => player.connected !== false);
 }
 
 export async function refreshDueServerPlayerLists(): Promise<{ checked: number; refreshed: number }> {

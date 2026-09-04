@@ -17,16 +17,24 @@ const CONNECTOR_PATH = '/ws';
 const MAX_MESSAGE_BYTES = 4096;
 const PROVISION_TIMEOUT_MS = 10000;
 
-interface FeaturesMessage {
-  type: 'connector.features';
-  schemaVersion: 1;
-  events: string[];
-}
-
 interface ConnectorSession {
   socket: WebSocket;
   events: string[];
 }
+
+export type GameConnectorEventHandler = (serverId: string, event: string, data: unknown) => Promise<void> | void;
+const eventHandlers = new Set<GameConnectorEventHandler>();
+
+export function registerGameConnectorEventHandler(handler: GameConnectorEventHandler): () => void {
+  eventHandlers.add(handler);
+  return () => eventHandlers.delete(handler);
+}
+
+export function hasActiveGameConnectorFeature(serverId: string, event: string): boolean {
+  return activeSessions?.get(serverId)?.events.includes(event) ?? false;
+}
+
+let activeSessions: Map<string, ConnectorSession> | undefined;
 
 export interface GameConnectorWebSocketService {
   close: () => void;
@@ -41,6 +49,7 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
   const unregisterEndpoint = registerWebSocketEndpoint(server, CONNECTOR_PATH, webSocketServer);
   const stopHeartbeat = startWebSocketHeartbeat(webSocketServer);
   const sessions = new Map<string, ConnectorSession>();
+  activeSessions = sessions;
 
   webSocketServer.on('connection', (socket, request) => {
     const timeout = setTimeout(() => closeWithError(socket, 'provision_timeout'), PROVISION_TIMEOUT_MS);
@@ -56,7 +65,9 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
           if (previous) previous.socket.close(1000, 'replaced');
           sessions.set(serverId!, { socket, events: [] });
           send(socket, { type: 'connector.authenticated', schemaVersion: 1, serverId });
-          socket.on('message', (message) => handleAuthenticatedMessage(socket, serverId!, sessions, message));
+          socket.on('message', (message) => {
+            void handleAuthenticatedMessage(socket, serverId!, sessions, message);
+          });
         })
         .catch((error) => {
           clearTimeout(timeout);
@@ -76,6 +87,7 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
       stopHeartbeat();
       for (const socket of webSocketServer.clients) socket.close(1001, 'server_shutdown');
       sessions.clear();
+      if (activeSessions === sessions) activeSessions = undefined;
       webSocketServer.close();
     },
   };
@@ -123,16 +135,23 @@ async function authenticate(credential: string): Promise<string> {
   throw new ConnectorProtocolError('unauthorized');
 }
 
-function handleAuthenticatedMessage(socket: WebSocket, serverId: string, sessions: Map<string, ConnectorSession>, data: RawData): void {
+async function handleAuthenticatedMessage(socket: WebSocket, serverId: string, sessions: Map<string, ConnectorSession>, data: RawData): Promise<void> {
   try {
-    const message = parseMessage(data) as unknown as FeaturesMessage;
-    if (message.type !== 'connector.features' || message.schemaVersion !== 1 || !Array.isArray(message.events) || message.events.length > 64 || !message.events.every((event) => typeof event === 'string' && /^[a-z][A-Za-z0-9]{0,63}$/.test(event))) {
-      throw new ConnectorProtocolError('invalid_message');
-    }
+    const message = parseMessage(data);
     const session = sessions.get(serverId);
     if (!session || session.socket !== socket) throw new ConnectorProtocolError('unauthorized');
-    session.events = [...new Set(message.events)];
-    send(socket, { type: 'connector.features.accepted', schemaVersion: 1, events: session.events });
+    if (message.type === 'connector.features' && message.schemaVersion === 1 && Array.isArray(message.events)
+        && message.events.length <= 64 && message.events.every((event) => typeof event === 'string' && /^[a-z][A-Za-z0-9]{0,63}$/.test(event))) {
+      session.events = [...new Set(message.events)];
+      send(socket, { type: 'connector.features.accepted', schemaVersion: 1, events: session.events });
+      return;
+    }
+    if (message.type === 'connector.event' && message.schemaVersion === 1 && typeof message.event === 'string'
+        && session.events.includes(message.event)) {
+      for (const handler of eventHandlers) await handler(serverId, message.event, message.data);
+      return;
+    }
+    throw new ConnectorProtocolError('invalid_message');
   } catch (error) {
     closeWithError(socket, error instanceof ConnectorProtocolError ? error.code : 'invalid_message');
   }

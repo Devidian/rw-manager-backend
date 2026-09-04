@@ -128,12 +128,10 @@ async function fetchMasterServerList(): Promise<MasterServerListResponse | undef
 async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolean> {
   if (!server.queryUrl || !shouldRefreshQueryData(server, now)) return false;
 
-  const [data, info, playerlist] = await Promise.all([
+  const [data, info, nativeInfo, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
-    fetchJson(
-      new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString(),
-      gameConnectorAuthorizationHeader(server),
-    ),
+    fetchJson(new URL('info', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString(), gameConnectorAuthorizationHeader(server)),
     fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
 
@@ -143,9 +141,11 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   if (data.ok) server.data = data.data;
   if (info.ok) {
     server.info = info.data;
-    const nativeInfo = parseNativeAdminUtilsInfo(info.data);
-    server.adminUid = nativeInfo?.adminUid ?? server.adminUid;
-    server.mapUrl = nativeInfo?.mapUrl ?? server.mapUrl;
+  }
+  if (nativeInfo.ok) {
+    const parsedNativeInfo = parseNativeAdminUtilsInfo(nativeInfo.data);
+    server.adminUid = parsedNativeInfo?.adminUid ?? server.adminUid;
+    server.mapUrl = parsedNativeInfo?.mapUrl ?? server.mapUrl;
   }
   server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
   server.knownPlayers = mergeKnownPlayers(

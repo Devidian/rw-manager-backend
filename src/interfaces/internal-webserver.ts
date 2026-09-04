@@ -28,7 +28,7 @@ export interface ServerInfoResponse {
   shortname: string;
   description: string;
   contact: string;
-  headerimage: false;
+  headerimage: boolean;
 }
 
 export interface ServerPlayerListPlayer {

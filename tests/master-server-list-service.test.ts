@@ -106,6 +106,15 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => ({
+          schemaVersion: 1,
+          mapUrl: 'https://map.example.com/',
+          adminUid: '76561198000000000',
+          admins: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({ players: [{ uid: 'player-1', connected: true }] }),
       }) as typeof fetch;
     global.fetch = fetchMock;
@@ -337,6 +346,10 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({ players: [{ uid: 'player-5', connected: true }] }),
       }) as typeof fetch;
 
@@ -390,6 +403,15 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ players: 5 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          schemaVersion: 1,
+          mapUrl: 'https://map.example.com/',
+          adminUid: '76561198000000000',
+          admins: [],
+        }),
       })
       .mockResolvedValueOnce({
         ok: true,

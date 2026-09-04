@@ -10,6 +10,7 @@ import { getBackendInfo } from './service/backend-info-service.js';
 import { attachMapLiveService } from './service/map-live-service.js';
 import { attachServerStatusLiveService } from './service/server-status-live-service.js';
 import { attachGameConnectorWebSocketService } from './service/game-connector-websocket-service.js';
+import './service/server-live-status-service.js';
 
 const main = async () => {
   const app = express();

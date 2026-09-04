@@ -17,7 +17,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: { debug: jest.fn(), log: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-const { attachGameConnectorWebSocketService } = await import('../src/service/game-connector-websocket-service.js');
+const { attachGameConnectorWebSocketService, registerGameConnectorEventHandler } = await import('../src/service/game-connector-websocket-service.js');
 
 describe('game connector WebSocket', () => {
   let server: http.Server;
@@ -80,6 +80,29 @@ describe('game connector WebSocket', () => {
     await expect(accepted.then(([message]) => message)).resolves.toEqual({
       type: 'connector.features.accepted', schemaVersion: 1, events: ['playerStatus'],
     });
+    socket.close();
+  });
+
+  test('delivers a player-status snapshot only after that feature was negotiated', async () => {
+    const received = new Promise<{ serverId: string; event: string; data: unknown }>((resolve) => {
+      registerGameConnectorEventHandler((serverId, event, data) => resolve({ serverId, event, data }));
+    });
+    const provision = await connect(baseUrl);
+    const provisioned = messages(provision, 1);
+    provision.send(JSON.stringify({ type: 'connector.provision', schemaVersion: 1, gamePort: 4255 }));
+    const [{ credential }] = await provisioned;
+
+    const socket = await connect(baseUrl);
+    const authenticated = messages(socket, 1);
+    socket.send(JSON.stringify({ type: 'connector.authenticate', schemaVersion: 1, credential }));
+    await authenticated;
+    const accepted = messages(socket, 1);
+    socket.send(JSON.stringify({ type: 'connector.features', schemaVersion: 1, events: ['playerStatus'] }));
+    await accepted;
+    const payload = { schemaVersion: 1, players: [{ uid: 'player-1', name: 'Alice', connected: true }] };
+    socket.send(JSON.stringify({ type: 'connector.event', schemaVersion: 1, event: 'playerStatus', data: payload }));
+
+    await expect(received).resolves.toEqual({ serverId: 'server-a', event: 'playerStatus', data: payload });
     socket.close();
   });
 });
