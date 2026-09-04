@@ -487,7 +487,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         price: 33,
         currency: 'coins',
         sellerName: 'Alice',
-        createdAt: '2026-01-01T00:00:01.000Z',
+        createdAt: Date.parse('2026-01-01T00:00:01.000Z'),
       }],
     })) as typeof fetch;
 }

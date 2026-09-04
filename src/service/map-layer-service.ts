@@ -282,6 +282,9 @@ function cachedMarketplaceOffers(areaId: number, entry?: PluginDataCacheEntry): 
     if (!offer || typeof offer !== 'object') return [];
     const value = offer as Record<string, unknown>;
     const { id, itemName, itemVariant, amount, price, currency, sellerName, createdAt } = value;
+    const createdAtIso = typeof createdAt === 'string'
+      ? createdAt
+      : typeof createdAt === 'number' ? epochMilliseconds(createdAt) : undefined;
     if (
       typeof id !== 'number' ||
       !Number.isSafeInteger(id) ||
@@ -293,7 +296,7 @@ function cachedMarketplaceOffers(areaId: number, entry?: PluginDataCacheEntry): 
       typeof price !== 'number' ||
       typeof currency !== 'string' ||
       typeof sellerName !== 'string' ||
-      typeof createdAt !== 'string'
+      !createdAtIso
     ) return [];
     return [{
       id,
@@ -303,7 +306,7 @@ function cachedMarketplaceOffers(areaId: number, entry?: PluginDataCacheEntry): 
       price,
       currency,
       sellerName,
-      createdAt,
+      createdAt: createdAtIso,
     }];
   });
 }
