@@ -23,6 +23,42 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.6.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.0...rw-manager-backend-v0.6.1) (2026-09-05)
+
+
+### Added
+
+* add game connector player status transport ([72932e7](https://github.com/Devidian/rw-manager-backend/commit/72932e7dd1bbd6e1c679040861493eab4a87fbf1))
+* map city and leasehold claim colors ([a514ee8](https://github.com/Devidian/rw-manager-backend/commit/a514ee8fe51bf21597c4b931564fd3e2791a9522))
+* publish native plugin routes in rc ([a0cf1f8](https://github.com/Devidian/rw-manager-backend/commit/a0cf1f86bb7a2186c10d01c03ee259b30eb4e6bb))
+* refresh online players by activity ([ad8b2fc](https://github.com/Devidian/rw-manager-backend/commit/ad8b2fcefebb907661c9c228e900db9e5b2c256b))
+* secure game connector pairing ([124695a](https://github.com/Devidian/rw-manager-backend/commit/124695a08d08ac162b819f824c83cb9d8684e7bd))
+
+
+### Fixed
+
+* align persisted query URL validation with typia ([a1754f1](https://github.com/Devidian/rw-manager-backend/commit/a1754f17490a1522b7cd633111602a03ca25b869))
+* classify native player platforms ([3abb3bd](https://github.com/Devidian/rw-manager-backend/commit/3abb3bddb7c2da18a6f504cc29dc8cf47d0d967f))
+* complete native manager migration ([1fa9446](https://github.com/Devidian/rw-manager-backend/commit/1fa9446c5f2b8e9f2e79066ab82c19763bddc078))
+* flush connector provisioning response ([74c5e19](https://github.com/Devidian/rw-manager-backend/commit/74c5e198b1acd0fb7d67ad44394c28c2de623735))
+* keep rc images off stable tags ([0f2d496](https://github.com/Devidian/rw-manager-backend/commit/0f2d49662c104fd97eb32bf3b7569ba04a34870e))
+* normalize persisted query URLs before serialization ([b0e8b56](https://github.com/Devidian/rw-manager-backend/commit/b0e8b563b5e927b5018410cd11035951b02f9a58))
+* preserve explicit server query URLs ([43fc670](https://github.com/Devidian/rw-manager-backend/commit/43fc6700c0f9f92000116608d9421ddaa88a716c))
+* recover native plugin manifest versions ([ecbcc75](https://github.com/Devidian/rw-manager-backend/commit/ecbcc75c536466fd034d6aa44f1e2ba841e466e8))
+* retain marketplace offers with Unix timestamps ([0a5b0cf](https://github.com/Devidian/rw-manager-backend/commit/0a5b0cf2f7da1a5716889de34f641ef05a8ace45))
+* skip servers with invalid query URLs ([28f642d](https://github.com/Devidian/rw-manager-backend/commit/28f642de65e2cf47aaa5762ba72edc97249ffb16))
+* use game player list for online status ([1c14f73](https://github.com/Devidian/rw-manager-backend/commit/1c14f73ec5ba1d713244280b30f9d1f71fa33f4a))
+
+
+### Documentation
+
+* record city color rc deployment ([885330a](https://github.com/Devidian/rw-manager-backend/commit/885330a75e1dff5e3c4b577f6bffd00692bc5ef8))
+
+
+### Maintenance
+
+* prepare backend 0.6.1 release ([e98b02e](https://github.com/Devidian/rw-manager-backend/commit/e98b02eb3dc991cad4a5a54ae5ba97c753a5148c))
+
 ## [0.6.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.5.0...rw-manager-backend-v0.6.0) (2026-08-04)
 
 
