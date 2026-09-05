@@ -1,3 +1,4 @@
+import { getServerHeaderHandler } from '../handler/get-server-header-handler.js';
 import { Router } from 'express';
 import { requireAuth } from './require-auth.js';
 import { getServerConfigHandler } from '../handler/get-server-config-handler.js';
@@ -14,6 +15,8 @@ import {
 import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-offers-handler.js';
 
 const dataServerRouter = Router();
+
+dataServerRouter.get('/server/:id/header', getServerHeaderHandler);
 
 dataServerRouter.get('/server/config', requireAuth, getServerConfigHandler);
 dataServerRouter.get('/server/admins', getServerAdminListHandler);

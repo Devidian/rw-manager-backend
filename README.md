@@ -267,3 +267,9 @@ services:
 * The complete Rising World dedicated server root is expected at `SERVER_ROOT`;
   mounting only selected world data does not expose plugin inventory or maps.
 * Ignored local deployment files are intentionally not treated as maintained repository examples.
+
+### Server header images
+
+Server headers are loaded through the Manager backend at `GET /api/data/server/:id/header`. Configure the Manager backend URL with HTTPS when serving the frontend over HTTPS. The backend fetches the stored game server URL at `/images/header` over HTTP or HTTPS; no game-server TLS setup is required. Deploy the backend endpoint before the frontend update. Headers require a configured Manager backend.
+
+The public image endpoint accepts stored server IDs only, rejects redirects and non-raster content types, limits responses to 5 MiB and 5 seconds, and sets a five-minute browser cache. Unknown servers return 404; unavailable or invalid upstream images return 502.

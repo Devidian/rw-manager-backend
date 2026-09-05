@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+* proxy server header images through the Manager API for HTTPS frontends, with bounded image downloads
+
 ### Added
 
 * add authenticated server-scoped live map layer WebSocket invalidations
