@@ -13,7 +13,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
-import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
+import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { storedLiveStatusResponse } from './server-live-status-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
@@ -131,7 +131,7 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   const [data, info, nativeInfo, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
     fetchJson(new URL('info', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
-    fetchJson(new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString(), gameConnectorAuthorizationHeader(server)),
+    fetchNativePluginJson(server, new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
     fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
 

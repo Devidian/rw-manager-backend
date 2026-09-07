@@ -7,6 +7,7 @@ type ServerRecord = {
   public: boolean;
   userId?: string;
   steamId?: string;
+  connectorCredential?: string;
   ip?: string;
   port?: number;
   createdAt: Date;
@@ -188,6 +189,17 @@ describe('manager-store', () => {
     expect(store.verifyUserPassword(record, 'secret')).toBe(true);
   });
 
+  test('stale status and master snapshots preserve a concurrently paired credential', async () => {
+    state.servers.push(server({ id: 'paired', ip: '127.0.0.1', port: 4255 }));
+    const stale = { ...state.servers[0] };
+    expect(await store.claimServerConnectorCredential('paired', 'encrypted-original')).toBe(true);
+    expect(await store.claimServerConnectorCredential('paired', 'replacement')).toBe(false);
+    await store.saveServer({ ...stale, label: 'status refresh' });
+    await store.saveMasterServer({ ...stale, label: 'master refresh', connectorCredential: 'stale' });
+    expect(state.servers[0].connectorCredential).toBe('encrypted-original');
+    expect(JSON.parse(JSON.stringify(state.servers))[0].connectorCredential).toBe('encrypted-original');
+  });
+
   test('uses Mongo collections and strips _id fields', async () => {
     const mongoServer = { _id: 'mongo-id', ...server({ id: 'mongo-server', steamId: 'steam-server' }) };
     const mongoUser = { _id: 'mongo-id', ...user({ id: 'mongo-user' }) };
@@ -197,6 +209,7 @@ describe('manager-store', () => {
       servers: {
         find: serversFind,
         findOne: jest.fn(async () => mongoServer),
+        updateOne: jest.fn(async () => ({ modifiedCount: 1 })),
         replaceOne: jest.fn(async () => undefined),
         deleteOne: jest.fn(async () => undefined),
         deleteMany: jest.fn(async () => undefined),
@@ -235,9 +248,9 @@ describe('manager-store', () => {
     await store.saveUser(user({ id: 'mongo-user' }));
     await expect(store.deleteUserAndOwnedServers('mongo-user')).resolves.toBe(true);
 
-    expect(collections.servers.replaceOne).toHaveBeenCalledWith(
+    expect(collections.servers.updateOne).toHaveBeenCalledWith(
       { ip: '127.0.0.1', port: 4255 },
-      expect.objectContaining({ id: 'mongo-server' }),
+      { $set: expect.objectContaining({ id: 'mongo-server' }) },
       { upsert: true },
     );
     expect(collections.users.deleteOne).toHaveBeenCalledWith({ id: 'mongo-user' });

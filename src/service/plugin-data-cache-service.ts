@@ -1,9 +1,8 @@
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
-import { defaultLogger } from '../utils/logger.js';
 import { listServers, updateServer } from '../db/manager-store.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
-import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
+import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import {
   nativePluginRouteId,
   parseNativePluginList,
@@ -235,14 +234,8 @@ async function fetchOnlinePlayerList(queryUrl: string): Promise<unknown[] | unde
 }
 
 async function fetchPluginRoute(queryUrl: string, routePath: string, server: ServerConfig): Promise<unknown | undefined> {
-  const result = await fetchJson(buildRouteUrl(queryUrl, routePath), gameConnectorAuthorizationHeader(server));
-  if (!result.ok) {
-    defaultLogger.warn('Plugin data route refresh failed:', {
-      routePath,
-      error: result.error,
-    });
-    return undefined;
-  }
+  const result = await fetchNativePluginJson(server, buildRouteUrl(queryUrl, routePath));
+  if (!result.ok) return undefined;
   return result.data;
 }
 

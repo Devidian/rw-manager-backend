@@ -1,8 +1,9 @@
+import { resetNativePluginAccess } from './native-plugin-request-service.js';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import { isIP } from 'node:net';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import { listServers, saveServer } from '../db/manager-store.js';
+import { listServers, claimServerConnectorCredential } from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import {
@@ -64,6 +65,7 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
           const previous = sessions.get(serverId!);
           if (previous) previous.socket.close(1000, 'replaced');
           sessions.set(serverId!, { socket, events: [] });
+          resetNativePluginAccess(serverId!);
           send(socket, { type: 'connector.authenticated', schemaVersion: 1, serverId });
           socket.on('message', (message) => {
             void handleAuthenticatedMessage(socket, serverId!, sessions, message);
@@ -119,8 +121,8 @@ async function provision(request: IncomingMessage, gamePort: number): Promise<st
   if (server.connectorCredential) throw new ConnectorProtocolError('already_paired');
 
   const credential = createGameConnectorCredential();
-  server.connectorCredential = encryptGameConnectorCredential(credential, AppConfig.gameConnectorCredentialKey);
-  await saveServer(server);
+  const encrypted = encryptGameConnectorCredential(credential, AppConfig.gameConnectorCredentialKey);
+  if (!await claimServerConnectorCredential(server.id, encrypted)) throw new ConnectorProtocolError('already_paired');
   defaultLogger.log(`Game connector provisioned for server ${server.id}`);
   return credential;
 }

@@ -6,7 +6,7 @@ import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
-import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
+import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 import { hasActiveGameConnectorFeature, registerGameConnectorEventHandler } from './game-connector-websocket-service.js';
 
@@ -176,7 +176,7 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
   const [queryResult, infoResult, nativeInfoResult, playerlistResult] = await Promise.all([
     fetchJson(queryUrl),
     fetchJson(buildInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs),
-    fetchJson(buildNativeAdminUtilsInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs, gameConnectorAuthorizationHeader(server)),
+    fetchNativePluginJson(server, buildNativeAdminUtilsInfoUrl(queryUrl)),
     fetchJson(buildPlayerListUrl(queryUrl), AppConfig.playerListTimeoutMs),
   ]);
 

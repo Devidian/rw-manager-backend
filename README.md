@@ -211,6 +211,13 @@ only pairs a uniquely matched master-list peer-IP-and-port tuple and stores the 
 `connector.authenticate` with that credential. An authenticated session may
 register its bounded event list with `connector.features`.
 
+Protected native plugin routes use the encrypted connector credential. Ordinary
+server-list refreshes preserve that credential, and provisioning claims it
+atomically. A `401` suspends protected-route polling for that server briefly
+(with exponential retry delay); warnings include server id, name, host and
+route, but never the credential. A subsequent authenticated connector session
+clears the suspension.
+
 ```yml
 services:
   app:
@@ -273,3 +280,9 @@ services:
 Server headers are loaded through the Manager backend at `GET /api/data/server/:id/header`. Configure the Manager backend URL with HTTPS when serving the frontend over HTTPS. The backend fetches the stored game server URL at `/images/header` over HTTP or HTTPS; no game-server TLS setup is required. Deploy the backend endpoint before the frontend update. Headers require a configured Manager backend.
 
 The public image endpoint accepts stored server IDs only, rejects redirects and non-raster content types, limits responses to 5 MiB and 5 seconds, and sets a five-minute browser cache. Unknown servers return 404; unavailable or invalid upstream images return 502.
+
+### Native plugin versions
+
+Native `/pluginlist` discovery accepts plain release versions and legacy manifest
+`Version:` lines. Missing versions remain unknown; normal refresh updates cached
+versions without resetting storage.

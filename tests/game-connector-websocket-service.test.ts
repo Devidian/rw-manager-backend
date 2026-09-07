@@ -4,9 +4,14 @@ import { WebSocket, type RawData } from 'ws';
 
 const servers: Array<Record<string, unknown>> = [{ id: 'server-a', ip: '203.0.113.7', port: 4255 }];
 const listServers = jest.fn(async () => servers);
-const saveServer = jest.fn(async () => undefined);
+const claimServerConnectorCredential = jest.fn(async (id: string, credential: string) => {
+  const server = servers.find((entry) => entry.id === id);
+  if (!server || server.connectorCredential) return false;
+  server.connectorCredential = credential;
+  return true;
+});
 
-jest.unstable_mockModule('../src/db/manager-store.js', () => ({ listServers, saveServer }));
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({ listServers, claimServerConnectorCredential }));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({
   AppConfig: {
     gameConnectorCredentialKey: 'connector-test-key-with-at-least-32-characters',
@@ -48,7 +53,7 @@ describe('game connector WebSocket', () => {
     await expect(response.then(([message]) => message)).resolves.toMatchObject({
       type: 'connector.provisioned', schemaVersion: 1, credential: expect.any(String),
     });
-    expect(saveServer).toHaveBeenCalledWith(expect.objectContaining({ id: 'server-a', connectorCredential: expect.stringMatching(/^v1:/) }));
+    expect(claimServerConnectorCredential).toHaveBeenCalledWith('server-a', expect.stringMatching(/^v1:/));
   });
 
   test('rejects a claimed game port that is not in the proxy-authenticated server catalog', async () => {
@@ -59,7 +64,7 @@ describe('game connector WebSocket', () => {
     await expect(response.then(([message]) => message)).resolves.toEqual({
       type: 'error', schemaVersion: 1, code: 'server_not_found',
     });
-    expect(saveServer).not.toHaveBeenCalled();
+    expect(claimServerConnectorCredential).not.toHaveBeenCalled();
   });
 
   test('authenticates the provisioned credential and accepts a bounded feature list', async () => {

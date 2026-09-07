@@ -19,6 +19,15 @@ describe('native plugin list', () => {
     ]);
   });
 
+  test('preserves plain release versions and missing values', () => {
+    const versions = ['0.23.14', '1.2.3-rc.1', 'v2.0.0+build.7', '', undefined, 12];
+    expect(parseNativePluginList(JSON.stringify({
+      plugins: versions.map((version) => ({ name: 'Plugin', version })),
+    }))?.map((plugin) => plugin.version)).toEqual([
+      '0.23.14', '1.2.3-rc.1', 'v2.0.0+build.7', undefined, undefined, undefined,
+    ]);
+  });
+
   test('repairs only literal newlines within JSON strings', () => {
     const raw = '{"plugincount":1,"plugins":[{"name":"OZ - GPS","version":"* Plugin: OZ - GPS\n* Version: 0.8.0\n* Load Order: 1"}]}';
     expect(parseNativePluginList(raw)).toEqual([

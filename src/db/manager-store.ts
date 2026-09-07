@@ -144,12 +144,14 @@ export async function addServer(
 export async function saveServer(server: ServerConfig): Promise<ServerConfig> {
   const mongo = getMongoCollections();
   if (mongo) {
-    await mongo.servers.replaceOne({ id: server.id }, server, { upsert: true });
+    const { connectorCredential: _credential, ...fields } = server;
+    await mongo.servers.updateOne({ id: server.id }, { $set: fields }, { upsert: true });
     return server;
   }
   const index = db.data.servers.findIndex((entry) => entry.id === server.id);
   if (index >= 0) {
-    db.data.servers[index] = server;
+    const { connectorCredential: _credential, ...fields } = server;
+    db.data.servers[index] = { ...db.data.servers[index], ...fields };
   } else {
     db.data.servers.push(server);
   }
@@ -162,7 +164,8 @@ export async function saveMasterServer(server: ServerConfig): Promise<ServerConf
 
   const mongo = getMongoCollections();
   if (mongo) {
-    await mongo.servers.replaceOne({ ip: server.ip, port: server.port }, server, { upsert: true });
+    const { connectorCredential: _credential, ...fields } = server;
+    await mongo.servers.updateOne({ ip: server.ip, port: server.port }, { $set: fields }, { upsert: true });
     return server;
   }
 
@@ -170,12 +173,30 @@ export async function saveMasterServer(server: ServerConfig): Promise<ServerConf
     (entry) => entry.ip === server.ip && entry.port === server.port,
   );
   if (index >= 0) {
-    db.data.servers[index] = server;
+    const { connectorCredential: _credential, ...fields } = server;
+    db.data.servers[index] = { ...db.data.servers[index], ...fields };
   } else {
     db.data.servers.push(server);
   }
   await db.write();
   return server;
+}
+
+/** Only pairing may create credentials; stale catalog/status snapshots cannot replace them. */
+export async function claimServerConnectorCredential(id: string, credential: string): Promise<boolean> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    const result = await mongo.servers.updateOne(
+      { id, connectorCredential: { $exists: false } },
+      { $set: { connectorCredential: credential } },
+    );
+    return result.modifiedCount === 1;
+  }
+  const server = db.data.servers.find((entry) => entry.id === id);
+  if (!server || server.connectorCredential) return false;
+  server.connectorCredential = credential;
+  try { await db.write(); } catch (error) { delete server.connectorCredential; throw error; }
+  return true;
 }
 
 export async function updateServer(

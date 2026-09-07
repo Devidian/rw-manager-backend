@@ -58,6 +58,21 @@ describe('plugin data cache service', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://query.example/playerlist', expect.any(Object));
   });
 
+  test('refresh replaces cached missing versions with native plain versions', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'Example' }] }))
+      .mockResolvedValueOnce(response({ players: [] }))
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'Example', version: '1.2.3' }] }))
+      .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
+    global.fetch = fetchMock;
+    const target = server({ onlinePlayers: [] });
+    const first = await refreshPluginDataForServer(target);
+    expect(first.entry?.plugins[0].version).toBeUndefined();
+    const second = await refreshPluginDataForServer(target);
+    expect(second.entry?.plugins[0].version).toBe('1.2.3');
+    expect(getCachedPluginData(target.id)?.plugins[0].version).toBe('1.2.3');
+  });
+
   test('discovers plugins and caches available plugin route data', async () => {
     const fetchMock = jest
       .fn()

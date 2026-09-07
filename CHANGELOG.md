@@ -1,3 +1,9 @@
+## Unreleased
+
+- Preserve plain native plugin-list versions alongside legacy manifest versions.
+- Preserve connector credentials during master-list saves and bound retries of
+  unauthorized protected native routes with server-aware diagnostics.
+
 # Changelog
 
 ## Unreleased
