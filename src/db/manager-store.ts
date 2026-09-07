@@ -219,6 +219,24 @@ export async function resetServerConnectorCredential(id: string, credential: str
   return true;
 }
 
+/**
+ * Replaces a credential only after the connector's proxy-authenticated
+ * peer-IP-and-game-port identity has been resolved by the caller.
+ */
+export async function replaceServerConnectorCredential(id: string, credential: string): Promise<boolean> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    const result = await mongo.servers.updateOne({ id }, { $set: { connectorCredential: credential } });
+    return result.matchedCount === 1;
+  }
+  const server = db.data.servers.find((entry) => entry.id === id);
+  if (!server) return false;
+  const previous = server.connectorCredential;
+  server.connectorCredential = credential;
+  try { await db.write(); } catch (error) { server.connectorCredential = previous; throw error; }
+  return true;
+}
+
 export async function updateServer(
   id: string,
   input: ServerPatch,

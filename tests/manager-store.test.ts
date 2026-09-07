@@ -208,6 +208,13 @@ describe('manager-store', () => {
     expect(state.servers[0].connectorCredential).toBeUndefined();
   });
 
+  test('replaces a credential only for an existing server', async () => {
+    state.servers.push(server({ id: 'paired', connectorCredential: 'encrypted-original' }));
+    expect(await store.replaceServerConnectorCredential('missing', 'replacement')).toBe(false);
+    expect(await store.replaceServerConnectorCredential('paired', 'replacement')).toBe(true);
+    expect(state.servers[0].connectorCredential).toBe('replacement');
+  });
+
   test('uses Mongo collections and strips _id fields', async () => {
     const mongoServer = { _id: 'mongo-id', ...server({ id: 'mongo-server', steamId: 'steam-server' }) };
     const mongoUser = { _id: 'mongo-id', ...user({ id: 'mongo-user' }) };

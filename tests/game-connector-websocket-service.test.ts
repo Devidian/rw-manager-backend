@@ -10,10 +10,17 @@ const claimServerConnectorCredential = jest.fn(async (id: string, credential: st
   server.connectorCredential = credential;
   return true;
 });
+const replaceServerConnectorCredential = jest.fn(async (id: string, credential: string) => {
+  const server = servers.find((entry) => entry.id === id);
+  if (!server) return false;
+  server.connectorCredential = credential;
+  return true;
+});
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   listServers,
   claimServerConnectorCredential,
+  replaceServerConnectorCredential,
   resetServerConnectorCredential: jest.fn(),
 }));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({
@@ -68,6 +75,19 @@ describe('game connector WebSocket', () => {
     await expect(response.then(([message]) => message)).resolves.toEqual({
       type: 'error', schemaVersion: 1, code: 'server_not_found',
     });
+    expect(claimServerConnectorCredential).not.toHaveBeenCalled();
+  });
+
+  test('reprovisions a stale credential only for the uniquely proxy-authenticated server', async () => {
+    servers[0].connectorCredential = 'stale-encrypted-record';
+    const socket = await connect(baseUrl);
+    const response = messages(socket, 1);
+    socket.send(JSON.stringify({ type: 'connector.provision', schemaVersion: 1, gamePort: 4255 }));
+
+    await expect(response.then(([message]) => message)).resolves.toMatchObject({
+      type: 'connector.provisioned', schemaVersion: 1, credential: expect.any(String),
+    });
+    expect(replaceServerConnectorCredential).toHaveBeenCalledWith('server-a', expect.stringMatching(/^v1:/));
     expect(claimServerConnectorCredential).not.toHaveBeenCalled();
   });
 

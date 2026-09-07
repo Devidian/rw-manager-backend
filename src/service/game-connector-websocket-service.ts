@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import { isIP } from 'node:net';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import { listServers, claimServerConnectorCredential } from '../db/manager-store.js';
+import { listServers, claimServerConnectorCredential, replaceServerConnectorCredential } from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import {
@@ -126,12 +126,14 @@ async function provision(request: IncomingMessage, gamePort: number): Promise<st
   );
   if (candidates.length !== 1) throw new ConnectorProtocolError(candidates.length ? 'pairing_ambiguous' : 'server_not_found');
   const server = candidates[0];
-  if (server.connectorCredential) throw new ConnectorProtocolError('already_paired');
 
   const credential = createGameConnectorCredential();
   const encrypted = encryptGameConnectorCredential(credential, AppConfig.gameConnectorCredentialKey);
-  if (!await claimServerConnectorCredential(server.id, encrypted)) throw new ConnectorProtocolError('already_paired');
-  defaultLogger.log(`Game connector provisioned for server ${server.id}`);
+  const stored = server.connectorCredential
+    ? await replaceServerConnectorCredential(server.id, encrypted)
+    : await claimServerConnectorCredential(server.id, encrypted);
+  if (!stored) throw new ConnectorProtocolError('provision_failed');
+  defaultLogger.log(`Game connector ${server.connectorCredential ? 'reprovisioned' : 'provisioned'} for server ${server.id}`);
   return credential;
 }
 
