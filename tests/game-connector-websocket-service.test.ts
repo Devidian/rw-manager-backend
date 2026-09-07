@@ -11,7 +11,11 @@ const claimServerConnectorCredential = jest.fn(async (id: string, credential: st
   return true;
 });
 
-jest.unstable_mockModule('../src/db/manager-store.js', () => ({ listServers, claimServerConnectorCredential }));
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({
+  listServers,
+  claimServerConnectorCredential,
+  resetServerConnectorCredential: jest.fn(),
+}));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({
   AppConfig: {
     gameConnectorCredentialKey: 'connector-test-key-with-at-least-32-characters',
@@ -22,7 +26,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: { debug: jest.fn(), log: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-const { attachGameConnectorWebSocketService, registerGameConnectorEventHandler } = await import('../src/service/game-connector-websocket-service.js');
+const { attachGameConnectorWebSocketService, registerGameConnectorEventHandler, requestGameConnectorCredentialReset } = await import('../src/service/game-connector-websocket-service.js');
 
 describe('game connector WebSocket', () => {
   let server: http.Server;
@@ -84,6 +88,25 @@ describe('game connector WebSocket', () => {
     socket.send(JSON.stringify({ type: 'connector.features', schemaVersion: 1, events: ['playerStatus', 'playerStatus'] }));
     await expect(accepted.then(([message]) => message)).resolves.toEqual({
       type: 'connector.features.accepted', schemaVersion: 1, events: ['playerStatus'],
+    });
+    socket.close();
+  });
+
+  test('sends a reset command only to the authenticated server session', async () => {
+    expect(requestGameConnectorCredentialReset('server-a')).toBe(false);
+    const provision = await connect(baseUrl);
+    const provisioned = messages(provision, 1);
+    provision.send(JSON.stringify({ type: 'connector.provision', schemaVersion: 1, gamePort: 4255 }));
+    const [{ credential }] = await provisioned;
+
+    const socket = await connect(baseUrl);
+    const authenticated = messages(socket, 1);
+    socket.send(JSON.stringify({ type: 'connector.authenticate', schemaVersion: 1, credential }));
+    await authenticated;
+    const reset = messages(socket, 1);
+    expect(requestGameConnectorCredentialReset('server-a')).toBe(true);
+    await expect(reset.then(([message]) => message)).resolves.toEqual({
+      type: 'connector.reset', schemaVersion: 1, reason: 'native_route_unauthorized',
     });
     socket.close();
   });

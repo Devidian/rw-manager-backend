@@ -35,6 +35,14 @@ export function hasActiveGameConnectorFeature(serverId: string, event: string): 
   return activeSessions?.get(serverId)?.events.includes(event) ?? false;
 }
 
+/** Requests a credential reset only over the server's already authenticated connector session. */
+export function requestGameConnectorCredentialReset(serverId: string): boolean {
+  const session = activeSessions?.get(serverId);
+  if (!session || session.socket.readyState !== WebSocket.OPEN) return false;
+  send(session.socket, { type: 'connector.reset', schemaVersion: 1, reason: 'native_route_unauthorized' });
+  return true;
+}
+
 let activeSessions: Map<string, ConnectorSession> | undefined;
 
 export interface GameConnectorWebSocketService {

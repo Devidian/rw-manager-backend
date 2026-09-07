@@ -41,6 +41,27 @@ export function parseNativePluginList(raw: string): QueryPluginInfo[] | undefine
   });
 }
 
+/** Queries the game-owned plugin inventory before requesting an opt-in plugin route. */
+export async function fetchNativePluginList(
+  queryUrl: string,
+  timeoutMs: number,
+): Promise<QueryPluginInfo[] | undefined> {
+  try {
+    const response = await fetch(new URL('pluginlist', `${queryUrl.replace(/\/+$/, '')}/`).toString(), {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return undefined;
+    return parseNativePluginList(await response.text());
+  } catch {
+    return undefined;
+  }
+}
+
+export function hasNativePluginRoute(plugins: QueryPluginInfo[] | undefined, routeId: string): boolean {
+  return plugins?.some((plugin) => plugin.valid && plugin.name
+    && nativePluginRouteId(plugin.name) === routeId) ?? false;
+}
+
 function parseJsonWithEscapedStringNewlines(raw: string): unknown | undefined {
   try {
     return JSON.parse(raw);

@@ -106,16 +106,20 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        text: async () => JSON.stringify({ plugins: [{ name: 'OZ - Admin Utils' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ players: [{ uid: 'player-1', connected: true }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({
           schemaVersion: 1,
           mapUrl: 'https://map.example.com/',
           adminUid: '76561198000000000',
           admins: [],
         }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ players: [{ uid: 'player-1', connected: true }] }),
       }) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -429,25 +433,24 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          schemaVersion: 1,
-          mapUrl: 'https://map.example.com/',
-          adminUid: '76561198000000000',
-          admins: [],
-        }),
+        json: async () => ({ shortname: 'Old Shortname' }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          schemaVersion: 1,
-          mapUrl: 'https://map.example.com/',
-          adminUid: '76561198000000000',
-          admins: [],
-        }),
+        text: async () => JSON.stringify({ plugins: [{ name: 'OZ - Admin Utils' }] }),
       })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ players: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          schemaVersion: 1,
+          mapUrl: 'https://map.example.com/',
+          adminUid: '76561198000000000',
+          admins: [],
+        }),
       }) as typeof fetch;
 
     await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({

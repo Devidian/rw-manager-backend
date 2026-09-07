@@ -215,8 +215,11 @@ Protected native plugin routes use the encrypted connector credential. Ordinary
 server-list refreshes preserve that credential, and provisioning claims it
 atomically. A `401` suspends protected-route polling for that server briefly
 (with exponential retry delay); warnings include server id, name, host and
-route, but never the credential. A subsequent authenticated connector session
-clears the suspension.
+route, but never the credential. When that server still has an authenticated
+connector session, the backend conditionally removes only the rejected
+credential and sends `connector.reset`; Tools deletes its matching local
+credential, reconnects, and provisions a replacement. A subsequent
+authenticated connector session clears the suspension.
 
 ```yml
 services:

@@ -199,6 +199,26 @@ export async function claimServerConnectorCredential(id: string, credential: str
   return true;
 }
 
+/**
+ * Removes exactly the credential that caused a rejected protected request.
+ * A newer pairing must never be erased by a delayed 401 response.
+ */
+export async function resetServerConnectorCredential(id: string, credential: string): Promise<boolean> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    const result = await mongo.servers.updateOne(
+      { id, connectorCredential: credential },
+      { $unset: { connectorCredential: '' } },
+    );
+    return result.modifiedCount === 1;
+  }
+  const server = db.data.servers.find((entry) => entry.id === id);
+  if (!server || server.connectorCredential !== credential) return false;
+  delete server.connectorCredential;
+  try { await db.write(); } catch (error) { server.connectorCredential = credential; throw error; }
+  return true;
+}
+
 export async function updateServer(
   id: string,
   input: ServerPatch,

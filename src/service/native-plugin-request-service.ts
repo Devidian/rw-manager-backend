@@ -2,6 +2,8 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import { gameConnectorAuthorizationHeader } from './game-connector-credential-service.js';
+import { resetServerConnectorCredential } from '../db/manager-store.js';
+import { requestGameConnectorCredentialReset } from './game-connector-websocket-service.js';
 
 type Result = { ok: true; data: unknown } | { ok: false; error: string };
 interface Failure { credential?: string; until: number; attempts: number }
@@ -37,13 +39,15 @@ async function fetchRoute(server: ServerConfig, url: string): Promise<Result> {
       headers: authorization ? { Authorization: authorization } : undefined,
     });
     if (response.status === 401) {
+      const recoveryRequested = authorization && requestGameConnectorCredentialReset(server.id)
+        && await resetServerConnectorCredential(server.id, server.connectorCredential!);
       const previous = failures.get(server.id);
       const attempts = previous && previous.credential === server.connectorCredential ? previous.attempts + 1 : 1;
       const retryAfterMs = Math.min(30 * 60_000, 5 * 60_000 * 2 ** Math.min(attempts - 1, 3));
       if (failures.size >= 5000 && !failures.has(server.id)) failures.delete(failures.keys().next().value!);
       failures.set(server.id, { credential: server.connectorCredential, until: Date.now() + retryAfterMs, attempts });
       defaultLogger.warn('Native plugin access rejected; protected polling paused:', {
-        ...context, status: 401, credentialAvailable: !!authorization, retryAfterMs,
+        ...context, status: 401, credentialAvailable: !!authorization, recoveryRequested, retryAfterMs,
       });
       return { ok: false, error: 'HTTP 401' };
     }

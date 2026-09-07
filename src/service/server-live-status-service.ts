@@ -7,6 +7,7 @@ import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
+import { fetchNativePluginList, hasNativePluginRoute } from './native-plugin-list.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 import { hasActiveGameConnectorFeature, registerGameConnectorEventHandler } from './game-connector-websocket-service.js';
 
@@ -173,12 +174,15 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
   const queryUrl = server.queryUrl;
   const startedAt = Date.now();
   defaultLogger.debug(`Live server query started: ${queryUrl}`);
-  const [queryResult, infoResult, nativeInfoResult, playerlistResult] = await Promise.all([
+  const [queryResult, infoResult, plugins, playerlistResult] = await Promise.all([
     fetchJson(queryUrl),
     fetchJson(buildInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs),
-    fetchNativePluginJson(server, buildNativeAdminUtilsInfoUrl(queryUrl)),
+    fetchNativePluginList(queryUrl, AppConfig.liveQueryProxyTimeoutMs),
     fetchJson(buildPlayerListUrl(queryUrl), AppConfig.playerListTimeoutMs),
   ]);
+  const nativeInfoResult = hasNativePluginRoute(plugins, 'oz---admin-utils')
+    ? await fetchNativePluginJson(server, buildNativeAdminUtilsInfoUrl(queryUrl))
+    : { ok: false as const, error: 'PLUGIN_NOT_EXPOSED' };
 
   const lastChecked = new Date().toISOString() as ServerLiveStatusResponse['lastChecked'];
   const onlinePlayers = playerlistResult.ok

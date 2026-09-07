@@ -4,8 +4,8 @@ import { listServers, updateServer } from '../db/manager-store.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import {
+  fetchNativePluginList,
   nativePluginRouteId,
-  parseNativePluginList,
   type QueryPluginInfo,
 } from './native-plugin-list.js';
 
@@ -121,7 +121,7 @@ export async function refreshPluginDataForServer(
   }
 
   const [plugins, onlinePlayers] = await Promise.all([
-    fetchPluginList(pluginQueryUrl),
+    fetchNativePluginList(pluginQueryUrl, AppConfig.liveQueryProxyTimeoutMs),
     fetchOnlinePlayerList(pluginQueryUrl),
   ]);
   if (!plugins) {
@@ -212,18 +212,6 @@ export async function refreshPluginDataForOnlineServers(): Promise<PluginDataRef
     refreshed: results.filter((result) => result.refreshed).length,
     skipped: results.filter((result) => !result.refreshed).length,
   };
-}
-
-async function fetchPluginList(queryUrl: string): Promise<QueryPluginInfo[] | undefined> {
-  try {
-    const response = await fetch(buildRouteUrl(queryUrl, 'pluginlist'), {
-      signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
-    });
-    if (!response.ok) return undefined;
-    return parseNativePluginList(await response.text());
-  } catch {
-    return undefined;
-  }
 }
 
 async function fetchOnlinePlayerList(queryUrl: string): Promise<unknown[] | undefined> {

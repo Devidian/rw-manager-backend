@@ -200,6 +200,14 @@ describe('manager-store', () => {
     expect(JSON.parse(JSON.stringify(state.servers))[0].connectorCredential).toBe('encrypted-original');
   });
 
+  test('resets only the credential that was rejected', async () => {
+    state.servers.push(server({ id: 'paired', connectorCredential: 'encrypted-original' }));
+    expect(await store.resetServerConnectorCredential('paired', 'replacement')).toBe(false);
+    expect(state.servers[0].connectorCredential).toBe('encrypted-original');
+    expect(await store.resetServerConnectorCredential('paired', 'encrypted-original')).toBe(true);
+    expect(state.servers[0].connectorCredential).toBeUndefined();
+  });
+
   test('uses Mongo collections and strips _id fields', async () => {
     const mongoServer = { _id: 'mongo-id', ...server({ id: 'mongo-server', steamId: 'steam-server' }) };
     const mongoUser = { _id: 'mongo-id', ...user({ id: 'mongo-user' }) };

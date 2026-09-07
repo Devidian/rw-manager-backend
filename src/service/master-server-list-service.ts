@@ -14,6 +14,7 @@ import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
+import { fetchNativePluginList, hasNativePluginRoute } from './native-plugin-list.js';
 import { storedLiveStatusResponse } from './server-live-status-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
@@ -128,12 +129,15 @@ async function fetchMasterServerList(): Promise<MasterServerListResponse | undef
 async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolean> {
   if (!server.queryUrl || !shouldRefreshQueryData(server, now)) return false;
 
-  const [data, info, nativeInfo, playerlist] = await Promise.all([
+  const [data, info, plugins, playerlist] = await Promise.all([
     fetchJson(server.queryUrl),
     fetchJson(new URL('info', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
-    fetchNativePluginJson(server, new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
+    fetchNativePluginList(server.queryUrl, AppConfig.liveQueryProxyTimeoutMs),
     fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
+  const nativeInfo = hasNativePluginRoute(plugins, 'oz---admin-utils')
+    ? await fetchNativePluginJson(server, new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString())
+    : { ok: false as const, error: 'PLUGIN_NOT_EXPOSED' };
 
   server.status = data.ok ? 'online' : 'offline';
   server.lastChecked = now;

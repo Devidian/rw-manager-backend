@@ -3,6 +3,8 @@
 - Preserve plain native plugin-list versions alongside legacy manifest versions.
 - Preserve connector credentials during master-list saves and bound retries of
   unauthorized protected native routes with server-aware diagnostics.
+- Reset and reprovision a stale connector credential after a protected native-route 401 when its authenticated session is available.
+- Query Admin Utils native routes only when the game-owned plugin inventory exposes `OZ - Admin Utils`.
 
 # Changelog
 

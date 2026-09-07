@@ -45,13 +45,14 @@ describe('server-live-status-service', () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 9 }))
       .mockResolvedValueOnce(response({ name: 'Server overview', shortname: 'Overview', description: 'Info' }))
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'OZ - Admin Utils' }] }))
+      .mockResolvedValueOnce(response({ players: [{ uid: '76561198000000000', name: 'Alice' }] }))
       .mockResolvedValueOnce(response({
         schemaVersion: 1,
         mapUrl: 'https://map.example/',
         adminUid: '76561198000000000',
         admins: [],
-      }))
-      .mockResolvedValueOnce(response({ players: [{ uid: '76561198000000000', name: 'Alice' }] })) as typeof fetch;
+      })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
@@ -62,11 +63,12 @@ describe('server-live-status-service', () => {
     });
     await service.getServerLiveStatus('server-1');
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example/info', expect.any(Object));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/plugins/oz---admin-utils/info', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/pluginlist', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://query.example/playerlist', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://query.example/plugins/oz---admin-utils/info', expect.any(Object));
     expect(state.servers[0]).toMatchObject({
       mapUrl: 'https://map.example/', adminUid: '76561198000000000', status: 'online',
       onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
@@ -106,10 +108,26 @@ describe('server-live-status-service', () => {
     global.fetch = jest.fn()
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 1 }))
       .mockResolvedValueOnce(response({ description: '@mapUrl:https://bridge.example/' }))
+      .mockResolvedValueOnce(response({ plugins: [] }))
       .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
 
     await service.getServerLiveStatus('server-1');
     expect(state.servers[0].mapUrl).toBeUndefined();
+  });
+
+  test('does not request the Admin Utils route when the exposed plugin list omits it', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ name: 'Server' }))
+      .mockResolvedValueOnce(response({ name: 'Overview' }))
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'OZ - GPS' }] }))
+      .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
+    global.fetch = fetchMock;
+
+    await service.getServerLiveStatus('server-1');
+
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://query.example/plugins/oz---admin-utils/info', expect.any(Object),
+    );
   });
 
   test('validates missing server and query URL', async () => {
