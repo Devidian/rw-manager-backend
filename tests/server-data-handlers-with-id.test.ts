@@ -99,6 +99,7 @@ describe('server data handlers with server id routes', () => {
     expect(pluginsResponse.json).toHaveBeenCalledWith({
       available: true,
       items: [{ name: 'Shop', version: '1.0.0', valid: true }],
+      latestVersions: {},
     });
 
     const mapResponse = createResponse();
@@ -133,6 +134,7 @@ describe('server data handlers with server id routes', () => {
     expect(response.json).toHaveBeenCalledWith({
       available: true,
       items: [{ name: 'GPS', version: '1.0.0', valid: true }],
+      latestVersions: {},
     });
   });
 
