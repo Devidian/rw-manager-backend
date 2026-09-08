@@ -37,6 +37,27 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.6.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.1...rw-manager-backend-v0.6.1) (2026-09-08)
+
+
+### Added
+
+* add manager map history and release status ([575bd45](https://github.com/Devidian/rw-manager-backend/commit/575bd450e49bfc467c1c04ebed02dab814440371))
+
+
+### Fixed
+
+* harden native plugin access recovery ([6c80c83](https://github.com/Devidian/rw-manager-backend/commit/6c80c831a620f89ef9a3c5d8c5169274292a2cef))
+* load map metadata from renderer URL ([6f3e207](https://github.com/Devidian/rw-manager-backend/commit/6f3e20779cecada53238baf9f5194fdbaee5cc41))
+* proxy server header images through manager API ([5d6b01d](https://github.com/Devidian/rw-manager-backend/commit/5d6b01d1e70bf13528b5867288d4854ff3ab68dc))
+* recover connector credentials and gate admin routes ([fe37802](https://github.com/Devidian/rw-manager-backend/commit/fe378025208c1848329d118836a57f40657ba7d8))
+* reprovision stale connector credentials ([190cd1e](https://github.com/Devidian/rw-manager-backend/commit/190cd1e4cdc56984b97eaad414c582555e74fbff))
+
+
+### Tests
+
+* cover plugin release inventory response ([de1cd90](https://github.com/Devidian/rw-manager-backend/commit/de1cd902e87da0b2df0e180335c649889fc57046))
+
 ## [0.6.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.0...rw-manager-backend-v0.6.1) (2026-09-05)
 
 
