@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,9 +6,11 @@ import { getServerMap } from '../src/service/map-service.js';
 
 describe('map service', () => {
   const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
 
   afterEach(() => {
     restoreEnv(originalEnv);
+    globalThis.fetch = originalFetch;
   });
 
   test('returns unavailable for absent, malformed, and incompatible renderer maps', async () => {
@@ -61,6 +64,27 @@ describe('map service', () => {
         worldName: 'New World',
         tileUrl:
           'https://tiles.example.com/maps/server-f8e7fa9ca73fd4b4943db61a/{z}/{x}/{y}.png',
+      },
+    });
+  });
+
+  test('loads external renderer metadata from the server map URL', async () => {
+    const serverId = 'server-f8e7fa9ca73fd4b4943db61a';
+    const metadataUrl = 'https://renderer.example/maps/city/metadata.json';
+    globalThis.fetch = jest.fn(async (url) => {
+      expect(url.toString()).toBe(metadataUrl);
+      return new Response(JSON.stringify(rendererMetadata({ serverId })), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    await expect(getServerMap(undefined, 'Ignored World', serverId, 'https://renderer.example/maps/city')).resolves.toEqual({
+      available: true,
+      metadata: {
+        ...rendererMetadata({ serverId }),
+        worldKey: serverId,
+        worldName: 'New World',
+        tileUrl: 'https://renderer.example/server-f8e7fa9ca73fd4b4943db61a/{z}/{x}/{y}.png',
       },
     });
   });

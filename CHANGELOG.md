@@ -6,6 +6,7 @@
 - Reset and reprovision a stale connector credential after a protected native-route 401 when its authenticated session is available.
 - Reprovision a credential that can no longer be decrypted only after the trusted proxy resolves one exact game-server endpoint.
 - Query Admin Utils native routes only when the game-owned plugin inventory exposes `OZ - Admin Utils`.
+- Load renderer metadata from each server's external `mapUrl` when no compatible local map is available.
 
 # Changelog
 

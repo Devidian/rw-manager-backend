@@ -6,6 +6,8 @@ import type { MapMetadata } from '../interfaces/map-metadata.js';
 import { AppConfig } from '../utils/app-config.js';
 
 const RENDERER_MAP_SCHEMA_VERSION = 6;
+const REMOTE_METADATA_MAX_BYTES = 256 * 1024;
+const REMOTE_METADATA_TIMEOUT_MS = 5000;
 
 interface ProducerMetadata {
   schemaVersion?: unknown;
@@ -30,8 +32,14 @@ export async function getServerMap(
   publicTileRootUrl: string | undefined = AppConfig.mapTileRootUrl,
 ): Promise<GetServerMapResponse> {
   void worldName;
-  if (!tileRoot || !path.isAbsolute(tileRoot) || !serverId) return { available: false };
-  return getRendererServerMap(tileRoot, serverId, publicTileRootUrl);
+  if (!serverId) return { available: false };
+  if (tileRoot && path.isAbsolute(tileRoot)) {
+    const local = await getRendererServerMap(tileRoot, serverId, publicTileRootUrl);
+    if (local.available) return local;
+  }
+  return publicTileRootUrl
+    ? getRemoteRendererServerMap(publicTileRootUrl, serverId)
+    : { available: false };
 }
 
 async function getRendererServerMap(
@@ -56,6 +64,61 @@ async function getRendererServerMap(
   } catch {
     return { available: false };
   }
+}
+
+async function getRemoteRendererServerMap(
+  mapUrl: string,
+  serverId: string,
+): Promise<GetServerMapResponse> {
+  let metadataUrl: URL;
+  try {
+    const rootUrl = new URL(mapUrl);
+    if (!['http:', 'https:'].includes(rootUrl.protocol) || rootUrl.username || rootUrl.password) {
+      return { available: false };
+    }
+    metadataUrl = new URL(`${rootUrl.toString().replace(/\/+$/, '')}/metadata.json`);
+  } catch {
+    return { available: false };
+  }
+
+  try {
+    const response = await fetch(metadataUrl, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(REMOTE_METADATA_TIMEOUT_MS),
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok || Number(response.headers.get('content-length')) > REMOTE_METADATA_MAX_BYTES) {
+      await response.body?.cancel();
+      return { available: false };
+    }
+    const producer = JSON.parse(await readBoundedBody(response)) as ProducerMetadata;
+    const metadata = validateRendererMetadata(producer, serverId, undefined);
+    metadata.tileUrl = `${metadataUrl.origin}${producer.tileUrl as string}`;
+    return { available: true, metadata };
+  } catch {
+    return { available: false };
+  }
+}
+
+async function readBoundedBody(response: Response): Promise<string> {
+  if (!response.body) throw new Error('Missing metadata body');
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > REMOTE_METADATA_MAX_BYTES) throw new Error('Metadata response too large');
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+  if (!size) throw new Error('Empty metadata body');
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 function validateRendererMetadata(

@@ -3,10 +3,16 @@ import type { ServerConfig } from '../src/interfaces/server-config.js';
 
 const listServersMock = jest.fn<() => Promise<ServerConfig[]>>();
 const updateServerMock = jest.fn();
+const claimServerConnectorCredentialMock = jest.fn(async () => true);
+const replaceServerConnectorCredentialMock = jest.fn(async () => true);
+const resetServerConnectorCredentialMock = jest.fn(async () => true);
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   listServers: listServersMock,
   updateServer: updateServerMock,
+  claimServerConnectorCredential: claimServerConnectorCredentialMock,
+  replaceServerConnectorCredential: replaceServerConnectorCredentialMock,
+  resetServerConnectorCredential: resetServerConnectorCredentialMock,
 }));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({
   AppConfig: {

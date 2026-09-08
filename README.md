@@ -16,9 +16,12 @@ GET /api/data/server/map/layers/players
 GET /api/data/server/map/layers/marketplaces/:areaId/offers
 ```
 
-Map tile rendering is owned by `rw-map-rendering`. The manager backend reads
-external renderer metadata from `MAP_TILE_ROOT/<MAP_SERVER_ID>/metadata.json`
-and publishes tile URLs with `MAP_TILE_ROOT_URL` when configured.
+Map tile rendering is owned by `rw-map-rendering`. For a server with a native
+Admin Utils `mapUrl`, the backend loads `<mapUrl>/metadata.json` directly and
+publishes its validated tile URLs from that renderer host. `mapUrl` must name
+that server's renderer directory, for example
+`https://tiles.example.com/server-abc123`, not a shared renderer root. Local
+`MAP_TILE_ROOT/<MAP_SERVER_ID>/metadata.json` remains a compatibility fallback.
 
 The backend does not require a Rising World installation to start. Missing
 plugin-route cache data disables only the corresponding optional data features.
