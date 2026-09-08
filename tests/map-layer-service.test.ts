@@ -42,6 +42,7 @@ describe('map layer service', () => {
       shop: false,
       players: false,
       gpsGlobalMarkers: false,
+      playerHistory: false,
     });
     await expect(getMapClaims(root)).resolves.toBeNull();
     await expect(getMapPlayers(false, root)).resolves.toBeNull();
@@ -116,6 +117,7 @@ describe('map layer service', () => {
         shop: true,
         players: true,
         gpsGlobalMarkers: true,
+        playerHistory: true,
       }),
     );
     await expect(getMapGpsGlobalMarkers(root, 'server-1')).resolves.toEqual([{
@@ -320,7 +322,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         { directory: 'OZGPS', name: 'OZ - GPS', valid: true },
         { directory: 'OZMarketplace', name: 'OZ - Marketplace', valid: true },
         { directory: 'OZShop', name: 'OZ - Shop', valid: true },
-        { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
+        { directory: 'OZLandClaim', name: 'OZ - Land Claim', version: '0.18.0', valid: true },
       ],
     }))
     .mockResolvedValueOnce(response({ players: [{ uid: 'player-1', name: 'Cached Player' }] }))

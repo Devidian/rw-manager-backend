@@ -33,6 +33,8 @@ export interface ServerDto {
   queryDataUpdatedAt?: (string & Format<'date-time'>) | undefined;
   pluginListAvailable?: boolean | undefined;
   ozToolsInstalled?: boolean | undefined;
+  ozToolsVersion?: string | undefined;
+  latestOZToolsVersion?: string | undefined;
   public: boolean;
   createdAt: string & Format<'date-time'>;
   userId?: string | undefined;

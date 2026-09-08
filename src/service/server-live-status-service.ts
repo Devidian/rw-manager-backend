@@ -129,7 +129,8 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
   server.status = response.status;
   server.lastChecked = new Date(response.lastChecked);
   server.errorMessage = response.errorMessage;
-  server.onlinePlayers = response.onlinePlayers;
+  // An offline server cannot retain a stale player list in storage or statistics.
+  server.onlinePlayers = response.status === 'offline' ? [] : response.onlinePlayers;
   server.knownPlayers = mergeKnownPlayers(
     server.knownPlayers,
     observedPlayersFromValues(response.onlinePlayers, response.lastChecked),
@@ -207,7 +208,7 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
       server.adminUid = nativeInfo.adminUid ?? server.adminUid;
     }
   }
-  if (onlinePlayers !== undefined) response.onlinePlayers = onlinePlayers;
+  response.onlinePlayers = response.status === 'offline' ? [] : onlinePlayers;
 
   defaultLogger.debug('Live server query completed:', {
     queryUrl,
@@ -218,6 +219,7 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
 }
 
 function playerCountFromLiveStatus(response: ServerLiveStatusResponse): number {
+  if (response.status === 'offline') return 0;
   const playerListCount = numberFromPayload(
     { playercount: response.onlinePlayers?.length },
     'playercount',
@@ -362,7 +364,7 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
         sampledAt: new Date(response.lastChecked),
         online: response.status === 'online',
         playerCount: playerCountFromLiveStatus(response),
-        onlinePlayerUids: onlinePlayerUids(response.onlinePlayers),
+        onlinePlayerUids: response.status === 'offline' ? [] : onlinePlayerUids(response.onlinePlayers),
       });
       cache.set(serverId, {
         expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs,

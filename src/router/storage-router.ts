@@ -22,6 +22,7 @@ import { getAllPlayersHandler } from '../handler/get-all-players-handler.js';
 import { getServerConfigHandler } from '../handler/get-server-config-handler.js';
 import { getServerAdminListHandler } from '../handler/get-server-admin-list-handler.js';
 import { setServerBlockedHandler } from '../handler/set-server-blocked-handler.js';
+import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 
 const storageRouter = Router();
 
@@ -42,6 +43,7 @@ storageRouter.get('/server/:id/admins', requireServerGetAuth, getServerAdminList
 storageRouter.get('/server/:id/map/layers', requireServerGetAuth, getMapLayerCapabilitiesHandler);
 storageRouter.get('/server/:id/map/layers/claims', requireServerGetAuth, getMapClaimsHandler);
 storageRouter.get('/server/:id/map/layers/players', requireServerGetAuth, getMapPlayersHandler);
+storageRouter.get('/server/:id/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
 storageRouter.get(
   '/server/:id/map/layers/gps-global-markers',
   requireServerGetAuth,

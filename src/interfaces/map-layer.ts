@@ -12,6 +12,7 @@ export interface MapLayerCapabilities {
   shop: boolean;
   players: boolean;
   gpsGlobalMarkers: boolean;
+  playerHistory: boolean;
 }
 
 export interface MapClaim {

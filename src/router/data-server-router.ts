@@ -13,6 +13,7 @@ import {
   getMapGpsGlobalMarkersHandler,
 } from '../handler/get-map-gps-global-markers-handler.js';
 import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-offers-handler.js';
+import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 
 const dataServerRouter = Router();
 
@@ -26,12 +27,14 @@ dataServerRouter.get('/server/map', getServerMapHandler);
 dataServerRouter.get('/server/map/layers', getMapLayerCapabilitiesHandler);
 dataServerRouter.get('/server/map/layers/claims', getMapClaimsHandler);
 dataServerRouter.get('/server/map/layers/players', getMapPlayersHandler);
+dataServerRouter.get('/server/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
 dataServerRouter.get('/server/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
 dataServerRouter.get('/server/:id/plugins', listServerPluginsHandler);
 dataServerRouter.get('/server/:id/map', getServerMapHandler);
 dataServerRouter.get('/server/:id/map/layers', getMapLayerCapabilitiesHandler);
 dataServerRouter.get('/server/:id/map/layers/claims', getMapClaimsHandler);
 dataServerRouter.get('/server/:id/map/layers/players', getMapPlayersHandler);
+dataServerRouter.get('/server/:id/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
 dataServerRouter.get('/server/:id/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
 dataServerRouter.get(
   '/server/map/layers/marketplaces/:areaId/offers',

@@ -151,7 +151,9 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
     server.adminUid = parsedNativeInfo?.adminUid ?? server.adminUid;
     server.mapUrl = parsedNativeInfo?.mapUrl ?? server.mapUrl;
   }
-  server.onlinePlayers = playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
+  server.onlinePlayers = server.status === 'offline'
+    ? []
+    : playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
   server.knownPlayers = mergeKnownPlayers(
     server.knownPlayers,
     observedPlayersFromValues(server.onlinePlayers, now),
@@ -162,8 +164,8 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
     serverId: server.id,
     sampledAt: now,
     online: server.status === 'online',
-    playerCount: playerCountFromQueryData(server.data, server.onlinePlayers),
-    onlinePlayerUids: onlinePlayerUids(server.onlinePlayers),
+    playerCount: server.status === 'offline' ? 0 : playerCountFromQueryData(server.data, server.onlinePlayers),
+    onlinePlayerUids: server.status === 'offline' ? [] : onlinePlayerUids(server.onlinePlayers),
   });
 
   // A completed attempt also produces a meaningful offline snapshot when all

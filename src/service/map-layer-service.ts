@@ -49,7 +49,24 @@ function mapLayerCapabilitiesFromEntry(entry?: PluginDataCacheEntry): MapLayerCa
     shop: cachedAreaIds('ozshop.zones', entry) !== null,
     players: cachedMapPlayers(true, new Date(), entry) !== null,
     gpsGlobalMarkers: cachedGpsGlobalMarkers(entry) !== null,
+    playerHistory: hasLandClaimPlayerHistory(entry),
   };
+}
+
+function hasLandClaimPlayerHistory(entry?: PluginDataCacheEntry): boolean {
+  const plugin = entry?.plugins.find((item) => item.valid
+    && item.name?.trim().toLowerCase() === 'oz - land claim');
+  return plugin !== undefined && versionAtLeast(plugin.version, [0, 18, 0]);
+}
+
+function versionAtLeast(version: string | undefined, minimum: readonly number[]): boolean {
+  if (!version) return false;
+  const parts = version.replace(/^v/i, '').split('.').map((part) => Number(/^\d+/.exec(part)?.[0]));
+  if (parts.length < minimum.length || parts.some((part) => !Number.isInteger(part) || part < 0)) return false;
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (parts[index] !== minimum[index]) return parts[index] > minimum[index];
+  }
+  return true;
 }
 
 export function mapLiveSnapshotFromEntry(

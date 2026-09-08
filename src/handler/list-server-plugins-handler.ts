@@ -3,6 +3,7 @@ import typia from 'typia';
 import type { ListServerPluginsResponse } from '../dto/list-server-plugins-response.js';
 import { prepareServerRoute, serverRouteError } from './server-route-context.js';
 import { getCachedPluginData, getFirstCachedPluginData } from '../service/plugin-data-cache-service.js';
+import { getCachedOZPluginLatestVersions } from '../service/oz-plugin-release-service.js';
 
 export async function listServerPluginsHandler(req: Request, res: Response) {
   try {
@@ -14,9 +15,14 @@ export async function listServerPluginsHandler(req: Request, res: Response) {
         typeof plugin.valid === 'boolean' &&
         (plugin.name === undefined || typeof plugin.name === 'string') &&
         (plugin.version === undefined || typeof plugin.version === 'string')
-          ? [{ name: plugin.name, version: plugin.version, valid: plugin.valid }]
+          ? [{
+              ...(plugin.name !== undefined ? { name: plugin.name } : {}),
+              ...(plugin.version !== undefined ? { version: plugin.version } : {}),
+              valid: plugin.valid,
+            }]
           : [],
       ),
+      latestVersions: getCachedOZPluginLatestVersions(),
     };
     res.setHeader('Cache-Control', 'no-store');
     return res.json(typia.assert<ListServerPluginsResponse>(response));

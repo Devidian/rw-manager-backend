@@ -43,6 +43,7 @@ describe('map and plugin handlers', () => {
     expect(response.json).toHaveBeenCalledWith({
       available: true,
       items: [{ name: 'OZ - Admin Utils', valid: true }],
+      latestVersions: {},
     });
 
     getFirstCachedPluginDataMock.mockImplementationOnce(() => {
