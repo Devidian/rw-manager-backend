@@ -50,7 +50,7 @@ storageRouter.get(
   requireServerGetAuth,
   getMapGpsGlobalMarkersHandler,
 );
-storageRouter.get('/server/:id/map/layers/:kind(market-criers|shop-traders)', requireServerGetAuth, getMapNpcMarketsHandler);
+storageRouter.get('/server/:id/map/layers/:kind', requireServerGetAuth, getMapNpcMarketsHandler);
 storageRouter.get(
   '/server/:id/map/layers/marketplaces/:areaId/offers',
   requireServerGetAuth,

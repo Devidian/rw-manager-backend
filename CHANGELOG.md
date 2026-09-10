@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Add authenticated map layers for marketplace criers and shop traders, including offers, wallet balances, current prices, and stock.
+- Accept the NPC-market layer selector with the current Express route parser.
 - Preserve plain native plugin-list versions alongside legacy manifest versions.
 - Preserve connector credentials during master-list saves and bound retries of
   unauthorized protected native routes with server-aware diagnostics.
