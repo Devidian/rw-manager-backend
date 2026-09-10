@@ -89,6 +89,8 @@ const routeSpecs: RouteSpec[] = [
     pluginRouteId: 'oz---admin-utils',
     path: 'info',
   },
+  { key: 'ozmarketplace.criers', pluginRouteId: 'oz---marketplace', path: 'criers' },
+  { key: 'ozshop.traders', pluginRouteId: 'oz---shop', path: 'traders' },
 ];
 
 const cache = new Map<string, PluginDataCacheEntry>();

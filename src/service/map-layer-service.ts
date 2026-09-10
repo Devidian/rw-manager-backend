@@ -4,6 +4,7 @@ import type {
   MapLayerCapabilities,
   MapLiveSnapshot,
   MapMarketplaceOffer,
+  MapNpcMarket,
   MapPlayer,
 } from '../interfaces/map-layer.js';
 import { AppConfig } from '../utils/app-config.js';
@@ -50,7 +51,45 @@ function mapLayerCapabilitiesFromEntry(entry?: PluginDataCacheEntry): MapLayerCa
     players: cachedMapPlayers(true, new Date(), entry) !== null,
     gpsGlobalMarkers: cachedGpsGlobalMarkers(entry) !== null,
     playerHistory: hasLandClaimPlayerHistory(entry),
+    marketCriers: cachedNpcMarkets('ozmarketplace.criers', 'criers', entry) !== null,
+    shopTraders: cachedNpcMarkets('ozshop.traders', 'traders', entry) !== null,
   };
+}
+
+export async function getMapNpcMarkets(kind: 'marketCriers' | 'shopTraders', serverId?: string): Promise<MapNpcMarket[] | null> {
+  return cachedNpcMarkets(kind === 'marketCriers' ? 'ozmarketplace.criers' : 'ozshop.traders',
+    kind === 'marketCriers' ? 'criers' : 'traders', cachedEntry(serverId));
+}
+
+function cachedNpcMarkets(key: string, field: string, entry?: PluginDataCacheEntry): MapNpcMarket[] | null {
+  const payload = entry?.data[key];
+  const items = payload && typeof payload === 'object' ? (payload as Record<string, unknown>)[field] : undefined;
+  if (!Array.isArray(items)) return null;
+  return items.flatMap((item): MapNpcMarket[] => {
+    if (!item || typeof item !== 'object') return [];
+    const value = item as Record<string, unknown>;
+    if (!Number.isSafeInteger(value.npcId) || typeof value.name !== 'string'
+      || ![value.x, value.y, value.z].every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))) return [];
+    const balances = Array.isArray(value.balances) ? value.balances.flatMap((balance) => {
+      if (!balance || typeof balance !== 'object') return [];
+      const itemBalance = balance as Record<string, unknown>;
+      return typeof itemBalance.currency === 'string' && typeof itemBalance.balance === 'number'
+        ? [{ currency: itemBalance.currency, balance: itemBalance.balance }] : [];
+    }) : [];
+    const offers = Array.isArray(value.offers) ? value.offers.flatMap((offer) => {
+      if (!offer || typeof offer !== 'object') return [];
+      const itemOffer = offer as Record<string, unknown>;
+      const validId = typeof itemOffer.id === 'string' || Number.isSafeInteger(itemOffer.id);
+      if (!validId || typeof itemOffer.itemName !== 'string' || !Number.isSafeInteger(itemOffer.itemVariant)
+        || !Number.isSafeInteger(itemOffer.amount) || !Number.isSafeInteger(itemOffer.price)
+        || typeof itemOffer.currency !== 'string') return [];
+      return [{ id: itemOffer.id as string | number, itemName: itemOffer.itemName,
+        itemVariant: itemOffer.itemVariant as number, amount: itemOffer.amount as number, price: itemOffer.price as number,
+        ...(Number.isSafeInteger(itemOffer.stock) ? { stock: itemOffer.stock as number } : {}), currency: itemOffer.currency }];
+    }) : [];
+    return [{ id: value.npcId as number, name: value.name, x: value.x as number, y: value.y as number,
+      z: value.z as number, balances, offers }];
+  });
 }
 
 function hasLandClaimPlayerHistory(entry?: PluginDataCacheEntry): boolean {

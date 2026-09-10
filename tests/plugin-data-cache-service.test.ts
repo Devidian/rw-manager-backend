@@ -99,6 +99,8 @@ describe('plugin data cache service', () => {
         adminUid: '76561198000000000',
         admins: ['76561198000000001'],
       }))
+      .mockResolvedValueOnce(response({ criers: [] }))
+      .mockResolvedValueOnce(response({ traders: [] }))
       .mockResolvedValueOnce(response({ offers: [{ id: 7, itemName: 'Stone' }] })) as typeof fetch;
     global.fetch = fetchMock;
 
@@ -116,6 +118,8 @@ describe('plugin data cache service', () => {
         adminUid: '76561198000000000',
         admins: ['76561198000000001'],
       },
+      'ozmarketplace.criers': { criers: [] },
+      'ozshop.traders': { traders: [] },
       'ozgps.globalMarkers': { markers: [{ id: 1, name: 'Spawn' }] },
       'ozmarketplace.zones': { zones: [{ areaId: 42 }] },
       'ozshop.zones': { zones: [{ areaId: 42 }] },
@@ -170,6 +174,16 @@ describe('plugin data cache service', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       10,
+      'https://query.example/plugins/oz---marketplace/criers',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      11,
+      'https://query.example/plugins/oz---shop/traders',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      12,
       'https://query.example/plugins/oz---marketplace/offers?areaId=42',
       expect.any(Object),
     );

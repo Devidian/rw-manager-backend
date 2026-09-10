@@ -13,6 +13,8 @@ export interface MapLayerCapabilities {
   players: boolean;
   gpsGlobalMarkers: boolean;
   playerHistory: boolean;
+  marketCriers: boolean;
+  shopTraders: boolean;
 }
 
 export interface MapClaim {
@@ -64,6 +66,26 @@ export interface MapMarketplaceOffer {
   currency: string;
   sellerName: string;
   createdAt: string;
+}
+
+export interface MapNpcMarketOffer {
+  id: number | string;
+  itemName: string;
+  itemVariant: number;
+  amount: number;
+  price: number;
+  stock?: number;
+  currency: string;
+}
+
+export interface MapNpcMarket {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  balances: Array<{ currency: string; balance: number }>;
+  offers: MapNpcMarketOffer[];
 }
 
 export interface MapLiveSnapshot {

@@ -43,6 +43,8 @@ describe('map layer service', () => {
       players: false,
       gpsGlobalMarkers: false,
       playerHistory: false,
+      marketCriers: false,
+      shopTraders: false,
     });
     await expect(getMapClaims(root)).resolves.toBeNull();
     await expect(getMapPlayers(false, root)).resolves.toBeNull();
@@ -118,6 +120,8 @@ describe('map layer service', () => {
         players: true,
         gpsGlobalMarkers: true,
         playerHistory: true,
+        marketCriers: true,
+        shopTraders: true,
       }),
     );
     await expect(getMapGpsGlobalMarkers(root, 'server-1')).resolves.toEqual([{
@@ -250,6 +254,8 @@ describe('map layer service', () => {
         adminUid: '76561198000000000',
         admins: [],
       }))
+      .mockResolvedValueOnce(response({ criers: [] }))
+      .mockResolvedValueOnce(response({ traders: [] }))
       .mockResolvedValueOnce(response({
         offers: [
           { id: 'bad' },
@@ -480,6 +486,8 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
       adminUid: '76561198000000000',
       admins: ['76561198000000001'],
     }))
+    .mockResolvedValueOnce(response({ criers: [] }))
+    .mockResolvedValueOnce(response({ traders: [] }))
     .mockResolvedValueOnce(response({
       offers: [{
         id: 9,

@@ -23,6 +23,7 @@ import { getServerConfigHandler } from '../handler/get-server-config-handler.js'
 import { getServerAdminListHandler } from '../handler/get-server-admin-list-handler.js';
 import { setServerBlockedHandler } from '../handler/set-server-blocked-handler.js';
 import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
+import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
 
 const storageRouter = Router();
 
@@ -49,6 +50,7 @@ storageRouter.get(
   requireServerGetAuth,
   getMapGpsGlobalMarkersHandler,
 );
+storageRouter.get('/server/:id/map/layers/:kind(market-criers|shop-traders)', requireServerGetAuth, getMapNpcMarketsHandler);
 storageRouter.get(
   '/server/:id/map/layers/marketplaces/:areaId/offers',
   requireServerGetAuth,
