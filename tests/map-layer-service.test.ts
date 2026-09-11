@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   getMapClaims,
+  getMapGlobalMarketplaceOffers,
+  getMapNpcMarkets,
   getMapGpsGlobalMarkers,
   getMapLayerCapabilities,
   getMapMarketplaceOffers,
@@ -134,6 +136,33 @@ describe('map layer service', () => {
       color: '#01020304',
       createdAt: '2026-01-01T00:00:00.000Z',
     }]);
+    await expect(getMapNpcMarkets('marketCriers', 'server-1')).resolves.toEqual([{
+      id: 21,
+      name: 'Crier',
+      x: 4,
+      y: 5,
+      z: 6,
+      balances: [{ currency: 'coins', balance: 100 }],
+      offers: [expect.objectContaining({
+        id: 11,
+        itemName: 'Crier Stone',
+        stock: 3,
+        playerBuyPrice: 2,
+        playerSellPrice: 1,
+        maxStock: 10,
+        nameDe: 'Marktstein',
+        nameEn: 'Market Stone',
+      })],
+    }]);
+    await expect(getMapNpcMarkets('shopTraders', 'server-1')).resolves.toEqual([{
+      id: 22,
+      name: 'Trader',
+      x: 7,
+      y: 8,
+      z: 9,
+      balances: [],
+      offers: [],
+    }]);
     await expect(getMapMarketplaceOffers(42, root, 'server-1')).resolves.toEqual([{
       id: 9,
       itemName: 'Cached Stone',
@@ -143,6 +172,16 @@ describe('map layer service', () => {
       currency: 'coins',
       sellerName: 'Alice',
       createdAt: '2026-01-01T00:00:01.000Z',
+    }]);
+    await expect(getMapGlobalMarketplaceOffers(root, 'server-1')).resolves.toEqual([{
+      id: 10,
+      itemName: 'Global Stone',
+      itemVariant: 0,
+      amount: 4,
+      price: 44,
+      currency: 'coins',
+      sellerName: 'Bob',
+      createdAt: '2026-01-01T00:00:02.000Z',
     }]);
     await expect(getMapClaims(root, 'server-1', 'player-1')).resolves.toEqual([
       {
@@ -486,8 +525,35 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
       adminUid: '76561198000000000',
       admins: ['76561198000000001'],
     }))
-    .mockResolvedValueOnce(response({ criers: [] }))
-    .mockResolvedValueOnce(response({ traders: [] }))
+    .mockResolvedValueOnce(response({ criers: [{
+      npcId: 21,
+      name: 'Crier',
+      x: 4,
+      y: 5,
+      z: 6,
+      balances: [{ currency: 'coins', balance: 100 }],
+      offers: [{
+        id: 11,
+        itemName: 'Crier Stone',
+        itemVariant: 0,
+        amount: 2,
+        price: 4,
+        currency: 'coins',
+        stock: 3,
+        playerBuyPrice: 2,
+        playerSellPrice: 1,
+        maxStock: 10,
+        nameDe: 'Marktstein',
+        nameEn: 'Market Stone',
+      }],
+    }] }))
+    .mockResolvedValueOnce(response({ traders: [{
+      npcId: 22,
+      name: 'Trader',
+      x: 7,
+      y: 8,
+      z: 9,
+    }] }))
     .mockResolvedValueOnce(response({
       offers: [{
         id: 9,
@@ -498,6 +564,18 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         currency: 'coins',
         sellerName: 'Alice',
         createdAt: Date.parse('2026-01-01T00:00:01.000Z'),
+      }],
+    }))
+    .mockResolvedValueOnce(response({
+      offers: [{
+        id: 10,
+        itemName: 'Global Stone',
+        itemVariant: 0,
+        amount: 4,
+        price: 44,
+        currency: 'coins',
+        sellerName: 'Bob',
+        createdAt: Date.parse('2026-01-01T00:00:02.000Z'),
       }],
     })) as typeof fetch;
 }
