@@ -39,6 +39,43 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.7.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.1...rw-manager-backend-v0.7.0) (2026-09-11)
+
+
+### Added
+
+* add global marketplace API rc ([ee1b16c](https://github.com/Devidian/rw-manager-backend/commit/ee1b16ce8dbc38594fe17e3345b1ebe2c791c2fe))
+* add manager map history and release status ([575bd45](https://github.com/Devidian/rw-manager-backend/commit/575bd450e49bfc467c1c04ebed02dab814440371))
+* expose global marketplace map data for rc ([049bc45](https://github.com/Devidian/rw-manager-backend/commit/049bc4587d91265dab31db1931633e7ef39383e3))
+* expose NPC market map layers ([b20dac7](https://github.com/Devidian/rw-manager-backend/commit/b20dac722e8634b306a979d0bd1b1d290f2afd23))
+
+
+### Fixed
+
+* harden native plugin access recovery ([6c80c83](https://github.com/Devidian/rw-manager-backend/commit/6c80c831a620f89ef9a3c5d8c5169274292a2cef))
+* load map metadata from renderer URL ([6f3e207](https://github.com/Devidian/rw-manager-backend/commit/6f3e20779cecada53238baf9f5194fdbaee5cc41))
+* proxy server header images through manager API ([5d6b01d](https://github.com/Devidian/rw-manager-backend/commit/5d6b01d1e70bf13528b5867288d4854ff3ab68dc))
+* recover connector credentials and gate admin routes ([fe37802](https://github.com/Devidian/rw-manager-backend/commit/fe378025208c1848329d118836a57f40657ba7d8))
+* reprovision stale connector credentials ([190cd1e](https://github.com/Devidian/rw-manager-backend/commit/190cd1e4cdc56984b97eaad414c582555e74fbff))
+* start NPC market routes with Express 5 ([a5fc304](https://github.com/Devidian/rw-manager-backend/commit/a5fc304ef6f918712d555cc03fb408dd4e07be4b))
+
+
+### Maintenance
+
+* **deps:** bump brace-expansion ([f6fac60](https://github.com/Devidian/rw-manager-backend/commit/f6fac609c60c1d12e2568d3401b788d47bf68449))
+* **main:** release rw-manager-backend 0.6.1 ([9da0744](https://github.com/Devidian/rw-manager-backend/commit/9da0744d2df4a9a68b0229d7c008717b6873fa35))
+* **main:** release rw-manager-backend 0.6.1 ([d71f64b](https://github.com/Devidian/rw-manager-backend/commit/d71f64bbcb08273774ca03e160576c6b3ba400f0))
+* **main:** release rw-manager-backend 0.6.1 ([ba625c9](https://github.com/Devidian/rw-manager-backend/commit/ba625c9a7745ed8017fe04e5e8d0f2c92396ce72))
+* **main:** release rw-manager-backend 0.6.1 ([9ec9c41](https://github.com/Devidian/rw-manager-backend/commit/9ec9c41d84ae2fd619167a5da8ecd484be8b998f))
+* prepare 0.7.0 release ([f1b8750](https://github.com/Devidian/rw-manager-backend/commit/f1b87508f868cd67a99b794d7cfa59785a97bd06))
+
+
+### Tests
+
+* cover marketplace map exports ([6604d2e](https://github.com/Devidian/rw-manager-backend/commit/6604d2e104105dfc5ab2167b21d9be9c3e552614))
+* cover plugin release inventory response ([de1cd90](https://github.com/Devidian/rw-manager-backend/commit/de1cd902e87da0b2df0e180335c649889fc57046))
+* restore coverage gate ([a8e736f](https://github.com/Devidian/rw-manager-backend/commit/a8e736fddedf4ecd16663a71e70d50847d33b5c1))
+
 ## [0.6.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.1...rw-manager-backend-v0.6.1) (2026-09-09)
 
 
