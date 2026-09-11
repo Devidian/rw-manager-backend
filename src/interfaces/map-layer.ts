@@ -75,6 +75,11 @@ export interface MapNpcMarketOffer {
   amount: number;
   price: number;
   stock?: number;
+  playerBuyPrice?: number;
+  playerSellPrice?: number;
+  maxStock?: number;
+  nameDe?: string;
+  nameEn?: string;
   currency: string;
 }
 
@@ -94,4 +99,5 @@ export interface MapLiveSnapshot {
   players: MapPlayer[];
   gpsGlobalMarkers: MapGpsMarker[];
   marketplaceOffers: Record<string, MapMarketplaceOffer[]>;
+  globalMarketplaceOffers: MapMarketplaceOffer[];
 }

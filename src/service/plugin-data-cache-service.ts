@@ -146,6 +146,12 @@ export async function refreshPluginDataForServer(
     )).filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
   );
   Object.assign(data, await fetchMarketplaceOffersByArea(pluginQueryUrl, data['ozmarketplace.zones'], server));
+  const globalMarketplaceOffers = await fetchPluginRoute(
+    pluginQueryUrl,
+    'plugins/oz---marketplace/offers?global=true',
+    server,
+  );
+  if (globalMarketplaceOffers !== undefined) data['ozmarketplace.offers.global'] = globalMarketplaceOffers;
   const nativeInfo = parseNativeAdminUtilsInfo(data['ozadminutils.info']);
   if (nativeInfo && (server.mapUrl !== nativeInfo.mapUrl || server.adminUid !== nativeInfo.adminUid)) {
     await updateServer(server.id, { mapUrl: nativeInfo.mapUrl, adminUid: nativeInfo.adminUid });

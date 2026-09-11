@@ -85,7 +85,12 @@ function cachedNpcMarkets(key: string, field: string, entry?: PluginDataCacheEnt
         || typeof itemOffer.currency !== 'string') return [];
       return [{ id: itemOffer.id as string | number, itemName: itemOffer.itemName,
         itemVariant: itemOffer.itemVariant as number, amount: itemOffer.amount as number, price: itemOffer.price as number,
-        ...(Number.isSafeInteger(itemOffer.stock) ? { stock: itemOffer.stock as number } : {}), currency: itemOffer.currency }];
+        ...(Number.isSafeInteger(itemOffer.stock) ? { stock: itemOffer.stock as number } : {}),
+        ...(Number.isSafeInteger(itemOffer.playerBuyPrice) ? { playerBuyPrice: itemOffer.playerBuyPrice as number } : {}),
+        ...(Number.isSafeInteger(itemOffer.playerSellPrice) ? { playerSellPrice: itemOffer.playerSellPrice as number } : {}),
+        ...(Number.isSafeInteger(itemOffer.maxStock) ? { maxStock: itemOffer.maxStock as number } : {}),
+        ...(typeof itemOffer.nameDe === 'string' ? { nameDe: itemOffer.nameDe } : {}),
+        ...(typeof itemOffer.nameEn === 'string' ? { nameEn: itemOffer.nameEn } : {}), currency: itemOffer.currency }];
     }) : [];
     return [{ id: value.npcId as number, name: value.name, x: value.x as number, y: value.y as number,
       z: value.z as number, balances, offers }];
@@ -129,6 +134,7 @@ export function mapLiveSnapshotFromEntry(
     players: cachedMapPlayers(true, now, entry) ?? [],
     gpsGlobalMarkers: cachedGpsGlobalMarkers(entry) ?? [],
     marketplaceOffers,
+    globalMarketplaceOffers: cachedMarketplaceOffers('global', entry) ?? [],
   };
 }
 
@@ -328,7 +334,7 @@ function cachedGpsGlobalMarkers(entry?: PluginDataCacheEntry): MapGpsMarker[] | 
   });
 }
 
-function cachedMarketplaceOffers(areaId: number, entry?: PluginDataCacheEntry): MapMarketplaceOffer[] | null {
+function cachedMarketplaceOffers(areaId: number | 'global', entry?: PluginDataCacheEntry): MapMarketplaceOffer[] | null {
   const payload = entry?.data[`ozmarketplace.offers.${areaId}`];
   if (!payload || typeof payload !== 'object') return null;
   const offers = (payload as { offers?: unknown; items?: unknown }).offers
