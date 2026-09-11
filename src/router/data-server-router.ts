@@ -13,6 +13,7 @@ import {
   getMapGpsGlobalMarkersHandler,
 } from '../handler/get-map-gps-global-markers-handler.js';
 import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-offers-handler.js';
+import { getMapGlobalMarketplaceOffersHandler } from '../handler/get-map-global-marketplace-offers-handler.js';
 import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
 
@@ -39,6 +40,14 @@ dataServerRouter.get('/server/:id/map/layers/players', getMapPlayersHandler);
 dataServerRouter.get('/server/:id/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
 dataServerRouter.get('/server/:id/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
 dataServerRouter.get('/server/:id/map/layers/:kind', getMapNpcMarketsHandler);
+dataServerRouter.get(
+  '/server/map/layers/marketplaces/global/offers',
+  getMapGlobalMarketplaceOffersHandler,
+);
+dataServerRouter.get(
+  '/server/:id/map/layers/marketplaces/global/offers',
+  getMapGlobalMarketplaceOffersHandler,
+);
 dataServerRouter.get(
   '/server/map/layers/marketplaces/:areaId/offers',
   getMapMarketplaceOffersHandler,

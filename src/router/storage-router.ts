@@ -18,6 +18,7 @@ import { getMapClaimsHandler } from '../handler/get-map-claims-handler.js';
 import { getMapPlayersHandler } from '../handler/get-map-players-handler.js';
 import { getMapGpsGlobalMarkersHandler } from '../handler/get-map-gps-global-markers-handler.js';
 import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-offers-handler.js';
+import { getMapGlobalMarketplaceOffersHandler } from '../handler/get-map-global-marketplace-offers-handler.js';
 import { getAllPlayersHandler } from '../handler/get-all-players-handler.js';
 import { getServerConfigHandler } from '../handler/get-server-config-handler.js';
 import { getServerAdminListHandler } from '../handler/get-server-admin-list-handler.js';
@@ -51,6 +52,11 @@ storageRouter.get(
   getMapGpsGlobalMarkersHandler,
 );
 storageRouter.get('/server/:id/map/layers/:kind', requireServerGetAuth, getMapNpcMarketsHandler);
+storageRouter.get(
+  '/server/:id/map/layers/marketplaces/global/offers',
+  requireServerGetAuth,
+  getMapGlobalMarketplaceOffersHandler,
+);
 storageRouter.get(
   '/server/:id/map/layers/marketplaces/:areaId/offers',
   requireServerGetAuth,

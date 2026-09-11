@@ -156,6 +156,14 @@ export async function getMapMarketplaceOffers(
   return cachedMarketplaceOffers(areaId, cachedEntry(serverId));
 }
 
+export async function getMapGlobalMarketplaceOffers(
+  rootPath: string = AppConfig.rootPath,
+  serverId?: string,
+): Promise<MapMarketplaceOffer[] | null> {
+  void rootPath;
+  return cachedMarketplaceOffers('global', cachedEntry(serverId));
+}
+
 export async function getMapPlayers(
   includeLongTerm: boolean,
   rootPath: string = AppConfig.rootPath,
