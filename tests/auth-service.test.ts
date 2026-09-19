@@ -10,6 +10,7 @@ interface MutableDbUser {
   apiTokenHash?: string;
   apiTokenSalt?: string;
   apiTokenCreatedAt?: Date;
+  lastSeenAt?: Date;
   createdAt: Date;
 }
 
@@ -194,7 +195,10 @@ describe('auth-service', () => {
 
   test('registerLocalUser creates users and falls back username to normalized email', async () => {
     const created = createUserRecord({ steamId: 'steam-1' });
-    createUserMock.mockResolvedValue(created);
+    createUserMock.mockImplementationOnce(async () => {
+      state.users = [created];
+      return created;
+    });
 
     await expect(
       authService.registerLocalUser({
@@ -214,7 +218,11 @@ describe('auth-service', () => {
       'steam-1',
     );
 
-    createUserMock.mockResolvedValueOnce(createUserRecord({ username: 'Bob' }));
+    const bob = createUserRecord({ username: 'Bob' });
+    createUserMock.mockImplementationOnce(async () => {
+      state.users = [bob];
+      return bob;
+    });
     await expect(
       authService.registerLocalUser({
         email: 'bob@example.com',
@@ -229,6 +237,7 @@ describe('auth-service', () => {
 
   test('loginUser rejects invalid credentials and returns an auth token on success', async () => {
     const user = createUserRecord();
+    state.users = [user];
     findUserByUsernameMock.mockReturnValueOnce(undefined);
     await expect(
       authService.loginUser({ username: 'alice', password: 'secret' }),
@@ -250,6 +259,7 @@ describe('auth-service', () => {
       user: { id: 'user-1', username: 'alice' },
       token: 'token:user-1',
     });
+    expect(updateUserMock).toHaveBeenLastCalledWith('user-1', { lastSeenAt: expect.any(Date) });
   });
 
   test('connectSteam validates open ids and links or reuses users', async () => {
@@ -265,6 +275,7 @@ describe('auth-service', () => {
     ).rejects.toThrow('OPEN_ID_INVALID');
 
     const existing = createUserRecord({ steamId: '76561198000000000' });
+    state.users = [existing];
     findUserBySteamIdMock.mockReturnValueOnce(existing);
     toPrivateUserMock.mockReturnValueOnce(existing);
     await expect(
@@ -291,7 +302,9 @@ describe('auth-service', () => {
       'USER_NOT_FOUND',
     );
 
-    setUserSteamIdMock.mockResolvedValueOnce(createUserRecord());
+    const connected = createUserRecord();
+    state.users = [connected];
+    setUserSteamIdMock.mockResolvedValueOnce(connected);
     await expect(authService.disconnectSteam('user-1')).resolves.toEqual({
       user: { id: 'user-1', username: 'alice' },
       token: 'token:user-1',
@@ -300,7 +313,9 @@ describe('auth-service', () => {
     findUserByIdMock.mockReturnValueOnce(undefined);
     await expect(authService.validateUser('missing')).rejects.toThrow('USER_NOT_FOUND');
 
-    findUserByIdMock.mockReturnValueOnce(createUserRecord());
+    const validated = createUserRecord();
+    state.users = [validated];
+    findUserByIdMock.mockReturnValueOnce(validated);
     toPrivateUserMock.mockReturnValueOnce(createUserRecord());
     await expect(authService.validateUser('user-1')).resolves.toEqual({
       user: { id: 'user-1', username: 'alice' },
@@ -349,6 +364,7 @@ describe('auth-service', () => {
 
   test('steamSignIn reuses existing users and creates new users with role and state defaults', async () => {
     const existing = createUserRecord({ steamId: '76561198000000000' });
+    state.users = [existing];
     findUserBySteamIdMock.mockReturnValueOnce(existing);
     toPrivateUserMock.mockReturnValueOnce(existing);
 
@@ -363,15 +379,15 @@ describe('auth-service', () => {
 
     findUserBySteamIdMock.mockReset().mockReturnValue(undefined);
     findUserByUsernameMock.mockReset().mockReturnValue(undefined);
-    createUserMock.mockResolvedValueOnce(
-      createUserRecord({
+    const createdSteamUser = createUserRecord({
         id: 'user-2',
         username: 'steam_76561198000000000',
         steamId: '76561198000000000',
         role: 'user',
         state: 'new',
-      }),
-    );
+      });
+    state.users = [createdSteamUser];
+    createUserMock.mockResolvedValueOnce(createdSteamUser);
 
     await expect(
       authService.steamSignIn({
@@ -396,15 +412,15 @@ describe('auth-service', () => {
     findUserByUsernameMock.mockImplementation((username: string) =>
       username === 'steam_76561198000000000' ? createUserRecord() : undefined,
     );
-    createUserMock.mockResolvedValueOnce(
-      createUserRecord({
+    const createdAdmin = createUserRecord({
         id: 'user-9',
         username: 'steam_76561198000000000_1',
         steamId: '76561198000000000',
         role: 'admin',
         state: 'verified',
-      }),
-    );
+      });
+    state.users = [createdAdmin];
+    createUserMock.mockResolvedValueOnce(createdAdmin);
 
     await expect(
       authService.steamSignIn({

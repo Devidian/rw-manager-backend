@@ -9,4 +9,5 @@ export interface PublicUserDto {
   steamId?: string | undefined;
   pinnedServers: string[];
   createdAt: string & Format<'date-time'>;
+  lastSeenAt?: (string & Format<'date-time'>) | undefined;
 }

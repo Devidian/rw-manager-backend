@@ -12,6 +12,9 @@ export function mapPublicUserToDto(user: PublicUser): PublicUserDto {
     steamId: user.steamId,
     pinnedServers: user.pinnedServers,
     createdAt: mapDateTimeString(user.createdAt) as PublicUserDto['createdAt'],
+    lastSeenAt: user.lastSeenAt
+      ? mapDateTimeString(user.lastSeenAt) as PublicUserDto['lastSeenAt']
+      : undefined,
   };
 }
 

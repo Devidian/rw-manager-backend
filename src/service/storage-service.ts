@@ -5,6 +5,7 @@ import {
   findUserById,
   listServers as listStoredServers,
   listUsers as listStoredUsers,
+  removePinnedServer,
   removeServer,
   toPublicUser,
   updateServer,
@@ -319,12 +320,11 @@ export async function unpinServer(
     throw new Error('USER_NOT_FOUND');
   }
 
-  user.pinnedServers = Array.isArray(user.pinnedServers)
-    ? user.pinnedServers.filter((entry) => entry !== serverId)
-    : [];
-  await updateUser(user.id, { pinnedServers: user.pinnedServers });
-
-  return mapPublicUserToDto(toPublicUser(user));
+  const persistedUser = await removePinnedServer(user.id, serverId);
+  if (!persistedUser) {
+    throw new Error('USER_NOT_FOUND');
+  }
+  return mapPublicUserToDto(toPublicUser(persistedUser));
 }
 
 export async function setServerBlocked(

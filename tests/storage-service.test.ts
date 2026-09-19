@@ -39,6 +39,7 @@ const listServersMock = jest.fn();
 const listUsersMock = jest.fn();
 const toPublicUserMock = jest.fn();
 const updateUserMock = jest.fn();
+const removePinnedServerMock = jest.fn();
 const deleteUserAndOwnedServersMock = jest.fn();
 const mapServerToDtoMock = jest.fn();
 const mapPublicUserToDtoMock = jest.fn();
@@ -56,6 +57,7 @@ jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   toPublicUser: toPublicUserMock,
   updateServer: updateServerMock,
   updateUser: updateUserMock,
+  removePinnedServer: removePinnedServerMock,
   deleteUserAndOwnedServers: deleteUserAndOwnedServersMock,
 }));
 
@@ -142,6 +144,12 @@ describe('storage-service', () => {
       const user = state.users.find((entry) => entry.id === id);
       if (!user) return null;
       Object.assign(user, patch);
+      return user;
+    });
+    removePinnedServerMock.mockReset().mockImplementation(async (id: string, serverId: string) => {
+      const user = state.users.find((entry) => entry.id === id);
+      if (!user) return null;
+      user.pinnedServers = (user.pinnedServers ?? []).filter((entry) => entry !== serverId);
       return user;
     });
     deleteUserAndOwnedServersMock.mockReset().mockImplementation(async (id: string) => {
@@ -305,6 +313,7 @@ describe('storage-service', () => {
       pinnedServers: [],
     });
     expect(state.users[0].pinnedServers).toEqual([]);
+    expect(removePinnedServerMock).toHaveBeenLastCalledWith('user-1', 'server-1');
   });
 
   test('pinServer rejects new favorites at the configured limit but keeps idempotent pins', async () => {
