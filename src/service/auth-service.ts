@@ -83,8 +83,9 @@ export async function registerLocalUser(
     normalizedSteamId,
   );
 
-  const token = createAuthToken(user.id);
-  return { user: mapPrivateUserToDto(user as PrivateUser), token };
+  const privateUser = await markUserPresent(user.id);
+  const token = createAuthToken(privateUser.id);
+  return { user: mapPrivateUserToDto(privateUser), token };
 }
 
 export async function loginUser(input: LoginUserRequest): Promise<AuthUserTokenResponse> {
@@ -93,7 +94,7 @@ export async function loginUser(input: LoginUserRequest): Promise<AuthUserTokenR
     throw new Error('INVALID_USERNAME_OR_PASSWORD');
   }
 
-  const privateUser = toPrivateUser(user);
+  const privateUser = await markUserPresent(user.id);
   const token = createAuthToken(privateUser.id);
   return { user: mapPrivateUserToDto(privateUser), token };
 }
@@ -113,8 +114,9 @@ export async function connectSteam(
     throw new Error('USER_NOT_FOUND');
   }
 
-  const token = createAuthToken(privateUser.id);
-  return { user: mapPrivateUserToDto(privateUser), token };
+  const presentUser = await markUserPresent(privateUser.id);
+  const token = createAuthToken(presentUser.id);
+  return { user: mapPrivateUserToDto(presentUser), token };
 }
 
 export async function disconnectSteam(
@@ -125,7 +127,7 @@ export async function disconnectSteam(
     throw new Error('USER_NOT_FOUND');
   }
 
-  const publicUser = user as PrivateUser;
+  const publicUser = await markUserPresent(user.id);
   const token = createAuthToken(publicUser.id);
   return { user: mapPrivateUserToDto(publicUser), token };
 }
@@ -153,8 +155,9 @@ export async function steamSignIn(
           : AppConfig.defaultUserRole,
         steamId === AppConfig.superAdminId ? 'verified' : 'new',
       )) as PrivateUser);
-  const token = createAuthToken(user.id);
-  return { user: mapPrivateUserToDto(user), token };
+  const privateUser = await markUserPresent(user.id);
+  const token = createAuthToken(privateUser.id);
+  return { user: mapPrivateUserToDto(privateUser), token };
 }
 
 export async function validateUser(userId: string): Promise<ValidateUserResponse> {
@@ -162,7 +165,7 @@ export async function validateUser(userId: string): Promise<ValidateUserResponse
   if (!user) {
     throw new Error('USER_NOT_FOUND');
   }
-  return { user: mapPrivateUserToDto(toPrivateUser(user)) };
+  return { user: mapPrivateUserToDto(await markUserPresent(user.id)) };
 }
 
 export async function renameSelf(
@@ -197,6 +200,13 @@ export async function deleteSelf(userId: string): Promise<void> {
 
 function hashApiToken(token: string, salt: string): string {
   return scryptSync(token, salt, 64).toString('hex');
+}
+
+async function markUserPresent(userId: string): Promise<PrivateUser> {
+  const lastSeenAt = new Date();
+  const user = await updateUser(userId, { lastSeenAt });
+  if (!user) throw new Error('USER_NOT_FOUND');
+  return toPrivateUser(user) as PrivateUser;
 }
 
 export async function generateApiToken(userId: string): Promise<string> {

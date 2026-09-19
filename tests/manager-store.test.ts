@@ -162,6 +162,9 @@ describe('manager-store', () => {
     await store.replacePinnedServerId('old', 'new');
     expect(state.users[0].pinnedServers).toEqual(['new', 'keep']);
     await store.replacePinnedServerId('new', 'new');
+    await expect(store.removePinnedServer('user-1', 'keep')).resolves.toMatchObject({
+      pinnedServers: ['new'],
+    });
 
     await expect(store.deleteUserAndOwnedServers('missing')).resolves.toBe(false);
     await expect(store.deleteUserAndOwnedServers('user-1')).resolves.toBe(true);

@@ -12,6 +12,7 @@ export interface PublicUser {
   steamId?: string;
   pinnedServers: string[];
   createdAt: Date;
+  lastSeenAt?: Date;
 }
 
 // private user interface (own profile, the user himself)

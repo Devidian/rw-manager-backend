@@ -75,6 +75,7 @@ export function toPrivateUser(user: JsonDbUser): PrivateUser {
     steamId: user.steamId,
     pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
     createdAt: user.createdAt,
+    lastSeenAt: user.lastSeenAt,
   };
 }
 
@@ -87,6 +88,7 @@ export function toPublicUser(user: JsonDbUser): PublicUser {
     steamId: user.steamId,
     pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
     createdAt: user.createdAt,
+    lastSeenAt: user.lastSeenAt,
   };
 }
 
@@ -347,13 +349,31 @@ export async function setUserSteamId(id: string, steamId: string): Promise<Priva
 
 export async function updateUser(
   id: string,
-  patch: Partial<Pick<JsonDbUser, 'username' | 'state' | 'role' | 'pinnedServers' | 'apiTokenHash' | 'apiTokenSalt' | 'apiTokenCreatedAt'>>,
+  patch: Partial<Pick<JsonDbUser, 'username' | 'state' | 'role' | 'pinnedServers' | 'lastSeenAt' | 'apiTokenHash' | 'apiTokenSalt' | 'apiTokenCreatedAt'>>,
 ): Promise<JsonDbUser | null> {
   const user = await findUserById(id);
   if (!user) return null;
   Object.assign(user, Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined),
   ));
+  await saveUser(user);
+  return user;
+}
+
+export async function removePinnedServer(id: string, serverId: string): Promise<JsonDbUser | null> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await mongo.users.updateOne(
+      { id },
+      { $pull: { pinnedServers: serverId } } as unknown as Parameters<typeof mongo.users.updateOne>[1],
+    );
+    return (await findUserById(id)) ?? null;
+  }
+  const user = db.data.users.find((entry) => entry.id === id);
+  if (!user) return null;
+  user.pinnedServers = Array.isArray(user.pinnedServers)
+    ? user.pinnedServers.filter((entry) => entry !== serverId)
+    : [];
   await saveUser(user);
   return user;
 }

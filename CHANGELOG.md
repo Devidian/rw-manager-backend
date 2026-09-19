@@ -1,5 +1,8 @@
 ## Unreleased
 
+- record successful account presence as an additive user timestamp for administrator views.
+- remove account favorites with an atomic persisted operation before returning the updated user.
+
 - Add authenticated map layers for marketplace criers and shop traders, including offers, wallet balances, current prices, and stock.
 - Accept the NPC-market layer selector with the current Express route parser.
 - Preserve plain native plugin-list versions alongside legacy manifest versions.
