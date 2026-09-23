@@ -1,5 +1,6 @@
 export interface SteamAuthRequest {
   openId?: string;
+  steamUsername?: string;
   'openid.ns'?: string;
   'openid.mode'?: string;
   'openid.claimed_id'?: string;

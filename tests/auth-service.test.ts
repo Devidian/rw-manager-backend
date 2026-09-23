@@ -362,7 +362,7 @@ describe('auth-service', () => {
     expect(updateUserMock).toHaveBeenCalled();
   });
 
-  test('steamSignIn reuses existing users and creates new users with role and state defaults', async () => {
+  test('steamSignIn keeps custom names and uses the Steam persona name for new users', async () => {
     const existing = createUserRecord({ steamId: '76561198000000000' });
     state.users = [existing];
     findUserBySteamIdMock.mockReturnValueOnce(existing);
@@ -381,7 +381,7 @@ describe('auth-service', () => {
     findUserByUsernameMock.mockReset().mockReturnValue(undefined);
     const createdSteamUser = createUserRecord({
         id: 'user-2',
-        username: 'steam_76561198000000000',
+        username: 'Steam Alice',
         steamId: '76561198000000000',
         role: 'user',
         state: 'new',
@@ -392,14 +392,15 @@ describe('auth-service', () => {
     await expect(
       authService.steamSignIn({
         openId: 'https://steamcommunity.com/openid/id/76561198000000000',
+        steamUsername: 'Steam Alice',
       }),
     ).resolves.toEqual({
-      user: { id: 'user-2', username: 'steam_76561198000000000' },
+      user: { id: 'user-2', username: 'Steam Alice' },
       token: 'token:user-2',
     });
 
     expect(createUserMock).toHaveBeenCalledWith(
-      'steam_76561198000000000',
+      'Steam Alice',
       'steam_76561198000000000@steam.local',
       expect.any(String),
       '76561198000000000',
@@ -439,5 +440,33 @@ describe('auth-service', () => {
       'admin',
       'verified',
     );
+  });
+
+  test('steamSignIn migrates only the exact legacy Steam fallback name', async () => {
+    const legacy = createUserRecord({
+      username: 'steam_76561198000000000',
+      steamId: '76561198000000000',
+    });
+    state.users = [legacy];
+
+    await expect(authService.steamSignIn({
+      openId: 'https://steamcommunity.com/openid/id/76561198000000000',
+      steamUsername: 'Steam Alice',
+    })).resolves.toEqual({
+      user: { id: 'user-1', username: 'Steam Alice' },
+      token: 'token:user-1',
+    });
+    expect(updateUserMock).toHaveBeenCalledWith('user-1', { username: 'Steam Alice' });
+
+    updateUserMock.mockClear();
+    legacy.username = 'Chosen name';
+    await expect(authService.steamSignIn({
+      openId: 'https://steamcommunity.com/openid/id/76561198000000000',
+      steamUsername: 'Another Steam Name',
+    })).resolves.toEqual({
+      user: { id: 'user-1', username: 'Chosen name' },
+      token: 'token:user-1',
+    });
+    expect(updateUserMock).not.toHaveBeenCalledWith('user-1', { username: 'Another Steam Name' });
   });
 });

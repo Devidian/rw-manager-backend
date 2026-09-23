@@ -42,6 +42,21 @@ function parseSteamId(body: SteamAuthRequest): string {
   return normalizedSteamId;
 }
 
+function steamUsername(body: SteamAuthRequest): string | undefined {
+  if (typeof body.steamUsername !== 'string') return undefined;
+  const username = body.steamUsername.trim();
+  return username || undefined;
+}
+
+async function nextSteamFallbackUsername(steamId: string): Promise<string> {
+  const baseUsername = `steam_${steamId}`;
+  let username = baseUsername;
+  for (let i = 1; await findUserByUsername(username); i += 1) {
+    username = `${baseUsername}_${i}`;
+  }
+  return username;
+}
+
 export async function registerLocalUser(
   input: RegisterLocalUserRequest,
 ): Promise<AuthUserTokenResponse> {
@@ -138,23 +153,34 @@ export async function steamSignIn(
   const steamId = parseSteamId(input);
   const existingUser = await findUserBySteamId(steamId);
   const baseUsername = `steam_${steamId}`;
-  let username = baseUsername;
-  for (let i = 1; !existingUser && await findUserByUsername(username); i += 1) {
-    username = `${baseUsername}_${i}`;
-  }
+  const displayName = steamUsername(input);
 
-  const user = existingUser
-    ? (toPrivateUser(existingUser) as PrivateUser)
-    : ((await createUser(
-        username,
-        `${`steam_${steamId}`}@steam.local`,
-        randomBytes(24).toString('hex'),
-        steamId,
-        steamId === AppConfig.superAdminId
-          ? 'admin'
-          : AppConfig.defaultUserRole,
-        steamId === AppConfig.superAdminId ? 'verified' : 'new',
-      )) as PrivateUser);
+  let user: PrivateUser;
+  if (existingUser) {
+    user = toPrivateUser(existingUser) as PrivateUser;
+    // Only migrate the legacy generated name. A name explicitly chosen by a
+    // user must never be overwritten by a later Steam sign-in.
+    if (displayName && user.username === baseUsername) {
+      const usernameOwner = await findUserByUsername(displayName);
+      if (!usernameOwner || usernameOwner.id === user.id) {
+        user = (await updateUser(user.id, { username: displayName }) ?? user) as PrivateUser;
+      }
+    }
+  } else {
+    const username = displayName && !await findUserByUsername(displayName)
+      ? displayName
+      : await nextSteamFallbackUsername(steamId);
+    user = (await createUser(
+      username,
+      `${`steam_${steamId}`}@steam.local`,
+      randomBytes(24).toString('hex'),
+      steamId,
+      steamId === AppConfig.superAdminId
+        ? 'admin'
+        : AppConfig.defaultUserRole,
+      steamId === AppConfig.superAdminId ? 'verified' : 'new',
+    )) as PrivateUser;
+  }
   const privateUser = await markUserPresent(user.id);
   const token = createAuthToken(privateUser.id);
   return { user: mapPrivateUserToDto(privateUser), token };
