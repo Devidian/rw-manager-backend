@@ -6,4 +6,5 @@ Each task must include objective, ownership, dependencies, risks, validation str
 
 ## Current Tasks
 
-- [Plugin Authentication, Inbound WebSocket and Mongo-Only Storage](plugin-auth-websocket-and-mongo-only-storage.md)
+No backend implementation tasks are currently active. Completed plans are kept
+in `docs/archive/`.

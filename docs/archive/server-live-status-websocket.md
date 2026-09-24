@@ -31,4 +31,6 @@ multi-server WebSocket that emits initial snapshots and semantic field deltas.
 - [x] Keep central refresh ownership and REST compatibility.
 - [x] Add configurable pin and subscription limits.
 - [x] Pass automated tests, coverage, and build.
-- [ ] Publish RC and perform runtime proxy acceptance.
+- [x] Publish RC and perform runtime proxy acceptance. Development runs
+  `0.6.2-rc.9`; authenticated dashboard acceptance confirmed live player-list
+  updates on 2026-09-23.

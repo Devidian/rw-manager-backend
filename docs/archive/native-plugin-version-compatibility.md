@@ -17,7 +17,7 @@ Normal cache refresh replaces previously missing versions; no cache reset requir
 - [x] Implement compatibility parsing and plain/missing/legacy regression cases.
 - [x] Add regression for refreshing an entry whose version was previously missing.
 - [x] Build and run backend tests (initial run: 42 suites, 186 tests passed).
-- [ ] Verify website after a separately authorized rollout and normal cache refresh.
+- [x] Verify website after rollout and normal cache refresh on 2026-09-23.
 
 ## Validation, risks and rollback
 Final targeted run: 2 suites, 17 tests passed, including cache replacement.

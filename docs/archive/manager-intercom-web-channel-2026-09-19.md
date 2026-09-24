@@ -25,4 +25,5 @@ requested favorite ID. Rollback is image-level; no data migration is necessary.
 - [x] Cover successful authentication timestamp persistence and DTO mapping.
 - [x] Cover persisted favorite removal.
 - [x] Run `yarn build` and `yarn test`.
-- [ ] Publish RC image and deploy only to the development manager runtime.
+- [x] Publish and deploy the compatible Manager RC. Backend runtime acceptance
+      completed with 0.7.1-rc.2 on 2026-09-24.
