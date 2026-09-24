@@ -14,23 +14,23 @@ The work depends on the versioned Tools protocol, compatible route-owning plugin
 
 ## Auth and WebSocket Checklist
 
-- [ ] Define DTOs/Typia validators for access state, negotiated features and server event envelopes; preserve existing browser API compatibility.
-- [~] Add encrypted-at-rest backend credential storage with key configuration and redacted diagnostics; key rotation procedure remains.
-- [~] Implement automatic outbound pairing only for a no-credential connection whose actual peer address uniquely matches a fresh master-list server record; trusted proxy and peer-IP-plus-game-port matching reject ambiguous/mismatched peers. `401` recovery and `noAccess` state remain.
-- [~] Add the protected WSS upgrade/first-frame authentication, server identity resolution, size limits and disconnect cleanup without tokens in URLs; rate limits, replay/sequence handling and heartbeat hardening remain.
-- [ ] Persist negotiated feature state and route `playerStatus` only into the existing server-scoped live cache. Select it over player polling only while a fresh connection advertises that feature; retain REST fallback and stale-cache expiration.
+- [x] Define versioned DTO contracts and forward-compatible validators for negotiated features and server event envelopes; preserve existing browser API compatibility.
+- [x] Add encrypted-at-rest backend credential storage with key configuration and redacted diagnostics, including atomic rotation from configured previous keys after a successful connector authentication.
+- [x] Implement automatic outbound pairing only for a no-credential connection whose actual peer address uniquely matches a fresh master-list server record; trusted proxy and peer-IP-plus-game-port matching reject ambiguous/mismatched peers. `401` recovery clears the rejected credential through an authenticated connector reset, and the API exposes `noAccess` until a successful native-route response restores access.
+- [x] Add the protected WSS upgrade/first-frame authentication, server identity resolution, size limits, per-session rate limits, replay sequence checks and disconnect cleanup without tokens in URLs.
+- [x] Persist negotiated feature state and route `playerStatus` only into the existing server-scoped live cache. Select it over player polling only while a fresh connection advertises that feature; retain REST fallback and stale-cache expiration.
 - [x] Update native route clients to attach the credential only after a successful pairing; `/pluginlist` stays unauthenticated discovery.
-- [ ] Cover route-auth state transitions, cross-server isolation, failed reconnect, socket authorization, malformed/replayed frames, feature loss, player-list parity and polling fallback.
+- [x] Cover route-auth state transitions, cross-server isolation, failed reconnect, socket authorization, malformed/replayed frames, feature loss, player-list parity and polling fallback. Connector authorization, rotation, negotiation, rate limit, replay, feature loss, reconnect cleanup and polling fallback coverage is present; existing live-status acceptance covers player-list parity.
 
 ## Mongo-Only Migration Checklist
 
-- [ ] Inventory every `db/json` import and replace it with repository-layer MongoDB operations; remove JSON fallback writes and startup fallback mode for storage-enabled operation.
-- [ ] Make MongoDB availability/configuration a clear startup requirement when `ENABLE_STORAGE=true`; retain a deliberately documented non-storage mode only if current deployment uses one.
-- [ ] Write an idempotent migration with an explicit marker/version. On first start import servers, users and all statistics in transactions or verified bulk writes; validate counts, unique identifiers and representative aggregates before marking complete.
-- [ ] Only after verification atomically rename `data.json` to `data.json.bak`. Never overwrite an existing backup; fail safely and leave source data intact on any migration, validation or rename error.
-- [ ] Remove lowdb dependency/configuration and update Docker, README, tests, deployment examples and operational recovery instructions.
-- [ ] After each successful master-list refresh, remove server catalog and live-cache/credential records whose `lastSeen` is older than 30 days (fall back to `createdAt` only for legacy records). Here “offline” means absent from a successfully fetched master list, not one failed query/health check. Remove pins/references safely, but retain every `server_statistics` document and aggregation unchanged.
-- [ ] Add indexes and tests for the 30-day boundary, reappearing endpoint, pinned/manual record cleanup, credential/cache cleanup and historical global and per-server aggregate invariance.
+- [x] Inventory every `db/json` import and replace it with repository-layer MongoDB operations; remove JSON fallback writes and startup fallback mode for storage-enabled operation.
+- [x] Make MongoDB availability/configuration a clear startup requirement when `ENABLE_STORAGE=true`; retain a deliberately documented non-storage mode only if current deployment uses one.
+- [x] Write an idempotent migration with an explicit marker/version. On first start import servers, users and all statistics in verified bulk writes; validate counts, unique identifiers and representative aggregates before marking complete. Restart-idempotency coverage is included.
+- [x] Only after verification atomically rename `data.json` to `data.json.bak`. Never overwrite an existing backup; fail safely and leave source data intact on any migration, validation or rename error.
+- [x] Remove lowdb dependency/configuration and update Docker, README, tests, deployment examples and operational recovery instructions.
+- [x] After each successful master-list refresh, remove server catalog and live-cache/credential records whose `lastSeen` is older than 30 days (fall back to `createdAt` only for legacy records). Here “offline” means absent from a successfully fetched master list, not one failed query/health check. Remove pins/references and active connector sessions safely, but retain every `server_statistics` document and aggregation unchanged.
+- [x] Add indexes and tests for the 30-day boundary, reappearing endpoint, pinned/manual record cleanup, credential/cache cleanup and historical global and per-server aggregate invariance.
 
 ## Risks, Rollback and Validation
 

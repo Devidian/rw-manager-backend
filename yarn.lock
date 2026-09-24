@@ -4099,15 +4099,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lowdb@npm:^7.0.1":
-  version: 7.0.1
-  resolution: "lowdb@npm:7.0.1"
-  dependencies:
-    steno: "npm:^4.0.2"
-  checksum: 10c0/d61f554d6a507419772b07c91982bb72a0d3976dddef83e1d58fb24ff9049398962ec2c1917b3a863aedb46559081e0cd208d032ff3c43b1d59f41be9f4f4022
-  languageName: node
-  linkType: hard
-
 "lru-cache@npm:^10.2.0":
   version: 10.4.3
   resolution: "lru-cache@npm:10.4.3"
@@ -5094,7 +5085,6 @@ __metadata:
     express: "npm:5.2.1"
     express-session: "npm:^1.18.2"
     jest: "npm:^30.2.0"
-    lowdb: "npm:^7.0.1"
     mongodb: "npm:^7.3.0"
     passport: "npm:^0.7.0"
     passport-local: "npm:^1.0.0"
@@ -5368,13 +5358,6 @@ __metadata:
   version: 2.0.2
   resolution: "statuses@npm:2.0.2"
   checksum: 10c0/a9947d98ad60d01f6b26727570f3bcceb6c8fa789da64fe6889908fe2e294d57503b14bf2b5af7605c2d36647259e856635cd4c49eab41667658ec9d0080ec3f
-  languageName: node
-  linkType: hard
-
-"steno@npm:^4.0.2":
-  version: 4.0.2
-  resolution: "steno@npm:4.0.2"
-  checksum: 10c0/fda6bb192bb73ce9453586080aae3fc75506e1c10c9285df49849a016bb9378c6146610f27976708437a6c5492619ec09efb9def6d5397624ae0ad70e57ccaf1
   languageName: node
   linkType: hard
 

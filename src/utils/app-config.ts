@@ -37,6 +37,14 @@ export class AppConfig {
     const value = env.GAME_CONNECTOR_CREDENTIAL_KEY?.trim();
     return value && value.length >= 32 ? value : undefined;
   }
+  /** Previous keys are accepted only for credential decryption during a rotation. */
+  static get gameConnectorPreviousCredentialKeys(): string[] {
+    const current = AppConfig.gameConnectorCredentialKey;
+    return [...new Set((env.GAME_CONNECTOR_PREVIOUS_CREDENTIAL_KEYS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 32 && value !== current))];
+  }
   static get gameConnectorTrustedProxyIps(): string[] {
     return (env.GAME_CONNECTOR_TRUSTED_PROXY_IPS ?? '')
       .split(',')

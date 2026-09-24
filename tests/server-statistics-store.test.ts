@@ -6,8 +6,8 @@ const state = {
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const getMongoCollectionsMock = jest.fn();
 
-jest.unstable_mockModule('../src/db/json.js', () => ({
-  db: {
+jest.unstable_mockModule('../src/db/non-storage-store.js', () => ({
+  nonStorageDb: {
     data: state,
     write: writeMock,
   },

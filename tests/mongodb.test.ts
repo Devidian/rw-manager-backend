@@ -1,4 +1,7 @@
 import { jest } from '@jest/globals';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const jsonState = {
   servers: [
@@ -47,12 +50,6 @@ const collectionMock = jest.fn();
 const dbMock = jest.fn();
 const mongoClientConstructorMock = jest.fn();
 
-jest.unstable_mockModule('../src/db/json.js', () => ({
-  db: {
-    data: jsonState,
-  },
-}));
-
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: {
     warn: warnMock,
@@ -74,12 +71,15 @@ jest.unstable_mockModule('mongodb', () => ({
 const mongodb = await import('../src/db/mongodb.js');
 
 function collection(name: string, count = 0) {
+  let documents: Record<string, unknown>[] = Array.from({ length: count }, (_, index) => ({ id: `${name}-${index}` }));
   return {
     name,
     createIndex: jest.fn(async () => undefined),
     dropIndex: jest.fn(async () => undefined),
-    estimatedDocumentCount: jest.fn(async () => count),
-    bulkWrite: jest.fn(async () => undefined),
+    bulkWrite: jest.fn(async (operations: Array<{ replaceOne: { replacement: Record<string, unknown> } }>) => {
+      documents = operations.map((operation) => operation.replaceOne.replacement);
+    }),
+    find: jest.fn(() => ({ toArray: async () => documents })),
   };
 }
 
@@ -122,7 +122,18 @@ describe('db/mongodb', () => {
     expect(mongodb.getMongoCollections()).toBeUndefined();
   });
 
-  test('connects, creates indexes, seeds empty collections, and caches collections', async () => {
+  test('requires MongoDB when storage is enabled', async () => {
+    process.env.ENABLE_STORAGE = 'true';
+    delete process.env.MONGODB_URI;
+    delete process.env.MONGO_URI;
+
+    await expect(mongodb.bootstrapMongoDb()).rejects.toThrow(
+      'MONGODB_URI is required when ENABLE_STORAGE=true',
+    );
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
+  test('connects, creates indexes, and caches collections without a legacy source', async () => {
     process.env.MONGODB_URI = 'mongodb://example';
     process.env.MONGODB_DATABASE = 'rw-manager-test';
     const servers = collection('servers');
@@ -162,24 +173,16 @@ describe('db/mongodb', () => {
       { serverId: 1, hourStart: 1 },
       { unique: true },
     );
-    expect(servers.bulkWrite).toHaveBeenCalledWith([
-      expect.objectContaining({
-        replaceOne: expect.objectContaining({
-          filter: { id: 'server-1' },
-          upsert: true,
-        }),
-      }),
-    ]);
-    expect(users.bulkWrite).toHaveBeenCalled();
-    expect(statistics.bulkWrite).toHaveBeenCalled();
-    expect(logMock).toHaveBeenCalledWith('MongoDB seeded from JSON fallback data');
+    expect(servers.bulkWrite).not.toHaveBeenCalled();
+    expect(users.bulkWrite).not.toHaveBeenCalled();
+    expect(statistics.bulkWrite).not.toHaveBeenCalled();
     expect(logMock).toHaveBeenCalledWith('MongoDB connected: rw-manager-test');
 
     await expect(mongodb.bootstrapMongoDb()).resolves.toBe(collections);
     expect(collectionMock).toHaveBeenCalledTimes(3);
   });
 
-  test('skips seeding non-empty collections and closes failed clients', async () => {
+  test('closes failed clients without entering a JSON fallback path', async () => {
     process.env.MONGO_URI = 'mongodb://fallback-var';
     process.env.MONGODB_CONNECT_TIMEOUT_MS = '1234';
     const servers = collection('servers', 1);
@@ -195,14 +198,60 @@ describe('db/mongodb', () => {
       serverSelectionTimeoutMS: 1234,
       connectTimeoutMS: 1234,
     });
-    expect(servers.bulkWrite).not.toHaveBeenCalled();
     await mongodb.closeMongoDb();
     expect(closeMock).toHaveBeenCalled();
 
     connectMock.mockRejectedValueOnce(new Error('offline'));
     await expect(mongodb.bootstrapMongoDb()).resolves.toBeUndefined();
     expect(warnMock).toHaveBeenCalledWith(
-      'MongoDB unavailable; using JSON database fallback: offline',
+      'MongoDB unavailable: offline',
     );
+  });
+
+  test('imports, verifies, marks and archives a legacy file only in storage mode', async () => {
+    const dataRoot = await mkdtemp(path.join(tmpdir(), 'rw-manager-migration-'));
+    process.env.ENABLE_STORAGE = 'true';
+    process.env.MONGODB_URI = 'mongodb://example';
+    process.env.APP_DATA_ROOT = dataRoot;
+    await writeFile(path.join(dataRoot, 'data.json'), JSON.stringify(jsonState));
+    const servers = collection('servers');
+    const users = collection('users');
+    const statistics = collection('server_statistics');
+    const migrations = { findOne: jest.fn(async () => null), insertOne: jest.fn(async () => undefined) };
+    collectionMock
+      .mockReturnValueOnce(servers)
+      .mockReturnValueOnce(users)
+      .mockReturnValueOnce(statistics)
+      .mockReturnValueOnce(migrations);
+
+    try {
+      await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
+      expect(servers.bulkWrite).toHaveBeenCalledWith([expect.objectContaining({
+        replaceOne: expect.objectContaining({ filter: { id: 'server-1' }, upsert: true }),
+      })]);
+      expect(users.bulkWrite).toHaveBeenCalledTimes(1);
+      expect(statistics.bulkWrite).toHaveBeenCalledTimes(1);
+      expect(migrations.insertOne).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'lowdb-to-mongo-v1',
+        counts: { servers: 1, users: 1, serverStatistics: 1 },
+      }));
+      await expect(access(path.join(dataRoot, 'data.json.bak'))).resolves.toBeUndefined();
+      await expect(access(path.join(dataRoot, 'data.json'))).rejects.toThrow();
+
+      await mongodb.closeMongoDb();
+      collectionMock.mockClear().mockImplementation((name: string) => ({
+        servers,
+        users,
+        server_statistics: statistics,
+        migrations,
+      })[name]);
+      await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
+      expect(servers.bulkWrite).toHaveBeenCalledTimes(1);
+      expect(users.bulkWrite).toHaveBeenCalledTimes(1);
+      expect(statistics.bulkWrite).toHaveBeenCalledTimes(1);
+      expect(migrations.insertOne).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
   });
 });

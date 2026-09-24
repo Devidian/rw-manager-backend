@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   findServerByMasterEndpoint,
   listServers,
+  removeStaleMasterServers,
   replacePinnedServerId,
   saveMasterServer,
   saveServer,
@@ -15,7 +16,8 @@ import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { fetchNativePluginList, hasNativePluginRoute } from './native-plugin-list.js';
-import { storedLiveStatusResponse } from './server-live-status-service.js';
+import { clearServerLiveStatusCacheEntry, storedLiveStatusResponse } from './server-live-status-service.js';
+import { closeGameConnectorSession } from './game-connector-websocket-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
@@ -207,6 +209,9 @@ async function runMasterServerListRefresh(options: {
   const now = new Date();
   try {
     const response = await fetchMasterServerList();
+    if (!response?.successful) {
+      return { fetched: 0, inserted: 0, updated: 0, refreshed: 0 };
+    }
     const entries = Array.isArray(response?.data)
       ? response.data as MasterServerListEntry[]
       : [];
@@ -248,6 +253,14 @@ async function runMasterServerListRefresh(options: {
       }
       await saveMasterServer(server);
       if (queryRefreshed) publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
+    }
+
+    // A successful fetch is authoritative for catalog presence. Failed fetches
+    // never reach this point, so transient master-list outages cannot prune data.
+    const staleIds = await removeStaleMasterServers(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
+    for (const serverId of staleIds) {
+      clearServerLiveStatusCacheEntry(serverId);
+      closeGameConnectorSession(serverId);
     }
 
     const result = { fetched: entries.length, inserted, updated, refreshed };

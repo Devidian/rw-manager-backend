@@ -42,6 +42,7 @@ describe('map and plugin handlers', () => {
     expect(response.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(response.json).toHaveBeenCalledWith({
       available: true,
+      nativeAccess: 'available',
       items: [{ name: 'OZ - Admin Utils', valid: true }],
       latestVersions: {},
     });

@@ -4,7 +4,10 @@ import { AppConfig } from '../utils/app-config.js';
 
 export function gameConnectorAuthorizationHeader(server: Pick<ServerConfig, 'connectorCredential'>): string | undefined {
   if (!server.connectorCredential || !AppConfig.gameConnectorCredentialKey) return undefined;
-  const credential = decryptGameConnectorCredential(server.connectorCredential, AppConfig.gameConnectorCredentialKey);
+  const credential = decryptGameConnectorCredentialWithKeyRing(
+    server.connectorCredential,
+    [AppConfig.gameConnectorCredentialKey, ...AppConfig.gameConnectorPreviousCredentialKeys],
+  )?.credential;
   return credential ? `Bearer ${credential}` : undefined;
 }
 
@@ -31,4 +34,15 @@ export function decryptGameConnectorCredential(value: string, secret: string): s
   } catch {
     return undefined;
   }
+}
+
+export function decryptGameConnectorCredentialWithKeyRing(
+  value: string,
+  secrets: readonly string[],
+): { credential: string; keyIndex: number } | undefined {
+  for (const [keyIndex, secret] of secrets.entries()) {
+    const credential = decryptGameConnectorCredential(value, secret);
+    if (credential) return { credential, keyIndex };
+  }
+  return undefined;
 }

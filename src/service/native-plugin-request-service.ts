@@ -10,6 +10,13 @@ interface Failure { credential?: string; until: number; attempts: number }
 const failures = new Map<string, Failure>();
 const requests = new Map<string, Promise<Result>>();
 
+export type NativePluginAccessState = 'available' | 'noAccess' | 'unavailable';
+
+export function nativePluginAccessState(serverId: string | undefined, available: boolean): NativePluginAccessState {
+  if (!available) return 'unavailable';
+  return serverId && failures.has(serverId) ? 'noAccess' : 'available';
+}
+
 /** Reconnection or new credentials allow an immediate retry without erasing durable credentials. */
 export function resetNativePluginAccess(serverId: string): void {
   failures.delete(serverId);

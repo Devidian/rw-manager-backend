@@ -4,6 +4,7 @@ import type { ListServerPluginsResponse } from '../dto/list-server-plugins-respo
 import { prepareServerRoute, serverRouteError } from './server-route-context.js';
 import { getCachedPluginData, getFirstCachedPluginData } from '../service/plugin-data-cache-service.js';
 import { getCachedOZPluginLatestVersions } from '../service/oz-plugin-release-service.js';
+import { nativePluginAccessState } from '../service/native-plugin-request-service.js';
 
 export async function listServerPluginsHandler(req: Request, res: Response) {
   try {
@@ -11,6 +12,7 @@ export async function listServerPluginsHandler(req: Request, res: Response) {
     const entry = server ? getCachedPluginData(server.id) : getFirstCachedPluginData();
     const response: ListServerPluginsResponse = {
       available: entry !== undefined,
+      nativeAccess: nativePluginAccessState(server?.id, entry !== undefined),
       items: (entry?.plugins ?? []).flatMap((plugin) =>
         typeof plugin.valid === 'boolean' &&
         (plugin.name === undefined || typeof plugin.name === 'string') &&

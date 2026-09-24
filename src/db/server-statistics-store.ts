@@ -1,4 +1,4 @@
-import { db } from './json.js';
+import { nonStorageDb as db } from './non-storage-store.js';
 import { getMongoCollections } from './mongodb.js';
 import type {
   ServerStatisticsBucket,

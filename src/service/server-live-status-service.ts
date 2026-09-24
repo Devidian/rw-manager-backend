@@ -385,3 +385,10 @@ export function clearServerLiveStatusCache(): void {
   inflight.clear();
   playerListRefreshAttemptedAt.clear();
 }
+
+/** Removes in-memory status for a catalog record that was pruned after a successful master-list refresh. */
+export function clearServerLiveStatusCacheEntry(serverId: string): void {
+  cache.delete(serverId);
+  inflight.delete(serverId);
+  playerListRefreshAttemptedAt.delete(serverId);
+}

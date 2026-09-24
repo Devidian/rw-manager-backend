@@ -34,8 +34,8 @@ const errorMock = jest.fn();
 const debugMock = jest.fn();
 const warnMock = jest.fn();
 
-jest.unstable_mockModule('../src/db/json.js', () => ({
-  db: {
+jest.unstable_mockModule('../src/db/non-storage-store.js', () => ({
+  nonStorageDb: {
     data: state,
     write: writeMock,
   },
@@ -231,6 +231,34 @@ describe('master-server-list-service', () => {
 
     expect(state.servers[0].queryUrl).toBe('https://query.example/dev');
     expect(state.servers[0].queryUrlExplicit).toBe(true);
+  });
+
+  test('does not prune catalog records after a failed master-list request', async () => {
+    state.servers = [{
+      id: 'stale-server', ip: '127.0.0.1', port: 4255, label: 'Stale', queryUrl: 'http://127.0.0.1:4254',
+      public: true, createdAt: '2026-01-01T00:00:00.000Z', lastSeen: '2026-01-01T00:00:00.000Z',
+    }];
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, text: async () => '' }) as typeof fetch;
+
+    await expect(service.refreshMasterServerList()).resolves.toEqual({ fetched: 0, inserted: 0, updated: 0, refreshed: 0 });
+    expect(state.servers).toHaveLength(1);
+  });
+
+  test('keeps a stale catalog endpoint and its historical statistics when it reappears', async () => {
+    state.servers = [{
+      id: 'stale-server', ip: '127.0.0.1', port: 4255, label: 'Stale', queryUrl: 'http://127.0.0.1:4254',
+      public: true, createdAt: '2026-01-01T00:00:00.000Z', lastSeen: '2026-01-01T00:00:00.000Z',
+    }];
+    state.serverStatistics = [{ id: 'stale-server:2026-01-01T00:00:00.000Z', serverId: 'stale-server', sampleCount: 4 }];
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '{"successful":true,"data":[{"steamid":"76561198000000001","ip":"127.0.0.1","port":4255,"name":"Returned"}]}',
+    }) as typeof fetch;
+
+    await expect(service.refreshMasterServerList()).resolves.toMatchObject({ fetched: 1, updated: 1 });
+    expect(state.servers).toHaveLength(1);
+    expect(state.servers[0].lastSeen).toEqual(expect.any(Date));
+    expect(state.serverStatistics).toEqual([{ id: 'stale-server:2026-01-01T00:00:00.000Z', serverId: 'stale-server', sampleCount: 4 }]);
   });
 
   test('refreshMasterServerList tolerates invalid master responses and entries', async () => {

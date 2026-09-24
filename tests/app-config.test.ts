@@ -26,6 +26,7 @@ describe('AppConfig', () => {
     expect(AppConfig.enableData).toBe(false);
     expect(AppConfig.enableAuth).toBe(false);
     expect(AppConfig.forceAuth).toBe(false);
+    expect(AppConfig.gameConnectorPreviousCredentialKeys).toEqual([]);
     expect(AppConfig.mapTileRoot).toBeUndefined();
     expect(AppConfig.mapTileRootUrl).toBeUndefined();
     expect(AppConfig.mapServerId).toBeUndefined();
@@ -57,6 +58,13 @@ describe('AppConfig', () => {
     process.env.ENABLE_DATA = 'true';
     process.env.ENABLE_AUTH = 'true';
     process.env.FORCE_AUTH = 'true';
+    process.env.GAME_CONNECTOR_CREDENTIAL_KEY = 'current-connector-key-with-at-least-32-characters';
+    process.env.GAME_CONNECTOR_PREVIOUS_CREDENTIAL_KEYS = [
+      'previous-connector-key-with-at-least-32-characters',
+      'current-connector-key-with-at-least-32-characters',
+      'previous-connector-key-with-at-least-32-characters',
+      'short',
+    ].join(',');
     process.env.MAP_TILE_ROOT = '/srv/map-tiles';
     process.env.MAP_TILE_ROOT_URL = 'https://tiles.example.com/maps';
     process.env.MAP_SERVER_ID = 'server-f8e7fa9ca73fd4b4943db61a';
@@ -86,6 +94,9 @@ describe('AppConfig', () => {
     expect(AppConfig.enableData).toBe(true);
     expect(AppConfig.enableAuth).toBe(true);
     expect(AppConfig.forceAuth).toBe(true);
+    expect(AppConfig.gameConnectorPreviousCredentialKeys).toEqual([
+      'previous-connector-key-with-at-least-32-characters',
+    ]);
     expect(AppConfig.maxPinnedServers).toBe(75);
     expect(AppConfig.serverLiveMaxServerIds).toBe(90);
     expect(AppConfig.mapTileRoot).toBe('/srv/map-tiles');

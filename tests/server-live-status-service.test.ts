@@ -20,7 +20,7 @@ interface StoredServer {
 
 const state = { servers: [] as StoredServer[], serverStatistics: [] as unknown[] };
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
-jest.unstable_mockModule('../src/db/json.js', () => ({ db: { data: state, write: writeMock } }));
+jest.unstable_mockModule('../src/db/non-storage-store.js', () => ({ nonStorageDb: { data: state, write: writeMock } }));
 const service = await import('../src/service/server-live-status-service.js');
 
 describe('server-live-status-service', () => {
@@ -102,6 +102,35 @@ describe('server-live-status-service', () => {
       onlinePlayers: [{ uid: 'current-player', name: 'Current' }],
       status: 'online',
     });
+  });
+
+  test('accepts a bounded connector player-status snapshot into only that server cache', async () => {
+    await service.acceptConnectorPlayerStatus('server-1', {
+      schemaVersion: 1,
+      players: [
+        { uid: 'player-1', name: 'Connected' },
+        { uid: 'player-2', name: 'Disconnected', connected: false },
+      ],
+    });
+
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online',
+      onlinePlayers: [{ uid: 'player-1', name: 'Connected' }],
+    });
+    expect(state.servers[0]).toMatchObject({
+      status: 'online',
+      onlinePlayers: [{ uid: 'player-1', name: 'Connected' }],
+    });
+  });
+
+  test('rejects malformed connector player-status snapshots without changing stored live state', async () => {
+    await expect(service.acceptConnectorPlayerStatus('server-1', {
+      schemaVersion: 1,
+      players: [{ name: 'Missing UID' }],
+    })).rejects.toThrow('INVALID_PLAYER_STATUS');
+
+    expect(state.servers[0].onlinePlayers).toBeUndefined();
+    expect(writeMock).not.toHaveBeenCalled();
   });
 
   test('does not accept description markers as native configuration', async () => {

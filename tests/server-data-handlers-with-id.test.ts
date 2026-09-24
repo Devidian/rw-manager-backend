@@ -37,6 +37,7 @@ jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   getCachedPluginData: getCachedPluginDataMock,
   getFirstCachedPluginData: getFirstCachedPluginDataMock,
 }));
+jest.unstable_mockModule('../src/service/native-plugin-request-service.js', () => ({ nativePluginAccessState: () => 'available' }));
 jest.unstable_mockModule('../src/service/server-map-service.js', () => ({
   getStoredServerMap: getStoredServerMapMock,
 }));
@@ -98,6 +99,7 @@ describe('server data handlers with server id routes', () => {
     expect(pluginsResponse.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(pluginsResponse.json).toHaveBeenCalledWith({
       available: true,
+      nativeAccess: 'available',
       items: [{ name: 'Shop', version: '1.0.0', valid: true }],
       latestVersions: {},
     });
@@ -133,6 +135,7 @@ describe('server data handlers with server id routes', () => {
     expect(getFirstCachedPluginDataMock).toHaveBeenCalledTimes(1);
     expect(response.json).toHaveBeenCalledWith({
       available: true,
+      nativeAccess: 'available',
       items: [{ name: 'GPS', version: '1.0.0', valid: true }],
       latestVersions: {},
     });

@@ -1,7 +1,7 @@
 # rw-manager-backend
 
 Backend API for Rising World server management with TypeScript, Express 5,
-MongoDB/lowdb storage, and plugin-route cache integration.
+MongoDB storage and plugin-route cache integration.
 
 ## Server Data API
 
@@ -36,8 +36,7 @@ MAP_RECENT_PLAYER_DAYS=7
 ## Storage Server List
 
 When `ENABLE_STORAGE=true`, the backend refreshes the public Rising World
-master server list and stores the merged server records under
-`APP_DATA_ROOT/data.json`. The master-list `steamid` is used as the stable
+master server list and stores the merged server records in MongoDB. The master-list `steamid` is used as the stable
 server id for imported servers. Imported records keep compatibility fields
 such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 `adminUid`, `firstSeen`, `lastSeen`, `data`, and `info` fields.
@@ -55,19 +54,26 @@ MAX_PINNED_SERVERS=50
 SERVER_LIVE_MAX_SERVER_IDS=1000
 ```
 
-MongoDB is the preferred manager storage backend. When `MONGODB_URI` is set,
-the backend bootstraps MongoDB collections and unique indexes for servers,
-users, and statistics while keeping MongoDB `_id` values internal. If the
-MongoDB collections are empty, existing JSON fallback data from
-`APP_DATA_ROOT/data.json` is copied into MongoDB once during bootstrap. When the
-variable is missing or the server is unreachable, the backend logs a warning
-and keeps using the JSON database fallback under `APP_DATA_ROOT`.
+MongoDB is mandatory when `ENABLE_STORAGE=true`. On the first storage-enabled
+start, a legacy `APP_DATA_ROOT/data.json` is imported, verified by document
+counts, unique IDs and statistics aggregates, marked in MongoDB, then renamed
+to `data.json.bak`. Do not restore an old JSON-writing backend over migrated
+storage. With `ENABLE_STORAGE=false`, the backend uses deliberately ephemeral
+in-memory state only; it never creates or writes a JSON database.
 
 ```text
 MONGODB_URI=mongodb://rwmanager:rwmanager-dev-password@mongodb:27017/rw-manager?replicaSet=rs0&authSource=admin
 MONGODB_DATABASE=rw-manager
 MONGODB_CONNECT_TIMEOUT_MS=5000
 ```
+
+Game-connector credentials are encrypted at rest with
+`GAME_CONNECTOR_CREDENTIAL_KEY` (at least 32 characters). To rotate it, deploy
+the new value together with the former value in
+`GAME_CONNECTOR_PREVIOUS_CREDENTIAL_KEYS` (comma-separated). A connector that
+successfully authenticates with a former key is immediately re-encrypted with
+the current key. Remove the former key only after active connectors have
+reconnected; neither key is logged.
 
 For local Change Stream compatible tests, use the minimal replica-set example.
 The backend should use the URI above when it runs in the same Compose network.

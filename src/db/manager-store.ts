@@ -1,6 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { v4 } from 'uuid';
-import { db } from './json.js';
+import { nonStorageDb as db } from './non-storage-store.js';
 import { getMongoCollections } from './mongodb.js';
 import type {
   JsonDbUser,
@@ -239,6 +239,30 @@ export async function replaceServerConnectorCredential(id: string, credential: s
   return true;
 }
 
+/**
+ * Re-encrypts a credential during key rotation without overwriting a newer
+ * pairing record that may have arrived concurrently.
+ */
+export async function replaceServerConnectorCredentialIfCurrent(
+  id: string,
+  expectedCredential: string,
+  credential: string,
+): Promise<boolean> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    const result = await mongo.servers.updateOne(
+      { id, connectorCredential: expectedCredential },
+      { $set: { connectorCredential: credential } },
+    );
+    return result.modifiedCount === 1;
+  }
+  const server = db.data.servers.find((entry) => entry.id === id);
+  if (!server || server.connectorCredential !== expectedCredential) return false;
+  server.connectorCredential = credential;
+  try { await db.write(); } catch (error) { server.connectorCredential = expectedCredential; throw error; }
+  return true;
+}
+
 export async function updateServer(
   id: string,
   input: ServerPatch,
@@ -259,6 +283,42 @@ export async function removeServer(id: string): Promise<void> {
   }
   db.data.servers = db.data.servers.filter((server) => server.id !== id);
   await db.write();
+}
+
+/**
+ * Removes only stale, master-list-owned catalog records. User-owned servers
+ * and all historical statistics remain intact; user pins are pruned with the
+ * catalog record so they cannot point at a deleted endpoint.
+ */
+export async function removeStaleMasterServers(cutoff: Date): Promise<string[]> {
+  const isStaleMasterServer = (server: ServerConfig): boolean => {
+    if (!server.public || server.userId || !server.ip || !Number.isFinite(server.port)) return false;
+    const lastSeen = new Date(server.lastSeen ?? server.createdAt).getTime();
+    return Number.isFinite(lastSeen) && lastSeen < cutoff.getTime();
+  };
+  const staleIds = (await listServers()).filter(isStaleMasterServer).map((server) => server.id);
+  if (staleIds.length === 0) return [];
+
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await Promise.all([
+      mongo.servers.deleteMany({ id: { $in: staleIds } }),
+      mongo.users.updateMany(
+        { pinnedServers: { $in: staleIds } },
+        { $pull: { pinnedServers: { $in: staleIds } } } as unknown as Parameters<typeof mongo.users.updateMany>[1],
+      ),
+    ]);
+    return staleIds;
+  }
+
+  db.data.servers = db.data.servers.filter((server) => !staleIds.includes(server.id));
+  for (const user of db.data.users) {
+    if (Array.isArray(user.pinnedServers)) {
+      user.pinnedServers = user.pinnedServers.filter((serverId) => !staleIds.includes(serverId));
+    }
+  }
+  await db.write();
+  return staleIds;
 }
 
 export async function replacePinnedServerId(previousId: string, nextId: string): Promise<void> {

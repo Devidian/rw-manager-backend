@@ -3,24 +3,39 @@ import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import { isIP } from 'node:net';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import { listServers, claimServerConnectorCredential, replaceServerConnectorCredential } from '../db/manager-store.js';
+import {
+  listServers,
+  claimServerConnectorCredential,
+  replaceServerConnectorCredential,
+  replaceServerConnectorCredentialIfCurrent,
+} from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import {
   createGameConnectorCredential,
-  decryptGameConnectorCredential,
+  decryptGameConnectorCredentialWithKeyRing,
   encryptGameConnectorCredential,
 } from './game-connector-credential-service.js';
 import { startWebSocketHeartbeat } from './websocket-heartbeat-service.js';
 import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
+import type {
+  ConnectorAuthenticateRequest,
+  ConnectorEventRequest,
+  ConnectorFeaturesRequest,
+  ConnectorProvisionRequest,
+} from '../dto/game-connector-message.js';
 
 const CONNECTOR_PATH = '/ws';
 const MAX_MESSAGE_BYTES = 4096;
 const PROVISION_TIMEOUT_MS = 10000;
+const MAX_MESSAGES_PER_MINUTE = 120;
 
 interface ConnectorSession {
   socket: WebSocket;
   events: string[];
+  rateWindowStartedAt: number;
+  messagesInRateWindow: number;
+  lastEventSequence: number;
 }
 
 export type GameConnectorEventHandler = (serverId: string, event: string, data: unknown) => Promise<void> | void;
@@ -41,6 +56,14 @@ export function requestGameConnectorCredentialReset(serverId: string): boolean {
   if (!session || session.socket.readyState !== WebSocket.OPEN) return false;
   send(session.socket, { type: 'connector.reset', schemaVersion: 1, reason: 'native_route_unauthorized' });
   return true;
+}
+
+/** Closes a session whose backing master-list catalog record was pruned. */
+export function closeGameConnectorSession(serverId: string): void {
+  const session = activeSessions?.get(serverId);
+  if (!session) return;
+  activeSessions?.delete(serverId);
+  if (session.socket.readyState === WebSocket.OPEN) session.socket.close(1001, 'server_pruned');
 }
 
 let activeSessions: Map<string, ConnectorSession> | undefined;
@@ -72,7 +95,7 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
           }
           const previous = sessions.get(serverId!);
           if (previous) previous.socket.close(1000, 'replaced');
-          sessions.set(serverId!, { socket, events: [] });
+          sessions.set(serverId!, { socket, events: [], rateWindowStartedAt: Date.now(), messagesInRateWindow: 0, lastEventSequence: 0 });
           resetNativePluginAccess(serverId!);
           send(socket, { type: 'connector.authenticated', schemaVersion: 1, serverId });
           socket.on('message', (message) => {
@@ -105,12 +128,12 @@ export function attachGameConnectorWebSocketService(server: HttpServer): GameCon
 
 async function handleFirstMessage(request: IncomingMessage, data: RawData): Promise<{ provisioned?: string; serverId?: string }> {
   const message = parseMessage(data);
-  if (message.type === 'connector.provision' && message.schemaVersion === 1
-      && typeof message.gamePort === 'number' && Number.isInteger(message.gamePort)
+  if (isConnectorProvisionRequest(message)
+      && Number.isInteger(message.gamePort)
       && message.gamePort >= 1 && message.gamePort <= 65535) {
     return { provisioned: await provision(request, message.gamePort) };
   }
-  if (message.type === 'connector.authenticate' && message.schemaVersion === 1 && typeof message.credential === 'string') {
+  if (isConnectorAuthenticateRequest(message) && message.credential.length <= 256) {
     return { serverId: await authenticate(message.credential) };
   }
   throw new ConnectorProtocolError('invalid_message');
@@ -141,8 +164,17 @@ async function authenticate(credential: string): Promise<string> {
   if (!AppConfig.gameConnectorCredentialKey || credential.length > 256) throw new ConnectorProtocolError('unauthorized');
   for (const server of await listServers()) {
     if (!server.connectorCredential) continue;
-    const expected = decryptGameConnectorCredential(server.connectorCredential, AppConfig.gameConnectorCredentialKey);
-    if (expected && constantTimeEquals(expected, credential)) return server.id;
+    const decrypted = decryptGameConnectorCredentialWithKeyRing(
+      server.connectorCredential,
+      [AppConfig.gameConnectorCredentialKey, ...AppConfig.gameConnectorPreviousCredentialKeys],
+    );
+    if (decrypted && constantTimeEquals(decrypted.credential, credential)) {
+      if (decrypted.keyIndex > 0) {
+        const reencrypted = encryptGameConnectorCredential(credential, AppConfig.gameConnectorCredentialKey);
+        await replaceServerConnectorCredentialIfCurrent(server.id, server.connectorCredential, reencrypted);
+      }
+      return server.id;
+    }
   }
   throw new ConnectorProtocolError('unauthorized');
 }
@@ -152,14 +184,17 @@ async function handleAuthenticatedMessage(socket: WebSocket, serverId: string, s
     const message = parseMessage(data);
     const session = sessions.get(serverId);
     if (!session || session.socket !== socket) throw new ConnectorProtocolError('unauthorized');
-    if (message.type === 'connector.features' && message.schemaVersion === 1 && Array.isArray(message.events)
+    if (!consumeMessageAllowance(session)) throw new ConnectorProtocolError('rate_limited');
+    if (isConnectorFeaturesRequest(message)
         && message.events.length <= 64 && message.events.every((event) => typeof event === 'string' && /^[a-z][A-Za-z0-9]{0,63}$/.test(event))) {
       session.events = [...new Set(message.events)];
       send(socket, { type: 'connector.features.accepted', schemaVersion: 1, events: session.events });
       return;
     }
-    if (message.type === 'connector.event' && message.schemaVersion === 1 && typeof message.event === 'string'
+    if (isConnectorEventRequest(message) && /^[a-z][A-Za-z0-9]{0,63}$/.test(message.event)
+        && Number.isSafeInteger(message.sequence) && message.sequence > session.lastEventSequence
         && session.events.includes(message.event)) {
+      session.lastEventSequence = message.sequence;
       for (const handler of eventHandlers) await handler(serverId, message.event, message.data);
       return;
     }
@@ -167,6 +202,16 @@ async function handleAuthenticatedMessage(socket: WebSocket, serverId: string, s
   } catch (error) {
     closeWithError(socket, error instanceof ConnectorProtocolError ? error.code : 'invalid_message');
   }
+}
+
+function consumeMessageAllowance(session: ConnectorSession): boolean {
+  const now = Date.now();
+  if (now - session.rateWindowStartedAt >= 60_000) {
+    session.rateWindowStartedAt = now;
+    session.messagesInRateWindow = 0;
+  }
+  session.messagesInRateWindow += 1;
+  return session.messagesInRateWindow <= MAX_MESSAGES_PER_MINUTE;
 }
 
 function parseMessage(data: RawData): Record<string, unknown> {
@@ -180,6 +225,24 @@ function parseMessage(data: RawData): Record<string, unknown> {
     throw new ConnectorProtocolError('invalid_message');
   }
   return value as Record<string, unknown>;
+}
+
+function isConnectorProvisionRequest(value: Record<string, unknown>): value is ConnectorProvisionRequest & Record<string, unknown> {
+  return value.type === 'connector.provision' && value.schemaVersion === 1 && typeof value.gamePort === 'number';
+}
+
+function isConnectorAuthenticateRequest(value: Record<string, unknown>): value is ConnectorAuthenticateRequest & Record<string, unknown> {
+  return value.type === 'connector.authenticate' && value.schemaVersion === 1 && typeof value.credential === 'string';
+}
+
+function isConnectorFeaturesRequest(value: Record<string, unknown>): value is ConnectorFeaturesRequest & Record<string, unknown> {
+  return value.type === 'connector.features' && value.schemaVersion === 1 && Array.isArray(value.events)
+    && value.events.every((event) => typeof event === 'string');
+}
+
+function isConnectorEventRequest(value: Record<string, unknown>): value is ConnectorEventRequest & Record<string, unknown> {
+  return value.type === 'connector.event' && value.schemaVersion === 1 && typeof value.event === 'string'
+    && typeof value.sequence === 'number' && 'data' in value;
 }
 
 function rawText(data: RawData): string {

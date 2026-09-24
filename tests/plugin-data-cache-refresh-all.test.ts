@@ -12,6 +12,7 @@ jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   updateServer: updateServerMock,
   claimServerConnectorCredential: claimServerConnectorCredentialMock,
   replaceServerConnectorCredential: replaceServerConnectorCredentialMock,
+  replaceServerConnectorCredentialIfCurrent: jest.fn(async () => true),
   resetServerConnectorCredential: resetServerConnectorCredentialMock,
 }));
 jest.unstable_mockModule('../src/utils/app-config.js', () => ({

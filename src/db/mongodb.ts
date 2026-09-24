@@ -1,15 +1,38 @@
 import { MongoClient, type Collection, type Db, type Document } from 'mongodb';
+import { access, readFile, rename } from 'node:fs/promises';
+import path from 'node:path';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import type { JsonDbUser } from '../interfaces/app-user.js';
 import type { ServerStatisticsBucket } from '../interfaces/server-statistics.js';
-import { db as jsonDb } from './json.js';
 
 export interface MongoCollections {
   servers: Collection<ServerConfig & Document>;
   users: Collection<JsonDbUser & Document>;
   serverStatistics: Collection<ServerStatisticsBucket & Document>;
+}
+
+interface LegacyJsonData {
+  servers?: ServerConfig[];
+  users?: JsonDbUser[];
+  serverStatistics?: ServerStatisticsBucket[];
+}
+
+interface MigrationMarker {
+  id: string;
+  completedAt: Date;
+  source: 'lowdb';
+  counts: { servers: number; users: number; serverStatistics: number };
+}
+
+interface MigrationSummary {
+  count: number;
+  uniqueIds: number;
+  sampleCount: number;
+  onlineSampleCount: number;
+  playerSampleTotal: number;
+  maxPlayers: number;
 }
 
 let client: MongoClient | undefined;
@@ -23,6 +46,10 @@ export async function bootstrapMongoDb(): Promise<MongoCollections | undefined> 
   bootstrapStarted = true;
 
   if (!AppConfig.mongoUri) {
+    if (AppConfig.enableStorage) {
+      bootstrapStarted = false;
+      throw new Error('MONGODB_URI is required when ENABLE_STORAGE=true');
+    }
     defaultLogger.warn('MONGODB_URI is not set; using JSON database fallback');
     return undefined;
   }
@@ -40,15 +67,169 @@ export async function bootstrapMongoDb(): Promise<MongoCollections | undefined> 
       serverStatistics: database.collection<ServerStatisticsBucket & Document>('server_statistics'),
     };
     await ensureIndexes(collections);
-    await seedMongoFromJson(collections);
+    if (AppConfig.enableStorage) await migrateLegacyJson(collections);
     defaultLogger.log(`MongoDB connected: ${AppConfig.mongoDatabaseName}`);
     return collections;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    defaultLogger.warn(`MongoDB unavailable; using JSON database fallback: ${message}`);
+    defaultLogger.warn(`MongoDB unavailable: ${message}`);
     collections = undefined;
     await closeMongoDb();
+    if (AppConfig.enableStorage) throw error;
     return undefined;
+  }
+}
+
+async function migrateLegacyJson(next: MongoCollections): Promise<void> {
+  const source = await readLegacyJson();
+  if (!source) return;
+  const migrations = database!.collection<MigrationMarker & Document>('migrations');
+  const marker = await migrations.findOne({ id: 'lowdb-to-mongo-v1' });
+  const expected = migrationCounts(source);
+  if (!marker) {
+    await writeLegacyRecords(next, source);
+  }
+  const actual = await verifyLegacyRecords(next);
+  if (!sameMigrationCounts(actual, expected)) {
+    throw new Error('LowDB to Mongo migration verification failed; source data was left untouched');
+  }
+  if (!marker) {
+    await migrations.insertOne({
+      id: 'lowdb-to-mongo-v1',
+      completedAt: new Date(),
+      source: 'lowdb',
+      counts: {
+        servers: actual.servers.count,
+        users: actual.users.count,
+        serverStatistics: actual.serverStatistics.count,
+      },
+    });
+    defaultLogger.log('LowDB to Mongo migration verified');
+  }
+  await backupLegacyJson();
+}
+
+async function backupLegacyJson(): Promise<void> {
+  const source = path.join(AppConfig.dataRoot, 'data.json');
+  const backup = `${source}.bak`;
+  const sourceExists = await exists(source);
+  if (!sourceExists) return;
+  if (await exists(backup)) {
+    throw new Error('Legacy data.json and data.json.bak both exist; source was left untouched');
+  }
+  await rename(source, backup);
+  defaultLogger.log('LowDB source archived as data.json.bak after verified Mongo migration');
+}
+
+async function readLegacyJson(): Promise<LegacyJsonData | undefined> {
+  const source = path.join(AppConfig.dataRoot, 'data.json');
+  if (!await exists(source)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(source, 'utf8'));
+  } catch (error) {
+    throw new Error(`Unable to read legacy data.json: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Unable to read legacy data.json: root must be an object');
+  }
+  const data = parsed as LegacyJsonData;
+  for (const key of ['servers', 'users', 'serverStatistics'] as const) {
+    if (data[key] !== undefined && !Array.isArray(data[key])) {
+      throw new Error(`Unable to read legacy data.json: ${key} must be an array`);
+    }
+  }
+  return data;
+}
+
+async function writeLegacyRecords(next: MongoCollections, source: LegacyJsonData): Promise<void> {
+  const servers = source.servers ?? [];
+  const users = source.users ?? [];
+  const statistics = source.serverStatistics ?? [];
+  assertUniqueIds('servers', servers);
+  assertUniqueIds('users', users);
+  assertUniqueIds('serverStatistics', statistics);
+  await Promise.all([
+    bulkReplace(next.servers, servers),
+    bulkReplace(next.users, users),
+    bulkReplace(next.serverStatistics, statistics),
+  ]);
+}
+
+async function bulkReplace<T extends { id: string }>(collection: Collection<T & Document>, records: T[]): Promise<void> {
+  if (records.length === 0) return;
+  const operations = records.map((record) => ({
+    replaceOne: { filter: { id: record.id }, replacement: record, upsert: true },
+  }));
+  await collection.bulkWrite(operations as unknown as Parameters<typeof collection.bulkWrite>[0]);
+}
+
+function assertUniqueIds(name: string, records: Array<{ id: unknown }>): void {
+  if (records.some((record) => typeof record.id !== 'string' || !record.id.trim())
+      || new Set(records.map((record) => record.id)).size !== records.length) {
+    throw new Error(`LowDB to Mongo migration verification failed: ${name} contains invalid or duplicate ids`);
+  }
+}
+
+function migrationCounts(source: LegacyJsonData): Record<'servers' | 'users' | 'serverStatistics', MigrationSummary> {
+  return {
+    servers: summarizeRecords(source.servers ?? []),
+    users: summarizeRecords(source.users ?? []),
+    serverStatistics: summarizeStatistics(source.serverStatistics ?? []),
+  };
+}
+
+async function verifyLegacyRecords(next: MongoCollections): Promise<Record<'servers' | 'users' | 'serverStatistics', MigrationSummary>> {
+  const [servers, users, serverStatistics] = await Promise.all([
+    next.servers.find({}, { projection: { _id: 0 } }).toArray(),
+    next.users.find({}, { projection: { _id: 0 } }).toArray(),
+    next.serverStatistics.find({}, { projection: { _id: 0 } }).toArray(),
+  ]);
+  return {
+    servers: summarizeRecords(servers),
+    users: summarizeRecords(users),
+    serverStatistics: summarizeStatistics(serverStatistics),
+  };
+}
+
+function summarizeRecords(records: Array<{ id: unknown }>): MigrationSummary {
+  return { count: records.length, uniqueIds: new Set(records.map((record) => record.id)).size, sampleCount: 0, onlineSampleCount: 0, playerSampleTotal: 0, maxPlayers: 0 };
+}
+
+function summarizeStatistics(records: ServerStatisticsBucket[]): MigrationSummary {
+  const summary = summarizeRecords(records);
+  return {
+    ...summary,
+    sampleCount: records.reduce((total, record) => total + finiteNumber(record.sampleCount), 0),
+    onlineSampleCount: records.reduce((total, record) => total + finiteNumber(record.onlineSampleCount), 0),
+    playerSampleTotal: records.reduce((total, record) => total + finiteNumber(record.playerSampleTotal), 0),
+    maxPlayers: records.reduce((maximum, record) => Math.max(maximum, finiteNumber(record.maxPlayers)), 0),
+  };
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function sameMigrationCounts(
+  actual: Record<'servers' | 'users' | 'serverStatistics', MigrationSummary>,
+  expected: Record<'servers' | 'users' | 'serverStatistics', MigrationSummary>,
+): boolean {
+  return (['servers', 'users', 'serverStatistics'] as const).every((key) => {
+    const left = actual[key];
+    const right = expected[key];
+    return left.count === right.count && left.uniqueIds === right.uniqueIds
+      && left.sampleCount === right.sampleCount && left.onlineSampleCount === right.onlineSampleCount
+      && left.playerSampleTotal === right.playerSampleTotal && left.maxPlayers === right.maxPlayers;
+  });
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await access(file);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -70,7 +251,7 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
   try {
     await next.servers.dropIndex('steamId_1');
   } catch (error) {
-    if (!isIndexNotFoundError(error)) throw error;
+    if (!isExpectedMissingIndexError(error)) throw error;
   }
 
   await Promise.all([
@@ -94,68 +275,11 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
   ]);
 }
 
-function isIndexNotFoundError(error: unknown): boolean {
+function isExpectedMissingIndexError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
     'codeName' in error &&
-    error.codeName === 'IndexNotFound'
+    (error.codeName === 'IndexNotFound' || error.codeName === 'NamespaceNotFound')
   );
-}
-
-async function seedMongoFromJson(next: MongoCollections): Promise<void> {
-  const [serverCount, userCount, statisticsCount] = await Promise.all([
-    next.servers.estimatedDocumentCount(),
-    next.users.estimatedDocumentCount(),
-    next.serverStatistics.estimatedDocumentCount(),
-  ]);
-
-  const operations: Promise<unknown>[] = [];
-  if (serverCount === 0 && jsonDb.data.servers.length > 0) {
-    operations.push(
-      next.servers.bulkWrite(
-        jsonDb.data.servers.map((server) => ({
-          replaceOne: {
-            filter: { id: server.id },
-            replacement: server,
-            upsert: true,
-          },
-        })),
-      ),
-    );
-  }
-  if (userCount === 0 && jsonDb.data.users.length > 0) {
-    operations.push(
-      next.users.bulkWrite(
-        jsonDb.data.users.map((user) => ({
-          replaceOne: {
-            filter: { id: user.id },
-            replacement: user,
-            upsert: true,
-          },
-        })),
-      ),
-    );
-  }
-  const statistics = Array.isArray(jsonDb.data.serverStatistics)
-    ? jsonDb.data.serverStatistics
-    : [];
-  if (statisticsCount === 0 && statistics.length > 0) {
-    operations.push(
-      next.serverStatistics.bulkWrite(
-        statistics.map((bucket) => ({
-          replaceOne: {
-            filter: { id: bucket.id },
-            replacement: bucket,
-            upsert: true,
-          },
-        })),
-      ),
-    );
-  }
-
-  if (operations.length > 0) {
-    await Promise.all(operations);
-    defaultLogger.log('MongoDB seeded from JSON fallback data');
-  }
 }
