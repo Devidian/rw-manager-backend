@@ -42,6 +42,25 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.7.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.7.0...rw-manager-backend-v0.7.0) (2026-09-24)
+
+
+### Added
+
+* migrate manager storage to MongoDB ([7519382](https://github.com/Devidian/rw-manager-backend/commit/7519382e09c46531024a9dcf8db57309474ff19d))
+* preserve Steam display names ([72b2052](https://github.com/Devidian/rw-manager-backend/commit/72b205240bd9a07686215f275c75e0f0b7a4f640))
+
+
+### Fixed
+
+* persist manager presence and unpinned favorites ([0ec0da4](https://github.com/Devidian/rw-manager-backend/commit/0ec0da4a6365589d6931e0a5900c06a6bc2b33cf))
+* preserve existing Mongo records during migration ([01fb050](https://github.com/Devidian/rw-manager-backend/commit/01fb050d74737bdabcfdbd12b2e95ac819528c78))
+
+
+### Documentation
+
+* archive completed manager backend plans ([3b96a58](https://github.com/Devidian/rw-manager-backend/commit/3b96a585d2d8e2de58a40ee2e03ee3bcd94c9bfa))
+
 ## [0.7.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.1...rw-manager-backend-v0.7.0) (2026-09-11)
 
 
