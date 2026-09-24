@@ -70,16 +70,22 @@ jest.unstable_mockModule('mongodb', () => ({
 
 const mongodb = await import('../src/db/mongodb.js');
 
-function collection(name: string, count = 0) {
-  let documents: Record<string, unknown>[] = Array.from({ length: count }, (_, index) => ({ id: `${name}-${index}` }));
+function collection(name: string, count = 0, initialDocuments: Record<string, unknown>[] = []) {
+  let documents: Record<string, unknown>[] = [...initialDocuments, ...Array.from({ length: count }, (_, index) => ({ id: `${name}-${index}` }))];
   return {
     name,
     createIndex: jest.fn(async () => undefined),
     dropIndex: jest.fn(async () => undefined),
-    bulkWrite: jest.fn(async (operations: Array<{ replaceOne: { replacement: Record<string, unknown> } }>) => {
-      documents = operations.map((operation) => operation.replaceOne.replacement);
+    bulkWrite: jest.fn(async (operations: Array<{ updateOne: { filter: { id: string }; update: { $setOnInsert: Record<string, unknown> } } }>) => {
+      for (const operation of operations) {
+        if (!documents.some((document) => document.id === operation.updateOne.filter.id)) {
+          documents.push(operation.updateOne.update.$setOnInsert);
+        }
+      }
     }),
-    find: jest.fn(() => ({ toArray: async () => documents })),
+    find: jest.fn((filter: { id?: { $in?: string[] } } = {}) => ({
+      toArray: async () => filter.id?.$in ? documents.filter((document) => filter.id!.$in!.includes(document.id as string)) : documents,
+    })),
   };
 }
 
@@ -227,7 +233,7 @@ describe('db/mongodb', () => {
     try {
       await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
       expect(servers.bulkWrite).toHaveBeenCalledWith([expect.objectContaining({
-        replaceOne: expect.objectContaining({ filter: { id: 'server-1' }, upsert: true }),
+        updateOne: expect.objectContaining({ filter: { id: 'server-1' }, upsert: true, update: { $setOnInsert: expect.objectContaining({ id: 'server-1' }) } }),
       })]);
       expect(users.bulkWrite).toHaveBeenCalledTimes(1);
       expect(statistics.bulkWrite).toHaveBeenCalledTimes(1);
@@ -250,6 +256,34 @@ describe('db/mongodb', () => {
       expect(users.bulkWrite).toHaveBeenCalledTimes(1);
       expect(statistics.bulkWrite).toHaveBeenCalledTimes(1);
       expect(migrations.insertOne).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves existing Mongo documents while importing only missing legacy records', async () => {
+    const dataRoot = await mkdtemp(path.join(tmpdir(), 'rw-manager-migration-existing-'));
+    process.env.ENABLE_STORAGE = 'true';
+    process.env.MONGODB_URI = 'mongodb://example';
+    process.env.APP_DATA_ROOT = dataRoot;
+    await writeFile(path.join(dataRoot, 'data.json'), JSON.stringify(jsonState));
+    const servers = collection('servers', 0, [{ ...jsonState.servers![0], label: 'Current Mongo server' }]);
+    const users = collection('users', 0, [{ ...jsonState.users![0], username: 'current-user' }]);
+    const statistics = collection('server_statistics', 0, [{ ...jsonState.serverStatistics![0], sampleCount: 99, onlineSampleCount: 99, playerSampleTotal: 99, maxPlayers: 99 }]);
+    const migrations = { findOne: jest.fn(async () => null), insertOne: jest.fn(async () => undefined) };
+    collectionMock
+      .mockReturnValueOnce(servers)
+      .mockReturnValueOnce(users)
+      .mockReturnValueOnce(statistics)
+      .mockReturnValueOnce(migrations);
+
+    try {
+      await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
+      await expect(servers.find().toArray()).resolves.toContainEqual(expect.objectContaining({ label: 'Current Mongo server' }));
+      await expect(users.find().toArray()).resolves.toContainEqual(expect.objectContaining({ username: 'current-user' }));
+      await expect(statistics.find().toArray()).resolves.toContainEqual(expect.objectContaining({ sampleCount: 99 }));
+      expect(migrations.insertOne).toHaveBeenCalled();
+      await expect(access(path.join(dataRoot, 'data.json.bak'))).resolves.toBeUndefined();
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

@@ -87,11 +87,11 @@ async function migrateLegacyJson(next: MongoCollections): Promise<void> {
   const marker = await migrations.findOne({ id: 'lowdb-to-mongo-v1' });
   const expected = migrationCounts(source);
   if (!marker) {
+    const existing = await legacyRecordIds(next, source);
     await writeLegacyRecords(next, source);
-  }
-  const actual = await verifyLegacyRecords(next);
-  if (!sameMigrationCounts(actual, expected)) {
-    throw new Error('LowDB to Mongo migration verification failed; source data was left untouched');
+    await verifyLegacyRecords(next, source, existing);
+  } else {
+    await verifyLegacyRecords(next, source, emptyLegacyRecordIds());
   }
   if (!marker) {
     await migrations.insertOne({
@@ -99,9 +99,9 @@ async function migrateLegacyJson(next: MongoCollections): Promise<void> {
       completedAt: new Date(),
       source: 'lowdb',
       counts: {
-        servers: actual.servers.count,
-        users: actual.users.count,
-        serverStatistics: actual.serverStatistics.count,
+        servers: expected.servers.count,
+        users: expected.users.count,
+        serverStatistics: expected.serverStatistics.count,
       },
     });
     defaultLogger.log('LowDB to Mongo migration verified');
@@ -149,17 +149,13 @@ async function writeLegacyRecords(next: MongoCollections, source: LegacyJsonData
   assertUniqueIds('servers', servers);
   assertUniqueIds('users', users);
   assertUniqueIds('serverStatistics', statistics);
-  await Promise.all([
-    bulkReplace(next.servers, servers),
-    bulkReplace(next.users, users),
-    bulkReplace(next.serverStatistics, statistics),
-  ]);
+  await Promise.all([bulkInsertMissing(next.servers, servers), bulkInsertMissing(next.users, users), bulkInsertMissing(next.serverStatistics, statistics)]);
 }
 
-async function bulkReplace<T extends { id: string }>(collection: Collection<T & Document>, records: T[]): Promise<void> {
+async function bulkInsertMissing<T extends { id: string }>(collection: Collection<T & Document>, records: T[]): Promise<void> {
   if (records.length === 0) return;
   const operations = records.map((record) => ({
-    replaceOne: { filter: { id: record.id }, replacement: record, upsert: true },
+    updateOne: { filter: { id: record.id }, update: { $setOnInsert: record }, upsert: true },
   }));
   await collection.bulkWrite(operations as unknown as Parameters<typeof collection.bulkWrite>[0]);
 }
@@ -179,17 +175,59 @@ function migrationCounts(source: LegacyJsonData): Record<'servers' | 'users' | '
   };
 }
 
-async function verifyLegacyRecords(next: MongoCollections): Promise<Record<'servers' | 'users' | 'serverStatistics', MigrationSummary>> {
+type LegacyRecordIds = Record<'servers' | 'users' | 'serverStatistics', Set<string>>;
+
+async function legacyRecordIds(next: MongoCollections, source: LegacyJsonData): Promise<LegacyRecordIds> {
+  const ids = legacySourceIds(source);
   const [servers, users, serverStatistics] = await Promise.all([
-    next.servers.find({}, { projection: { _id: 0 } }).toArray(),
-    next.users.find({}, { projection: { _id: 0 } }).toArray(),
-    next.serverStatistics.find({}, { projection: { _id: 0 } }).toArray(),
+    findRecordsByIds(next.servers, ids.servers),
+    findRecordsByIds(next.users, ids.users),
+    findRecordsByIds(next.serverStatistics, ids.serverStatistics),
   ]);
   return {
+    servers: new Set(servers.map((record) => record.id)),
+    users: new Set(users.map((record) => record.id)),
+    serverStatistics: new Set(serverStatistics.map((record) => record.id)),
+  };
+}
+
+function legacySourceIds(source: LegacyJsonData): LegacyRecordIds {
+  return {
+    servers: new Set((source.servers ?? []).map((record) => record.id)),
+    users: new Set((source.users ?? []).map((record) => record.id)),
+    serverStatistics: new Set((source.serverStatistics ?? []).map((record) => record.id)),
+  };
+}
+
+function emptyLegacyRecordIds(): LegacyRecordIds {
+  return { servers: new Set(), users: new Set(), serverStatistics: new Set() };
+}
+
+async function findRecordsByIds<T extends { id: string }>(collection: Collection<T & Document>, ids: Set<string>): Promise<T[]> {
+  if (ids.size === 0) return [];
+  const records = await collection.find({ id: { $in: [...ids] } } as never, { projection: { _id: 0 } }).toArray();
+  return records as unknown as T[];
+}
+
+async function verifyLegacyRecords(next: MongoCollections, source: LegacyJsonData, existing: LegacyRecordIds): Promise<void> {
+  const ids = legacySourceIds(source);
+  const [servers, users, serverStatistics] = await Promise.all([
+    findRecordsByIds(next.servers, ids.servers),
+    findRecordsByIds(next.users, ids.users),
+    findRecordsByIds(next.serverStatistics, ids.serverStatistics),
+  ]);
+  const expected = migrationCounts(source);
+  const actual = {
     servers: summarizeRecords(servers),
     users: summarizeRecords(users),
     serverStatistics: summarizeStatistics(serverStatistics),
   };
+  const expectedInsertedStatistics = summarizeStatistics((source.serverStatistics ?? []).filter((record) => !existing.serverStatistics.has(record.id)));
+  const actualInsertedStatistics = summarizeStatistics(serverStatistics.filter((record) => !existing.serverStatistics.has(record.id)));
+  if (!sameMigrationCounts(actual, expected)
+      || !sameStatisticAggregates(actualInsertedStatistics, expectedInsertedStatistics)) {
+    throw new Error('LowDB to Mongo migration verification failed; source data was left untouched');
+  }
 }
 
 function summarizeRecords(records: Array<{ id: unknown }>): MigrationSummary {
@@ -218,10 +256,15 @@ function sameMigrationCounts(
   return (['servers', 'users', 'serverStatistics'] as const).every((key) => {
     const left = actual[key];
     const right = expected[key];
-    return left.count === right.count && left.uniqueIds === right.uniqueIds
-      && left.sampleCount === right.sampleCount && left.onlineSampleCount === right.onlineSampleCount
-      && left.playerSampleTotal === right.playerSampleTotal && left.maxPlayers === right.maxPlayers;
+    return left.count === right.count && left.uniqueIds === right.uniqueIds;
   });
+}
+
+function sameStatisticAggregates(actual: MigrationSummary, expected: MigrationSummary): boolean {
+  return actual.sampleCount === expected.sampleCount
+    && actual.onlineSampleCount === expected.onlineSampleCount
+    && actual.playerSampleTotal === expected.playerSampleTotal
+    && actual.maxPlayers === expected.maxPlayers;
 }
 
 async function exists(file: string): Promise<boolean> {
