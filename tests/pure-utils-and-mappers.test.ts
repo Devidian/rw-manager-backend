@@ -53,6 +53,7 @@ describe('pure utils and mappers', () => {
       state: 'verified',
       role: 'admin',
       steamId: '76561198000000000',
+      pinnedServers: [],
       createdAt: new Date('2024-05-06T07:08:09.000Z'),
     };
 
@@ -62,6 +63,9 @@ describe('pure utils and mappers', () => {
       state: 'verified',
       role: 'admin',
       steamId: '76561198000000000',
+      pinnedServers: [],
+      intercomChannels: ['global', 'web'],
+      lastSeenAt: undefined,
       createdAt: '2024-05-06T07:08:09.000Z',
     });
 
@@ -72,6 +76,9 @@ describe('pure utils and mappers', () => {
       state: 'verified',
       role: 'admin',
       steamId: '76561198000000000',
+      pinnedServers: [],
+      intercomChannels: ['global', 'web'],
+      lastSeenAt: undefined,
       createdAt: '2024-05-06T07:08:09.000Z',
     });
   });

@@ -11,6 +11,7 @@ export function mapPublicUserToDto(user: PublicUser): PublicUserDto {
     role: user.role,
     steamId: user.steamId,
     pinnedServers: user.pinnedServers,
+    intercomChannels: user.intercomChannels ?? ['global', 'web'],
     createdAt: mapDateTimeString(user.createdAt) as PublicUserDto['createdAt'],
     lastSeenAt: user.lastSeenAt
       ? mapDateTimeString(user.lastSeenAt) as PublicUserDto['lastSeenAt']

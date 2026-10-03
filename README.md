@@ -26,6 +26,13 @@ that server's renderer directory, for example
 The backend does not require a Rising World installation to start. Missing
 plugin-route cache data disables only the corresponding optional data features.
 
+Authenticated users can save their public Global Intercom subscriptions with
+`PATCH /api/auth/self/intercom-channels` and a JSON body such as
+`{"channels":["global","web","trade"]}`. Names are normalized to lowercase,
+limited to 64 characters, and capped at 20 submitted entries. The existing
+`global` and `web` subscriptions are always retained. Login and session
+validation include `intercomChannels`; legacy users default to those two.
+
 ```text
 MAP_TILE_ROOT=/appdata/rwman/map-tiles
 MAP_TILE_ROOT_URL=https://tiles.example.com/maps

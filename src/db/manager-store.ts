@@ -74,6 +74,7 @@ export function toPrivateUser(user: JsonDbUser): PrivateUser {
     role: user.role,
     steamId: user.steamId,
     pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
+    intercomChannels: Array.isArray(user.intercomChannels) ? user.intercomChannels : ['global', 'web'],
     createdAt: user.createdAt,
     lastSeenAt: user.lastSeenAt,
   };
@@ -87,6 +88,7 @@ export function toPublicUser(user: JsonDbUser): PublicUser {
     role: user.role,
     steamId: user.steamId,
     pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
+    intercomChannels: Array.isArray(user.intercomChannels) ? user.intercomChannels : ['global', 'web'],
     createdAt: user.createdAt,
     lastSeenAt: user.lastSeenAt,
   };
@@ -348,6 +350,7 @@ export async function createUser(
     role,
     steamId,
     pinnedServers: [],
+    intercomChannels: ['global', 'web'],
     passwordHash: hashPassword(password, salt),
     salt,
     createdAt: new Date(),
@@ -409,7 +412,7 @@ export async function setUserSteamId(id: string, steamId: string): Promise<Priva
 
 export async function updateUser(
   id: string,
-  patch: Partial<Pick<JsonDbUser, 'username' | 'state' | 'role' | 'pinnedServers' | 'lastSeenAt' | 'apiTokenHash' | 'apiTokenSalt' | 'apiTokenCreatedAt'>>,
+  patch: Partial<Pick<JsonDbUser, 'username' | 'state' | 'role' | 'pinnedServers' | 'intercomChannels' | 'lastSeenAt' | 'apiTokenHash' | 'apiTokenSalt' | 'apiTokenCreatedAt'>>,
 ): Promise<JsonDbUser | null> {
   const user = await findUserById(id);
   if (!user) return null;

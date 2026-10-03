@@ -23,6 +23,7 @@
 
 ### Added
 
+* persist authenticated users' Global Intercom channel subscriptions and return them in user DTOs
 * add authenticated server-scoped live map layer WebSocket invalidations
 * refresh plugin map data only while the corresponding server has subscribers
 * include changed and removed map entities in compatible live events
