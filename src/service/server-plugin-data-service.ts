@@ -9,7 +9,10 @@ import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { platformFromUid } from './observed-player-service.js';
 
 export function getCachedServerPlayers(serverId?: string): DbPlayer[] {
-  const payload = cacheEntry(serverId)?.data['ozadminutils.playerlist'];
+  return playersFromPluginPayload(cacheEntry(serverId)?.data['ozadminutils.playerlist']);
+}
+
+export function playersFromPluginPayload(payload: unknown): DbPlayer[] {
   if (!payload || typeof payload !== 'object') return [];
   const players = (payload as { players?: unknown }).players;
   if (!Array.isArray(players)) return [];

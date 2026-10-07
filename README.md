@@ -22,6 +22,13 @@ publishes its validated tile URLs from that renderer host. `mapUrl` must name
 that server's renderer directory, for example
 `https://tiles.example.com/server-abc123`, not a shared renderer root. Local
 `MAP_TILE_ROOT/<MAP_SERVER_ID>/metadata.json` remains a compatibility fallback.
+Renderer metadata may additionally expose `satelliteTileUrl`; the map response
+passes it through only after validating the server-specific satellite path.
+
+`GET /api/storage/player/:uid/history` reads durable `knownPlayers` records
+for servers visible in the normal public list. Admin Utils player snapshots
+refresh those records, including available playtime. The profile endpoint does
+not query game servers and continues to work when a player database is offline.
 
 The backend does not require a Rising World installation to start. Missing
 plugin-route cache data disables only the corresponding optional data features.

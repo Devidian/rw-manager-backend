@@ -89,6 +89,19 @@ describe('map service', () => {
     });
   });
 
+  test('exposes the optional satellite tile URL from validated remote metadata', async () => {
+    const serverId = 'server-satellite';
+    globalThis.fetch = jest.fn(async () => new Response(JSON.stringify(rendererMetadata({
+      serverId,
+      tileUrl: `/${serverId}/{z}/{x}/{y}.png`,
+      satelliteTileUrl: `/${serverId}/satellite/{z}/{x}/{y}.png`,
+    })))) as typeof fetch;
+    const result = await getServerMap(undefined, 'Ignored', serverId, 'https://renderer.example/maps/server-satellite');
+    expect(result).toMatchObject({ available: true, metadata: {
+      satelliteTileUrl: `https://renderer.example/${serverId}/satellite/{z}/{x}/{y}.png`,
+    } });
+  });
+
   test('rejects renderer metadata with invalid contract fields', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'rw-map-renderer-invalid-'));
     const serverId = 'server-valid';

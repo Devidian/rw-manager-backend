@@ -1,6 +1,7 @@
 # PLANS.md
 
 Planning is stored in repository-local docs.
+Satellite map metadata and cached player-server history are implemented; live satellite image ingestion remains external to this service.
 
 - Active implementation tasks: [docs/active/](docs/active/)
 - Roadmaps and larger plans: [docs/roadmaps/](docs/roadmaps/)
