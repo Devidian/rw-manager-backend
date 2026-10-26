@@ -2,6 +2,7 @@
 
 Planning is stored in repository-local docs.
 Satellite map metadata and cached player-server history are implemented; live satellite image ingestion remains external to this service.
+Steam OpenID verification and server-side persona lookup are tracked in [docs/active/steam-auth-server-side-20261026.md](docs/active/steam-auth-server-side-20261026.md).
 
 - Active implementation tasks: [docs/active/](docs/active/)
 - Roadmaps and larger plans: [docs/roadmaps/](docs/roadmaps/)

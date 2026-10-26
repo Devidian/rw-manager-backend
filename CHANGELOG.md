@@ -1,5 +1,6 @@
 ## Unreleased
 
+- resolve Steam persona names on the backend and verify signed Steam OpenID callbacks before issuing sessions.
 - expose cached public player-server history with available playtime and optional satellite map metadata.
 - record successful account presence as an additive user timestamp for administrator views.
 - remove account favorites with an atomic persisted operation before returning the updated user.

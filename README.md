@@ -40,6 +40,15 @@ limited to 64 characters, and capped at 20 submitted entries. The existing
 `global` and `web` subscriptions are always retained. Login and session
 validation include `intercomChannels`; legacy users default to those two.
 
+Steam OpenID sign-in can optionally resolve a persona name through Steam's
+GetPlayerSummaries API. Set `STEAM_API_KEY` only on the backend container; the
+browser no longer calls Steam's Web API or receives this key. If the lookup is
+unavailable, sign-in continues with the generated `steam_<SteamID>` name.
+Set `STEAM_OPENID_RETURN_ORIGIN` to the frontend's HTTPS origin (for example,
+`https://manager.example.com`). The backend validates the Steam OpenID signature,
+callback origin and nonce before issuing a session; login fails closed when
+this origin is unset or Steam verification is unavailable.
+
 ```text
 MAP_TILE_ROOT=/appdata/rwman/map-tiles
 MAP_TILE_ROOT_URL=https://tiles.example.com/maps
