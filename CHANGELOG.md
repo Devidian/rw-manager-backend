@@ -45,6 +45,14 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.8.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.8.0...rw-manager-backend-v0.8.1) (2026-10-26)
+
+
+### Build
+
+* publish backend images from stable v tags ([949415b](https://github.com/Devidian/rw-manager-backend/commit/949415b7d557553ec1c62ee8978ab7f35d1395e6))
+* publish stable Manager backend Docker tags ([b710308](https://github.com/Devidian/rw-manager-backend/commit/b710308e4f1e8e0868f305726ad8c395d910d005))
+
 ## [0.8.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.7.0...rw-manager-backend-v0.8.0) (2026-10-26)
 
 
