@@ -45,6 +45,30 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.8.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.7.0...rw-manager-backend-v0.8.0) (2026-10-26)
+
+
+### Added
+
+* migrate manager storage to MongoDB ([7519382](https://github.com/Devidian/rw-manager-backend/commit/7519382e09c46531024a9dcf8db57309474ff19d))
+* prepare intercom channel preference RC 0.8.0-rc.1 ([7566c7e](https://github.com/Devidian/rw-manager-backend/commit/7566c7e05e79ed10a8a773f7e290d636f79c9885))
+* prepare manager backend RC 0.8.0-rc.2 ([4b0a250](https://github.com/Devidian/rw-manager-backend/commit/4b0a250efb148fc29cbfb5c0b9a3edc2b5a17994))
+* preserve Steam display names ([72b2052](https://github.com/Devidian/rw-manager-backend/commit/72b205240bd9a07686215f275c75e0f0b7a4f640))
+
+
+### Fixed
+
+* persist manager presence and unpinned favorites ([0ec0da4](https://github.com/Devidian/rw-manager-backend/commit/0ec0da4a6365589d6931e0a5900c06a6bc2b33cf))
+* preserve existing Mongo records during migration ([01fb050](https://github.com/Devidian/rw-manager-backend/commit/01fb050d74737bdabcfdbd12b2e95ac819528c78))
+* verify Steam login and resolve persona server-side for rc.3 ([e8cd6a5](https://github.com/Devidian/rw-manager-backend/commit/e8cd6a598f209e6c52958064b221a5250c823cb0))
+
+
+### Documentation
+
+* archive completed manager backend plans ([3b96a58](https://github.com/Devidian/rw-manager-backend/commit/3b96a585d2d8e2de58a40ee2e03ee3bcd94c9bfa))
+* prepare accepted backend 0.8.0 stable release ([c569d20](https://github.com/Devidian/rw-manager-backend/commit/c569d206b4e7ed3a74222be29f3cdd49d2fe072a))
+* record Steam RC production validation and key rotation ([8414169](https://github.com/Devidian/rw-manager-backend/commit/84141697dcc38f56be055b5384ba8727c501de48))
+
 ## [0.7.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.6.1...rw-manager-backend-v0.7.0) (2026-09-11)
 
 
