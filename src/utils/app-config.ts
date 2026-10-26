@@ -212,6 +212,12 @@ export class AppConfig {
   static get authSessionSecret(): string {
     return env.AUTH_SESSION_SECRET ?? 'rw-manager-storage-session';
   }
+  static get steamApiKey(): string | undefined {
+    return env.STEAM_API_KEY?.trim() || undefined;
+  }
+  static get steamOpenIdReturnOrigin(): string | undefined {
+    return env.STEAM_OPENID_RETURN_ORIGIN?.trim() || undefined;
+  }
   static get logLevel():
     | 'debug'
     | 'info'

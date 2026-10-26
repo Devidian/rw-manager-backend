@@ -8,6 +8,7 @@ export interface PublicUserDto {
   role: UserRole;
   steamId?: string | undefined;
   pinnedServers: string[];
+  intercomChannels: string[];
   createdAt: string & Format<'date-time'>;
   lastSeenAt?: (string & Format<'date-time'>) | undefined;
 }

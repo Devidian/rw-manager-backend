@@ -55,6 +55,10 @@ export function mergeKnownPlayers(
       ...player,
       name: player.name ?? current?.name,
       firstseen: current?.firstseen ?? player.firstseen,
+      ...(current?.lastseen !== undefined || player.lastseen !== undefined
+        ? { lastseen: Math.max(current?.lastseen ?? 0, player.lastseen ?? 0) } : {}),
+      ...(current?.playtime !== undefined || player.playtime !== undefined
+        ? { playtime: Math.max(current?.playtime ?? 0, player.playtime ?? 0) } : {}),
     });
   }
   return [...byUid.values()];

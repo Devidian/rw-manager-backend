@@ -22,9 +22,32 @@ publishes its validated tile URLs from that renderer host. `mapUrl` must name
 that server's renderer directory, for example
 `https://tiles.example.com/server-abc123`, not a shared renderer root. Local
 `MAP_TILE_ROOT/<MAP_SERVER_ID>/metadata.json` remains a compatibility fallback.
+Renderer metadata may additionally expose `satelliteTileUrl`; the map response
+passes it through only after validating the server-specific satellite path.
+
+`GET /api/storage/player/:uid/history` reads durable `knownPlayers` records
+for servers visible in the normal public list. Admin Utils player snapshots
+refresh those records, including available playtime. The profile endpoint does
+not query game servers and continues to work when a player database is offline.
 
 The backend does not require a Rising World installation to start. Missing
 plugin-route cache data disables only the corresponding optional data features.
+
+Authenticated users can save their public Global Intercom subscriptions with
+`PATCH /api/auth/self/intercom-channels` and a JSON body such as
+`{"channels":["global","web","trade"]}`. Names are normalized to lowercase,
+limited to 64 characters, and capped at 20 submitted entries. The existing
+`global` and `web` subscriptions are always retained. Login and session
+validation include `intercomChannels`; legacy users default to those two.
+
+Steam OpenID sign-in can optionally resolve a persona name through Steam's
+GetPlayerSummaries API. Set `STEAM_API_KEY` only on the backend container; the
+browser no longer calls Steam's Web API or receives this key. If the lookup is
+unavailable, sign-in continues with the generated `steam_<SteamID>` name.
+Set `STEAM_OPENID_RETURN_ORIGIN` to the frontend's HTTPS origin (for example,
+`https://manager.example.com`). The backend validates the Steam OpenID signature,
+callback origin and nonce before issuing a session; login fails closed when
+this origin is unset or Steam verification is unavailable.
 
 ```text
 MAP_TILE_ROOT=/appdata/rwman/map-tiles

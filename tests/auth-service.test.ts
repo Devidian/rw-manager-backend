@@ -37,6 +37,8 @@ const createAuthTokenMock = jest.fn<(userId: string) => string>();
 const mapPrivateUserToDtoMock = jest.fn<(user: MutableDbUser) => { id: string; username: string }>();
 const normalizeSteamIdMock = jest.fn<(value: unknown) => string | null>();
 const debugMock = jest.fn<(value: unknown) => void>();
+const getSteamPersonaNameMock = jest.fn<(steamId: string) => Promise<string | undefined>>();
+const verifySteamOpenIdMock = jest.fn<(input: Record<string, string>) => Promise<string>>();
 const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
@@ -67,6 +69,14 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: {
     debug: debugMock,
   },
+}));
+
+jest.unstable_mockModule('../src/service/steam-profile-service.js', () => ({
+  getSteamPersonaName: getSteamPersonaNameMock,
+}));
+
+jest.unstable_mockModule('../src/service/steam-openid-service.js', () => ({
+  verifySteamOpenId: verifySteamOpenIdMock,
 }));
 
 const authService = await import('../src/service/auth-service.js');
@@ -139,6 +149,14 @@ describe('auth-service', () => {
       return value.trim() || null;
     });
     debugMock.mockReset();
+    getSteamPersonaNameMock.mockReset().mockResolvedValue(undefined);
+    verifySteamOpenIdMock.mockReset().mockImplementation(async (input) => {
+      const claimed = input['openid.claimed_id'] ?? input['openid.identity'] ?? input.openId;
+      if (!claimed) throw new Error('OPEN_ID_REQUIRED');
+      const match = claimed.match(/\/openid\/id\/(\d{17})$/);
+      if (!match) throw new Error('OPEN_ID_INVALID');
+      return match[1];
+    });
     writeMock.mockClear();
   });
 
@@ -267,7 +285,6 @@ describe('auth-service', () => {
       'OPEN_ID_REQUIRED',
     );
 
-    normalizeSteamIdMock.mockReturnValueOnce(null);
     await expect(
       authService.connectSteam('user-1', {
         openId: 'https://steamcommunity.com/openid/id/not-a-number',
@@ -388,11 +405,11 @@ describe('auth-service', () => {
       });
     state.users = [createdSteamUser];
     createUserMock.mockResolvedValueOnce(createdSteamUser);
+    getSteamPersonaNameMock.mockResolvedValueOnce('Steam Alice');
 
     await expect(
       authService.steamSignIn({
         openId: 'https://steamcommunity.com/openid/id/76561198000000000',
-        steamUsername: 'Steam Alice',
       }),
     ).resolves.toEqual({
       user: { id: 'user-2', username: 'Steam Alice' },
@@ -448,10 +465,10 @@ describe('auth-service', () => {
       steamId: '76561198000000000',
     });
     state.users = [legacy];
+    getSteamPersonaNameMock.mockResolvedValueOnce('Steam Alice');
 
     await expect(authService.steamSignIn({
       openId: 'https://steamcommunity.com/openid/id/76561198000000000',
-      steamUsername: 'Steam Alice',
     })).resolves.toEqual({
       user: { id: 'user-1', username: 'Steam Alice' },
       token: 'token:user-1',
@@ -462,11 +479,11 @@ describe('auth-service', () => {
     legacy.username = 'Chosen name';
     await expect(authService.steamSignIn({
       openId: 'https://steamcommunity.com/openid/id/76561198000000000',
-      steamUsername: 'Another Steam Name',
     })).resolves.toEqual({
       user: { id: 'user-1', username: 'Chosen name' },
       token: 'token:user-1',
     });
-    expect(updateUserMock).not.toHaveBeenCalledWith('user-1', { username: 'Another Steam Name' });
+    expect(getSteamPersonaNameMock).toHaveBeenCalledTimes(1);
+    expect(updateUserMock).not.toHaveBeenCalledWith('user-1', { username: 'Steam Alice' });
   });
 });

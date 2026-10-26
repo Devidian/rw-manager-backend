@@ -55,4 +55,10 @@ describe('observed player service', () => {
       { uid: 'live-1', name: 'Live', firstseen: 3 },
     ]);
   });
+
+  test('keeps cached playtime when a later live observation has no player database fields', () => {
+    expect(mergeKnownPlayers([{ uid: 'ada', playtime: 7200, firstseen: 1, lastseen: 20 }], [
+      { uid: 'ada', name: 'Ada', lastseen: 10 },
+    ])).toEqual([{ uid: 'ada', name: 'Ada', playtime: 7200, firstseen: 1, lastseen: 20 }]);
+  });
 });

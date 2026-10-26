@@ -25,6 +25,7 @@ import { getServerAdminListHandler } from '../handler/get-server-admin-list-hand
 import { setServerBlockedHandler } from '../handler/set-server-blocked-handler.js';
 import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
+import { getPlayerServerHistoryHandler } from '../handler/get-player-server-history-handler.js';
 
 const storageRouter = Router();
 
@@ -34,6 +35,7 @@ const requireServerGetAuth =
 
 storageRouter.get('/server', requireServerGetAuth, listServersHandler);
 storageRouter.get('/statistics', requireServerGetAuth, getGlobalStatisticsHandler);
+storageRouter.get('/player/:uid/history', requireServerGetAuth, getPlayerServerHistoryHandler);
 storageRouter.post('/server/refresh-query-data', requireAuth, refreshServerQueryDataHandler);
 storageRouter.get('/server/:id/live', requireServerGetAuth, getServerLiveStatusHandler);
 storageRouter.get('/server/:id/statistics', requireServerGetAuth, getServerStatisticsHandler);

@@ -23,6 +23,7 @@ interface ProducerMetadata {
   generatedTileBounds?: unknown;
   updatedAt?: unknown;
   tileUrl?: unknown;
+  satelliteTileUrl?: unknown;
 }
 
 export async function getServerMap(
@@ -94,6 +95,7 @@ async function getRemoteRendererServerMap(
     const producer = JSON.parse(await readBoundedBody(response)) as ProducerMetadata;
     const metadata = validateRendererMetadata(producer, serverId, undefined);
     metadata.tileUrl = `${metadataUrl.origin}${producer.tileUrl as string}`;
+    if (metadata.satelliteTileUrl) metadata.satelliteTileUrl = `${metadataUrl.origin}${producer.satelliteTileUrl as string}`;
     return { available: true, metadata };
   } catch {
     return { available: false };
@@ -142,7 +144,11 @@ function validateRendererMetadata(
     typeof value.updatedAt !== 'string' ||
     Number.isNaN(Date.parse(value.updatedAt)) ||
     typeof value.tileUrl !== 'string' ||
-    !value.tileUrl.startsWith(`/${expectedServerId}/`)
+    !value.tileUrl.startsWith(`/${expectedServerId}/`) ||
+    (value.satelliteTileUrl !== undefined && (
+      typeof value.satelliteTileUrl !== 'string' ||
+      !value.satelliteTileUrl.startsWith(`/${expectedServerId}/satellite/`)
+    ))
   ) {
     throw new Error('Invalid renderer map metadata');
   }
@@ -162,6 +168,9 @@ function validateRendererMetadata(
     generatedTileBounds: value.generatedTileBounds,
     updatedAt: value.updatedAt,
     tileUrl: publicRendererTileUrl(value.tileUrl, publicTileRootUrl),
+    ...(typeof value.satelliteTileUrl === 'string'
+      ? { satelliteTileUrl: publicRendererTileUrl(value.satelliteTileUrl, publicTileRootUrl) }
+      : {}),
   };
 }
 

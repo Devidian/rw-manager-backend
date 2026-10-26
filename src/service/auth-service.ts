@@ -21,32 +21,8 @@ import type { PrivateUser } from '../interfaces/app-user.js';
 import type { ValidateUserResponse } from '../dto/validate-user-response.js';
 import { mapPrivateUserToDto } from '../mapper/user-mapper.js';
 import { defaultLogger } from '../utils/logger.js';
-
-function resolveOpenId(body: SteamAuthRequest): string {
-  const claimed =
-    body.openId ?? body['openid.claimed_id'] ?? body['openid.identity'];
-  return typeof claimed === 'string' ? claimed.trim() : '';
-}
-
-function parseSteamId(body: SteamAuthRequest): string {
-  const openId = resolveOpenId(body);
-  if (!openId) {
-    throw new Error('OPEN_ID_REQUIRED');
-  }
-
-  const steamIdMatch = openId.match(/\/openid\/id\/(\d+)(?:\/)?$/);
-  const normalizedSteamId = normalizeSteamId(steamIdMatch?.[1]);
-  if (!normalizedSteamId) {
-    throw new Error('OPEN_ID_INVALID');
-  }
-  return normalizedSteamId;
-}
-
-function steamUsername(body: SteamAuthRequest): string | undefined {
-  if (typeof body.steamUsername !== 'string') return undefined;
-  const username = body.steamUsername.trim();
-  return username || undefined;
-}
+import { getSteamPersonaName } from './steam-profile-service.js';
+import { verifySteamOpenId } from './steam-openid-service.js';
 
 async function nextSteamFallbackUsername(steamId: string): Promise<string> {
   const baseUsername = `steam_${steamId}`;
@@ -118,7 +94,7 @@ export async function connectSteam(
   userId: string,
   input: SteamAuthRequest,
 ): Promise<AuthUserTokenResponse> {
-  const steamId = parseSteamId(input);
+  const steamId = await verifySteamOpenId(input);
 
   const existingSteamUser = await findUserBySteamId(steamId);
   const privateUser = existingSteamUser
@@ -150,10 +126,12 @@ export async function disconnectSteam(
 export async function steamSignIn(
   input: SteamAuthRequest,
 ): Promise<AuthUserTokenResponse> {
-  const steamId = parseSteamId(input);
+  const steamId = await verifySteamOpenId(input);
   const existingUser = await findUserBySteamId(steamId);
   const baseUsername = `steam_${steamId}`;
-  const displayName = steamUsername(input);
+  const displayName = !existingUser || existingUser.username === baseUsername
+    ? await getSteamPersonaName(steamId)
+    : undefined;
 
   let user: PrivateUser;
   if (existingUser) {

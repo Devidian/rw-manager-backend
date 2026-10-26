@@ -1,8 +1,10 @@
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
-import { listServers, updateServer } from '../db/manager-store.js';
+import { findServerById, listServers, updateServer } from '../db/manager-store.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
+import { playersFromPluginPayload } from './server-plugin-data-service.js';
+import { mergeKnownPlayers } from './observed-player-service.js';
 import {
   fetchNativePluginList,
   nativePluginRouteId,
@@ -157,6 +159,13 @@ export async function refreshPluginDataForServer(
   const nativeInfo = parseNativeAdminUtilsInfo(data['ozadminutils.info']);
   if (nativeInfo && (server.mapUrl !== nativeInfo.mapUrl || server.adminUid !== nativeInfo.adminUid)) {
     await updateServer(server.id, { mapUrl: nativeInfo.mapUrl, adminUid: nativeInfo.adminUid });
+  }
+  if (data['ozadminutils.playerlist'] !== undefined) {
+    const players = playersFromPluginPayload(data['ozadminutils.playerlist']);
+    if (players.length) {
+      const stored = await findServerById(server.id);
+      await updateServer(server.id, { knownPlayers: mergeKnownPlayers(stored?.knownPlayers ?? server.knownPlayers, players) });
+    }
   }
   data.__onlinePlayers = onlinePlayers ?? server.onlinePlayers;
 

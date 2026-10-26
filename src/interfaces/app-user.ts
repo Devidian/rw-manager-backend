@@ -11,6 +11,7 @@ export interface PublicUser {
   role: UserRole;
   steamId?: string;
   pinnedServers: string[];
+  intercomChannels?: string[];
   createdAt: Date;
   lastSeenAt?: Date;
 }
