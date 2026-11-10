@@ -464,6 +464,18 @@ describe('master-server-list-service', () => {
     expect(writeMock).toHaveBeenCalled();
   });
 
+  test('an in-flight refresh cannot recreate a merged source or record an alias sample', async () => {
+    state.servers = [{ id: 'merged-source', label: 'Source', queryUrl: 'http://source.example',
+      public: true, createdAt: new Date('2026-11-01T00:00:00Z') }];
+    global.fetch = jest.fn().mockImplementation(async () => {
+      state.servers = [];
+      return { ok: false };
+    }) as typeof fetch;
+    await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({ fetched: 1, refreshed: 0 });
+    expect(state.servers).toEqual([]);
+    expect(state.serverStatistics).toEqual([]);
+  });
+
   test('refreshAllServerQueryData reads map configuration from native Admin Utils info', async () => {
     state.servers = [
       {

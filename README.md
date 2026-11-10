@@ -67,6 +67,8 @@ resolve to the canonical record for existing API links but never identify a
 newly observed endpoint on their own. Imported records keep compatibility fields
 such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 `adminUid`, `firstSeen`, `lastSeen`, `data`, and `info` fields.
+In-flight refreshes update existing records without recreating sources removed
+by a confirmed merge.
 
 With `SUPER_ADMIN_ID` configured, `GET /api/storage/server/duplicates` proposes
 strong and possible matches from name, short name, map, game mode, and OS.

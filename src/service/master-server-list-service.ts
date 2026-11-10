@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import {
   findServerByMasterEndpoint,
+  findServerById,
   isReservedServerId,
   listServers,
   removeStaleMasterServers,
@@ -130,7 +131,7 @@ async function fetchMasterServerList(): Promise<MasterServerListResponse | undef
   }
 }
 
-async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolean> {
+async function refreshQueryData(server: ServerConfig, now: Date, requireExisting = false): Promise<boolean> {
   if (!server.queryUrl || !shouldRefreshQueryData(server, now)) return false;
 
   const [data, info, plugins, playerlist] = await Promise.all([
@@ -142,6 +143,9 @@ async function refreshQueryData(server: ServerConfig, now: Date): Promise<boolea
   const nativeInfo = hasNativePluginRoute(plugins, 'oz---admin-utils')
     ? await fetchNativePluginJson(server, new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString())
     : { ok: false as const, error: 'PLUGIN_NOT_EXPOSED' };
+
+  // A merge may remove this source while its network requests are in flight.
+  if (requireExisting && (await findServerById(server.id))?.id !== server.id) return false;
 
   server.status = data.ok ? 'online' : 'offline';
   server.lastChecked = now;
@@ -231,6 +235,7 @@ async function runMasterServerListRefresh(options: {
       if (!ip || port === undefined) continue;
 
       let server = await findServerByMasterEndpoint(ip, port);
+      const allowCreate = !server;
       if (!server) {
         const id = await isReservedServerId(serverId) ? randomUUID() : serverId;
         server = {
@@ -255,11 +260,11 @@ async function runMasterServerListRefresh(options: {
       }
 
       applyMasterEntry(server, entry, now);
-      const queryRefreshed = options.refreshQueryData && await refreshQueryData(server, now);
+      const queryRefreshed = options.refreshQueryData && await refreshQueryData(server, now, !allowCreate);
       if (queryRefreshed) {
         refreshed += 1;
       }
-      await saveMasterServer(server);
+      await saveMasterServer(server, allowCreate);
       if (queryRefreshed) publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
     }
 
@@ -308,7 +313,7 @@ export async function refreshAllServerQueryData(): Promise<MasterServerListSyncR
     let refreshed = 0;
     const servers = await listServers();
     for (const server of servers) {
-      if (await refreshQueryData(server, now)) {
+      if (await refreshQueryData(server, now, true)) {
         refreshed += 1;
         await saveServer(server);
         publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));

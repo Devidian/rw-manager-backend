@@ -145,35 +145,37 @@ export async function addServer(
     userId,
     createdAt: new Date(),
   };
-  await saveServer(server);
+  await saveServer(server, true);
   return server;
 }
 
-export async function saveServer(server: ServerConfig): Promise<ServerConfig> {
+export async function saveServer(server: ServerConfig, allowCreate = false): Promise<ServerConfig> {
   const mongo = getMongoCollections();
   if (mongo) {
     const { connectorCredential: _credential, ...fields } = server;
-    await mongo.servers.updateOne({ id: server.id }, { $set: fields }, { upsert: true });
+    await mongo.servers.updateOne({ id: server.id }, { $set: fields }, { upsert: allowCreate });
     return server;
   }
   const index = db.data.servers.findIndex((entry) => entry.id === server.id);
   if (index >= 0) {
     const { connectorCredential: _credential, ...fields } = server;
     db.data.servers[index] = { ...db.data.servers[index], ...fields };
-  } else {
+  } else if (allowCreate) {
     db.data.servers.push(server);
+  } else {
+    return server;
   }
   await db.write();
   return server;
 }
 
-export async function saveMasterServer(server: ServerConfig): Promise<ServerConfig> {
-  if (!server.ip || !Number.isFinite(server.port)) return saveServer(server);
+export async function saveMasterServer(server: ServerConfig, allowCreate = true): Promise<ServerConfig> {
+  if (!server.ip || !Number.isFinite(server.port)) return saveServer(server, allowCreate);
 
   const mongo = getMongoCollections();
   if (mongo) {
     const { connectorCredential: _credential, ...fields } = server;
-    await mongo.servers.updateOne({ ip: server.ip, port: server.port }, { $set: fields }, { upsert: true });
+    await mongo.servers.updateOne({ ip: server.ip, port: server.port }, { $set: fields }, { upsert: allowCreate });
     return server;
   }
 
@@ -183,8 +185,10 @@ export async function saveMasterServer(server: ServerConfig): Promise<ServerConf
   if (index >= 0) {
     const { connectorCredential: _credential, ...fields } = server;
     db.data.servers[index] = { ...db.data.servers[index], ...fields };
-  } else {
+  } else if (allowCreate) {
     db.data.servers.push(server);
+  } else {
+    return server;
   }
   await db.write();
   return server;

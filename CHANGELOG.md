@@ -1,5 +1,6 @@
 ## Unreleased
 
+- prevent stale query-refresh snapshots from recreating merged source records.
 - prefer online evidence and retain player UIDs when duplicate statistics overlap; record alias samples under the canonical ID.
 - exclude default-named and entirely offline duplicate candidate groups.
 - propose master-list server duplicates for super-admin review and merge selected entries into the earliest observed server ID.

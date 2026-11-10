@@ -225,6 +225,15 @@ describe('manager-store', () => {
     expect(JSON.parse(JSON.stringify(state.servers))[0].connectorCredential).toBe('encrypted-original');
   });
 
+  test('stale snapshots do not recreate a server deleted by a merge', async () => {
+    const stale = server({ id: 'merged-source', ip: '192.0.2.1', port: 4255 });
+    state.servers.push(stale);
+    await store.removeServer(stale.id);
+    await store.saveServer(stale);
+    await store.saveMasterServer(stale, false);
+    expect(state.servers).toEqual([]);
+  });
+
   test('resets only the credential that was rejected', async () => {
     state.servers.push(server({ id: 'paired', connectorCredential: 'encrypted-original' }));
     expect(await store.resetServerConnectorCredential('paired', 'replacement')).toBe(false);
@@ -277,6 +286,10 @@ describe('manager-store', () => {
       ip: '127.0.0.1',
       port: 4255,
     }));
+    await store.saveServer(server({ id: 'stale' }));
+    expect(collections.servers.updateOne).toHaveBeenLastCalledWith(
+      { id: 'stale' }, expect.anything(), { upsert: false },
+    );
     await store.removeServer('mongo-server');
 
     await expect(store.listUsers()).resolves.toEqual([

@@ -61,3 +61,8 @@ the backend alone does not recreate deleted source records or statistic buckets.
 - Recover this one confirmed merge from the pre-merge backup with
   `scripts/repair-merged-server-statistics-20261110.js`. Preview first, create
   a fresh backup, apply in a transaction, then verify hour and alias counts.
+- Six removed source records were recreated by a long-running refresh that had
+  loaded them before the merge. Existing snapshots now save without upsert;
+  clean up these confirmed alias records after deploying backend RC.3. The same
+  refresh emitted further alias samples, so rerun the statistics repair before
+  removing those records.
