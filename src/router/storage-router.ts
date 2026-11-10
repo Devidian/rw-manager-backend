@@ -23,11 +23,27 @@ import { getAllPlayersHandler } from '../handler/get-all-players-handler.js';
 import { getServerConfigHandler } from '../handler/get-server-config-handler.js';
 import { getServerAdminListHandler } from '../handler/get-server-admin-list-handler.js';
 import { setServerBlockedHandler } from '../handler/set-server-blocked-handler.js';
+import { listServerDuplicatesHandler, mergeServersHandler, previewServerMergeHandler, resolveServerIdHandler } from '../handler/server-duplicate-handler.js';
+import { resolveServerId } from '../service/server-duplicate-service.js';
 import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
 import { getPlayerServerHistoryHandler } from '../handler/get-player-server-history-handler.js';
 
 const storageRouter = Router();
+
+// Canonicalize former server IDs for existing REST routes without changing their contracts.
+storageRouter.use(async (req, res, next) => {
+  const match = /^\/server\/([^/?]+)(?=\/|\?|$)/.exec(req.url);
+  if (!match || ['duplicates', 'merge', 'refresh-query-data'].includes(match[1])) return next();
+  try {
+    const requested = decodeURIComponent(match[1]);
+    const canonical = await resolveServerId(requested);
+    if (canonical && canonical !== requested) {
+      req.url = req.url.replace(match[1], encodeURIComponent(canonical));
+    }
+    next();
+  } catch (error) { next(error); }
+});
 
 const noAuth: RequestHandler = (_req, _res, next) => next();
 const requireServerGetAuth =
@@ -68,10 +84,15 @@ storageRouter.post('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAut
 storageRouter.delete('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, unpinServerHandler);
 
 if (AppConfig.superAdminId) {
+  storageRouter.get('/server/duplicates', requireAuth, listServerDuplicatesHandler);
+  storageRouter.post('/server/merge/preview', requireAuth, previewServerMergeHandler);
+  storageRouter.post('/server/merge', requireAuth, mergeServersHandler);
   storageRouter.patch('/server/:id/blocked', requireAuth, setServerBlockedHandler);
   storageRouter.get('/user', requireAuth, listUsersHandler);
   storageRouter.patch('/user/:id', requireAuth, updateStorageUserHandler);
   storageRouter.delete('/user/:id', requireAuth, deleteStorageUserHandler);
 }
+
+storageRouter.get('/server/:id/resolve', requireServerGetAuth, resolveServerIdHandler);
 
 export default storageRouter;

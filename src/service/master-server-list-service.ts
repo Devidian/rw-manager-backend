@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   findServerByMasterEndpoint,
+  isReservedServerId,
   listServers,
   removeStaleMasterServers,
   replacePinnedServerId,
@@ -230,9 +232,11 @@ async function runMasterServerListRefresh(options: {
 
       let server = await findServerByMasterEndpoint(ip, port);
       if (!server) {
+        const id = await isReservedServerId(serverId) ? randomUUID() : serverId;
         server = {
-          id: serverId,
-          label: serverId,
+          id,
+          label: id,
+          catalogIdPinned: id !== serverId,
           queryUrl,
           public: true,
           createdAt: now,
@@ -241,8 +245,12 @@ async function runMasterServerListRefresh(options: {
         };
         inserted += 1;
       } else {
-        await replacePinnedServerId(server.id, serverId);
-        server.id = serverId;
+        // A merged catalog record retains its oldest identity across refreshes.
+        // Migrate only legacy IDs that have not been deliberately aliased.
+        if (server.id !== serverId && !server.catalogIdPinned) {
+          await replacePinnedServerId(server.id, serverId);
+          server.id = serverId;
+        }
         updated += 1;
       }
 

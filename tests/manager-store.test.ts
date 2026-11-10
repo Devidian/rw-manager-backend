@@ -173,18 +173,25 @@ describe('manager-store', () => {
     expect(state.servers.map((entry) => entry.id)).toEqual(['b']);
   });
 
-  test('prunes only stale master catalog records and their pins, never user-owned records', async () => {
+  test('prunes only unpinned stale master catalog records, never user-owned records', async () => {
     state.servers = [
       server({ id: 'stale-master', ip: '127.0.0.1', port: 4255, userId: undefined, lastSeen: new Date('2026-05-01T00:00:00.000Z') }),
       server({ id: 'boundary-master', ip: '127.0.0.2', port: 4255, userId: undefined, lastSeen: new Date('2026-05-26T00:00:00.000Z') }),
       server({ id: 'manual-server', ip: '127.0.0.3', port: 4255, userId: 'user-1', lastSeen: new Date('2026-05-01T00:00:00.000Z') }),
     ];
-    state.users = [user({ pinnedServers: ['stale-master', 'boundary-master'] })];
+    state.users = [user({ pinnedServers: ['boundary-master'] })];
 
     await expect(store.removeStaleMasterServers(new Date('2026-05-26T00:00:00.000Z')))
       .resolves.toEqual(['stale-master']);
     expect(state.servers.map((entry) => entry.id)).toEqual(['boundary-master', 'manual-server']);
     expect(state.users[0].pinnedServers).toEqual(['boundary-master']);
+  });
+
+  test('retains stale master records while a user pins them', async () => {
+    state.servers = [server({ id: 'pinned-master', ip: '127.0.0.1', port: 4255, userId: undefined, lastSeen: new Date('2026-05-01T00:00:00.000Z') })];
+    state.users = [user({ pinnedServers: ['pinned-master'] })];
+    await expect(store.removeStaleMasterServers(new Date('2026-05-26T00:00:00.000Z'))).resolves.toEqual([]);
+    expect(state.servers).toHaveLength(1);
   });
 
   test('maps users and verifies passwords', () => {
@@ -298,7 +305,7 @@ describe('manager-store', () => {
         find: jest.fn().mockReturnValue({ toArray: jest.fn(async () => [stale]) }),
         deleteMany: jest.fn(async () => undefined),
       },
-      users: { updateMany: jest.fn(async () => undefined) },
+      users: { find: jest.fn().mockReturnValue({ toArray: jest.fn(async () => []) }), updateMany: jest.fn(async () => undefined) },
       serverStatistics: { deleteMany: statisticsDeleteMany },
     };
     getMongoCollectionsMock.mockReturnValue(collections);

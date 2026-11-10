@@ -2,6 +2,8 @@ import { jest } from '@jest/globals';
 
 interface StoredServer {
   id: string;
+  alternateIds?: string[];
+  catalogIdPinned?: boolean;
   steamId?: string;
   ip?: string;
   port?: number;
@@ -167,6 +169,26 @@ describe('master-server-list-service', () => {
       availability: 100,
       onlinePlayerUids: ['player-1'],
     });
+  });
+
+  test('keeps a merged canonical ID on later imports and does not reclaim a reused alias address', async () => {
+    state.servers = [{
+      id: 'oldest', label: 'Oldest', ip: '192.0.2.20', port: 4255,
+      queryUrl: 'http://192.0.2.20:4254', public: true,
+      alternateIds: ['server-f8e7fa9ca73fd4b4943db61a'], catalogIdPinned: true,
+      createdAt: '2026-11-01T00:00:00Z',
+    }];
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => JSON.stringify({ successful: true, data: [
+        { ip: '192.0.2.20', port: 4255, name: 'Oldest' },
+        { ip: '127.0.0.1', port: 4255, name: 'New occupant' },
+      ] }),
+    }) as typeof fetch;
+    await service.refreshMasterServerList();
+    expect(state.servers[0].id).toBe('oldest');
+    expect(state.servers[1].id).not.toBe('server-f8e7fa9ca73fd4b4943db61a');
+    expect(state.servers[1].ip).toBe('127.0.0.1');
   });
 
   test('refreshMasterServerList merges existing servers and skips fresh query metadata', async () => {

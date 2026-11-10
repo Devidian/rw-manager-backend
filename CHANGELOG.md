@@ -1,5 +1,8 @@
 ## Unreleased
 
+- propose master-list server duplicates for super-admin review and merge selected entries into the earliest observed server ID.
+- preserve former server IDs for links, favorites, and import identity while guarding against reused IP addresses.
+
 - resolve Steam persona names on the backend and verify signed Steam OpenID callbacks before issuing sessions.
 - expose cached public player-server history with available playtime and optional satellite map metadata.
 - record successful account presence as an additive user timestamp for administrator views.

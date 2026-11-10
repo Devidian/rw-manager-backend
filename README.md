@@ -59,10 +59,23 @@ MAP_RECENT_PLAYER_DAYS=7
 ## Storage Server List
 
 When `ENABLE_STORAGE=true`, the backend refreshes the public Rising World
-master server list and stores the merged server records in MongoDB. The master-list `steamid` is used as the stable
-server id for imported servers. Imported records keep compatibility fields
+master server list and stores server records in MongoDB. New catalog IDs are
+derived from the master-list IP and game port. An admin-confirmed duplicate
+merge preserves the oldest ID and stores former IDs in `alternateIds`; subsequent
+imports keep that canonical ID when the current endpoint matches. Former IDs
+resolve to the canonical record for existing API links but never identify a
+newly observed endpoint on their own. Imported records keep compatibility fields
 such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 `adminUid`, `firstSeen`, `lastSeen`, `data`, and `info` fields.
+
+With `SUPER_ADMIN_ID` configured, `GET /api/storage/server/duplicates` proposes
+strong and possible matches from name, short name, map, game mode, and OS.
+`POST /api/storage/server/merge/preview` and `POST /api/storage/server/merge`
+accept `{ "targetId": "oldest-id", "sourceIds": ["newer-id"] }` and require that
+Steam super-admin. Merge writes require a MongoDB replica set for transactions.
+Back up MongoDB before the first production merge. Overlapping statistic hours
+retain the bucket with the most samples; former server links resolve through
+`GET /api/storage/server/:id/resolve`.
 
 ```text
 MASTER_SERVER_LIST_URL=https://api.rising-world.net/v5/serverlist

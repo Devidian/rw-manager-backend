@@ -106,10 +106,14 @@ export async function listServers(): Promise<ServerConfig[]> {
 export async function findServerById(id: string): Promise<ServerConfig | undefined> {
   const mongo = getMongoCollections();
   if (mongo) {
-    const server = await mongo.servers.findOne({ id }, { projection: { _id: 0 } });
+    const server = await mongo.servers.findOne({ $or: [{ id }, { alternateIds: id }] }, { projection: { _id: 0 } });
     return server ? stripMongoId(server) as ServerConfig : undefined;
   }
-  return db.data.servers.find((server) => server.id === id);
+  return db.data.servers.find((server) => server.id === id || server.alternateIds?.includes(id));
+}
+
+export async function isReservedServerId(id: string): Promise<boolean> {
+  return (await findServerById(id)) !== undefined;
 }
 
 export async function findServerByMasterEndpoint(
@@ -288,13 +292,14 @@ export async function removeServer(id: string): Promise<void> {
 }
 
 /**
- * Removes only stale, master-list-owned catalog records. User-owned servers
- * and all historical statistics remain intact; user pins are pruned with the
- * catalog record so they cannot point at a deleted endpoint.
+ * Removes stale, unpinned master-list records. Pinned records stay available
+ * for later reconciliation; historical statistics are retained.
  */
 export async function removeStaleMasterServers(cutoff: Date): Promise<string[]> {
+  // A pinned offline record must remain available for later admin reconciliation.
+  const pinned = new Set((await listUsers()).flatMap((user) => user.pinnedServers ?? []));
   const isStaleMasterServer = (server: ServerConfig): boolean => {
-    if (!server.public || server.userId || !server.ip || !Number.isFinite(server.port)) return false;
+    if (!server.public || server.userId || !server.ip || !Number.isFinite(server.port) || pinned.has(server.id)) return false;
     const lastSeen = new Date(server.lastSeen ?? server.createdAt).getTime();
     return Number.isFinite(lastSeen) && lastSeen < cutoff.getTime();
   };

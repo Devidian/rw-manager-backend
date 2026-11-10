@@ -13,6 +13,10 @@ export interface MongoCollections {
   serverStatistics: Collection<ServerStatisticsBucket & Document>;
 }
 
+export function getMongoClient(): MongoClient | undefined {
+  return client;
+}
+
 interface LegacyJsonData {
   servers?: ServerConfig[];
   users?: JsonDbUser[];
@@ -299,6 +303,7 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
 
   await Promise.all([
     next.servers.createIndex({ id: 1 }, { unique: true }),
+    next.servers.createIndex({ alternateIds: 1 }, { unique: true, sparse: true }),
     next.servers.createIndex(
       { ip: 1, port: 1 },
       {

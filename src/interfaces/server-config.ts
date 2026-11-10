@@ -2,6 +2,9 @@ import type { DbPlayer } from './game-player.js';
 
 export interface ServerConfig {
   id: string;
+  /** Former catalog IDs; never used alone to identify a newly observed endpoint. */
+  alternateIds?: string[];
+  catalogIdPinned?: boolean;
   label: string;
   steamId?: string;
   addr?: string;
@@ -19,6 +22,8 @@ export interface ServerConfig {
   /** A user-managed query URL must not be replaced by the master-list default. */
   queryUrlExplicit?: boolean;
   mapUrl?: string;
+  /** Renderer identity may predate a catalog merge. */
+  mapSourceId?: string;
   backendUrl?: string; // Deprecated game-backend URL retained for stored legacy records.
   data?: unknown;
   info?: unknown;
