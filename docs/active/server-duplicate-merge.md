@@ -66,3 +66,22 @@ the backend alone does not recreate deleted source records or statistic buckets.
   clean up these confirmed alias records after deploying backend RC.3. The same
   refresh emitted further alias samples, so rerun the statistics repair before
   removing those records.
+
+## RC.3 acceptance evidence (2026-11-10)
+
+- Backend `v0.9.0-rc.3` (`4497934`) passed 50 suites/235 tests, coverage and
+  GitHub CI; Docker Publish succeeded. Public digest:
+  `sha256:24034bf2c31b37bf6b732adb0c79c73ee7f0f2223c3dc9bebf5a56ebe4863490`.
+- Fresh backup before alias cleanup:
+  `/docker/apps/private/backups/rw-manager.pre-alias-cleanup.20261110T141939Z.archive.gz`
+  (SHA-256 `40b4919ce5592b9e5d6bae15a7bb57d7c15d0c5de51e9e3a51efccc02740b56b`);
+  Compose backup has the same timestamp. Archive passed `gzip -t`.
+- On `strato.V80`, backend RC.3 and frontend RC.2 are healthy with zero restarts.
+  The corrected history has 455 hours, 436 with online evidence, and one
+  distinct observed player UID. Six stale alias records were removed after
+  confirming no pinned users or remaining alias statistic buckets.
+- Public old-ID statistics resolve to the canonical ID with 455 buckets;
+  duplicate page returned 200 and unauthenticated duplicate API returned 401.
+- The cleanup script on `main` was corrected after the RC.3 tag for a mongosh
+  optional-chaining incompatibility; the corrected script was previewed and
+  applied successfully. The RC.3 runtime image is unaffected.

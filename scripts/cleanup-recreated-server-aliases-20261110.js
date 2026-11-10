@@ -11,13 +11,13 @@ const expectedIds = [
   'server-f5322101fab0ec107c5b37c5',
 ];
 const target = database.servers.findOne({ id: targetId });
-if (!target || !expectedIds.every((id) => target.alternateIds?.includes(id))) {
+if (!target || !Array.isArray(target.alternateIds) || !expectedIds.every((id) => target.alternateIds.includes(id))) {
   throw new Error('Expected aliases are missing from the canonical server');
 }
 const records = database.servers.find({ id: { $in: expectedIds } }).toArray();
 if (records.length !== expectedIds.length || records.some((record) =>
   record.status !== 'offline' || new Date(record.lastSeen).getTime() > Date.parse('2026-11-10T08:47:09Z')
-  || (record.knownPlayers?.length ?? 0) > 0)) {
+  || (Array.isArray(record.knownPlayers) && record.knownPlayers.length > 0))) {
   throw new Error('Alias records changed or are not the expected stale records');
 }
 if (database.users.countDocuments({ pinnedServers: { $in: expectedIds } }) > 0
