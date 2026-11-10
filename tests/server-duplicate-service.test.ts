@@ -4,7 +4,7 @@ import type { ServerConfig } from '../src/interfaces/server-config.js';
 function server(id: string, firstSeen: string, name = 'Server', overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
     id, label: id, name, ip: `192.0.2.${id.length}`, port: 4255,
-    queryUrl: 'http://query.example', public: true,
+    queryUrl: 'http://query.example', public: true, status: 'online',
     createdAt: new Date(firstSeen), firstSeen,
     data: { name, map: 'World', gamemode: 0, os: 'Linux' },
     info: { shortname: 'Short' }, ...overrides,
@@ -52,6 +52,15 @@ describe('server duplicate candidates', () => {
       server('bad-mode', '2026-11-02T00:00:00Z', 'Server', { data: { name: 'Server', map: 'World', gamemode: '0', os: 'Linux' } }),
       server('bad-os', '2026-11-02T00:00:00Z', 'Server', { data: { name: 'Server', map: 'World', gamemode: 0, os: '' } }),
       server('hidden', '2026-11-02T00:00:00Z', 'Server', { public: false }),
+    ])).toEqual([]);
+  });
+
+  test('hides default names and groups without an online instance', () => {
+    expect(duplicateGroups([
+      server('default-a', '2026-11-01T00:00:00Z', '<color=#ff0>Default Rising World Server</color>'),
+      server('default-b', '2026-11-02T00:00:00Z', 'Default Rising World Server'),
+      server('offline-a', '2026-11-01T00:00:00Z', 'Other', { status: 'offline' }),
+      server('offline-b', '2026-11-02T00:00:00Z', 'Other', { status: 'offline' }),
     ])).toEqual([]);
   });
 });

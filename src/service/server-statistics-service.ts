@@ -32,12 +32,12 @@ export async function getServerStatistics(params: {
   }
 
   const buckets = await listServerStatisticsBuckets({
-    serverId: params.serverId,
+    serverId: server.id,
     from,
     to,
   });
   return {
-    serverId: params.serverId,
+    serverId: server.id,
     from: from?.toISOString(),
     to: to?.toISOString(),
     buckets,

@@ -70,11 +70,12 @@ such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 
 With `SUPER_ADMIN_ID` configured, `GET /api/storage/server/duplicates` proposes
 strong and possible matches from name, short name, map, game mode, and OS.
+Default-named records and groups without an online instance are excluded.
 `POST /api/storage/server/merge/preview` and `POST /api/storage/server/merge`
 accept `{ "targetId": "oldest-id", "sourceIds": ["newer-id"] }` and require that
 Steam super-admin. Merge writes require a MongoDB replica set for transactions.
 Back up MongoDB before the first production merge. Overlapping statistic hours
-retain the bucket with the most samples; former server links resolve through
+retain the strongest online observation and all observed player UIDs; former server links resolve through
 `GET /api/storage/server/:id/resolve`.
 
 ```text

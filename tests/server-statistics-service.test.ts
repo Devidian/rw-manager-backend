@@ -92,6 +92,12 @@ describe('server statistics service', () => {
       from: 'not-a-date',
     })).rejects.toThrow('FROM_INVALID');
   });
+
+  test('loads an alias history through the canonical server ID', async () => {
+    findServerByIdMock.mockResolvedValueOnce({ id: 'canonical', alternateIds: ['old'] });
+    await expect(getServerStatistics({ serverId: 'old' })).resolves.toMatchObject({ serverId: 'canonical' });
+    expect(listServerStatisticsBucketsMock).toHaveBeenCalledWith({ serverId: 'canonical', from: undefined, to: undefined });
+  });
 });
 
 function bucket(serverId: string, onlinePlayerUids: string[]) {

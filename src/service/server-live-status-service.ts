@@ -360,7 +360,7 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
     .then(async (response) => {
       await persistLiveStatus(server, response);
       await recordServerStatisticsSample({
-        serverId,
+        serverId: server.id,
         sampledAt: new Date(response.lastChecked),
         online: response.status === 'online',
         playerCount: playerCountFromLiveStatus(response),

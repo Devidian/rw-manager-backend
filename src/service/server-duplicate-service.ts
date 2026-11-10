@@ -7,6 +7,7 @@ import { defaultLogger } from '../utils/logger.js';
 import { mergeKnownPlayers } from './observed-player-service.js';
 import { clearServerLiveStatusCacheEntry } from './server-live-status-service.js';
 import { closeGameConnectorSession } from './game-connector-websocket-service.js';
+import { mergeServerStatisticsBuckets } from './server-statistics-merge.js';
 
 export interface DuplicateEntry {
   id: string;
@@ -46,6 +47,10 @@ function fields(server: ServerConfig): Omit<DuplicateEntry, 'id' | 'ip' | 'port'
 }
 
 function normalized(value: string): string { return value.normalize('NFKC').trim().toLocaleLowerCase('en-US'); }
+function plainName(value: string): string {
+  return value.replace(/<\/?(?:b|color(?:=[^>]*)?|align(?:=[^>]*)?)>/gi, '').trim();
+}
+function isDefaultName(value: string): boolean { return normalized(plainName(value)) === 'default rising world server'; }
 function key(value: ReturnType<typeof fields>): string {
   return value ? JSON.stringify([normalized(value.shortname), normalized(value.map), value.gamemode, normalized(value.os)]) : '';
 }
@@ -72,11 +77,11 @@ export function duplicateGroups(servers: ServerConfig[]): DuplicateGroup[] {
   for (const server of servers) {
     if (!isCatalog(server)) continue;
     const value = fields(server);
-    if (!value) continue;
+    if (!value || isDefaultName(value.name)) continue;
     const groupKey = key(value);
     groups.set(groupKey, [...(groups.get(groupKey) ?? []), server]);
   }
-  return [...groups.values()].filter((group) => group.length > 1).map((group) => {
+  return [...groups.values()].filter((group) => group.length > 1 && group.some((server) => server.status === 'online')).map((group) => {
     const sorted = group.sort(oldest);
     const targetName = fields(sorted[0])!.name;
     return { targetId: sorted[0].id, entries: sorted.map((server) => entry(server, targetName)) };
@@ -155,19 +160,11 @@ export async function mergeServers(selection: MergeSelection, steamId: string): 
       if (!current.mapUrl) merged.mapUrl = target.mapUrl;
 
       const buckets = await mongo.serverStatistics.find({ serverId: { $in: ids } }, { session }).toArray();
-      const byHour = new Map<string, ServerStatisticsBucket>();
-      for (const bucket of buckets) {
-        const previous = byHour.get(bucket.hourStart);
-        if (!previous || bucket.sampleCount > previous.sampleCount
-          || (bucket.sampleCount === previous.sampleCount && bucket.updatedAt > previous.updatedAt)) byHour.set(bucket.hourStart, bucket);
-      }
+      const mergedBuckets = mergeServerStatisticsBuckets(target.id, buckets as ServerStatisticsBucket[]);
       const users = await mongo.users.find({ pinnedServers: { $in: ids } }, { session }).toArray();
       await mongo.servers.deleteMany({ id: { $in: selection.sourceIds } }, { session });
       await mongo.servers.replaceOne({ id: target.id }, merged, { session });
       await mongo.serverStatistics.deleteMany({ serverId: { $in: ids } }, { session });
-      const mergedBuckets = [...byHour.values()].map((bucket) => ({
-        ...bucket, id: `${target.id}:${bucket.hourStart}`, serverId: target.id,
-      }));
       if (mergedBuckets.length) await mongo.serverStatistics.insertMany(mergedBuckets, { session });
       for (const user of users) {
         const pins = [...new Set((user.pinnedServers ?? []).map((id) => ids.includes(id) ? target.id : id))];

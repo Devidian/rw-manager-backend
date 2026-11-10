@@ -10,11 +10,13 @@ candidate API, canonical ID aliases, import behavior, and MongoDB merge.
 ## Constraints and decisions
 
 - Candidates need complete name, short name, map, game mode, and OS data.
+- Hide default-named records and candidate groups with no currently online
+  instance. Keep rich name tags for display in the frontend.
 - Only the Steam super-admin may preview or merge public master-list records.
 - `alternateIds` resolve old links but do not prove that a later occupant of an
   old IP address is the same server.
 - The current endpoint supplies live fields; overlapping statistic hours keep
-  the bucket with the highest sample count, then latest update time.
+  the strongest online evidence, while retaining player IDs from all buckets.
 - A MongoDB transaction is required for a merge. Back up before Production use.
 
 ## Checklist
@@ -47,3 +49,15 @@ the backend alone does not recreate deleted source records or statistic buckets.
 - MongoDB archive: `/docker/apps/private/backups/rw-manager.pre-manager-duplicates-rc.20261110T084709Z.archive.gz`,
   SHA-256 `cb014785735a64adb0a2a62a38bb061891c50ea2cb591065b570e07ea07e2047`;
   Compose backup has the same timestamp. The archive passed `gzip -t`.
+
+## Follow-up correction
+
+- A live merge of `server-bde398bff6ffa12d58aa4b01` exposed that selecting
+  the largest bucket favored stale offline endpoints. The pre-merge backup
+  contains 4,575 buckets across 20 IDs; 430 of 450 distinct hours have online
+  evidence. The RC.1 result retained only 41 online samples.
+- Select the highest online availability per hour, retain observed player UIDs,
+  and record future alias requests under the canonical ID.
+- Recover this one confirmed merge from the pre-merge backup with
+  `scripts/repair-merged-server-statistics-20261110.js`. Preview first, create
+  a fresh backup, apply in a transaction, then verify hour and alias counts.

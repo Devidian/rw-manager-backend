@@ -4,11 +4,11 @@ import type { ServerStatisticsBucket } from '../src/interfaces/server-statistics
 
 const old: ServerConfig = {
   id: 'old', label: 'Original', ip: '192.0.2.1', port: 4255, queryUrl: 'http://192.0.2.1:4254',
-  public: true, createdAt: new Date('2026-11-01T00:00:00Z'), firstSeen: '2026-11-01T00:00:00Z', lastSeen: '2026-11-01T01:00:00Z',
+  public: true, status: 'offline', createdAt: new Date('2026-11-01T00:00:00Z'), firstSeen: '2026-11-01T00:00:00Z', lastSeen: '2026-11-01T01:00:00Z',
   data: { name: 'Server', map: 'World', gamemode: 0, os: 'Linux' }, info: { shortname: 'Short' },
 };
 const newer: ServerConfig = {
-  ...old, id: 'new', label: 'New', ip: '192.0.2.2', queryUrl: 'http://192.0.2.2:4254',
+  ...old, id: 'new', label: 'New', status: 'online', ip: '192.0.2.2', queryUrl: 'http://192.0.2.2:4254',
   createdAt: new Date('2026-11-02T00:00:00Z'), firstSeen: '2026-11-02T00:00:00Z', lastSeen: '2026-11-02T01:00:00Z',
   data: { name: 'Renamed', map: 'World', gamemode: 0, os: 'Linux' },
 };
