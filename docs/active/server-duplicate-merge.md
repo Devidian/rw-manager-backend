@@ -22,13 +22,28 @@ candidate API, canonical ID aliases, import behavior, and MongoDB merge.
 - [x] Add candidate matching, preview, merge, alias resolution, and import rules.
 - [x] Keep pinned stale catalog entries available for reconciliation.
 - [x] Cover matching, import identity, pins, history collision, and permissions.
-- [ ] Validate the complete flow against Development MongoDB and real duplicate
-  records, including the renderer and game connector.
-- [ ] Take a Production backup and obtain a separate rollout decision before
-  enabling the feature there.
+- [x] Pass 49 suites, 228 tests, coverage gate, build and GitHub CI; publish
+  `v0.9.0-rc.1` and deploy backend before frontend to the authorized public
+  Manager instance.
+- [x] Back up the public MongoDB and Compose before rollout; verify MongoDB
+  replica-set status, container health, restart count and protected API route.
+- [ ] Review real candidate groups and a confirmed merge in the browser,
+  including renderer and game connector behavior after the first merge.
 
 ## Validation and rollback
 
 Run focused Jest tests and `yarn build`; run the frontend checks in its own
 checkout. For a wrong merge, restore the pre-merge MongoDB backup. Reverting
 the backend alone does not recreate deleted source records or statistic buckets.
+
+## RC deployment evidence (2026-11-10)
+
+- Commit `e989726f3a6ea71ae8286c34f32051938a97662e`; CI run `42784969840`
+  and Docker Publish run `42785156396` succeeded.
+- Public Manager backend image `devidian/rw-manager-backend:0.9.0-rc.1`
+  resolved to `sha256:8ac6fbf2d35426c225867a6edd56f4a21661a0d30e38bf9dda8148c2810462fa`.
+- `rw-manager-backend-prod` on `strato.V80` is healthy with zero restarts;
+  internal `/health` returned 200 and unauthenticated duplicate API returned 401.
+- MongoDB archive: `/docker/apps/private/backups/rw-manager.pre-manager-duplicates-rc.20261110T084709Z.archive.gz`,
+  SHA-256 `cb014785735a64adb0a2a62a38bb061891c50ea2cb591065b570e07ea07e2047`;
+  Compose backup has the same timestamp. The archive passed `gzip -t`.
