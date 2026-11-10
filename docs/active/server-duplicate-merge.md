@@ -85,3 +85,6 @@ the backend alone does not recreate deleted source records or statistic buckets.
 - The cleanup script on `main` was corrected after the RC.3 tag for a mongosh
   optional-chaining incompatibility; the corrected script was previewed and
   applied successfully. The RC.3 runtime image is unaffected.
+- Several minutes after cleanup: one canonical record, zero alias records,
+  zero alias buckets, 455 history hours and 436 online hours. The temporary
+  audit database was removed; both MongoDB archives remain on the host.
