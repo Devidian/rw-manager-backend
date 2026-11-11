@@ -51,6 +51,33 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.9.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.8.0...rw-manager-backend-v0.9.0) (2026-11-11)
+
+
+### Added
+
+* add admin-reviewed server duplicate merging ([e989726](https://github.com/Devidian/rw-manager-backend/commit/e989726f3a6ea71ae8286c34f32051938a97662e))
+
+
+### Fixed
+
+* preserve online history when merging server duplicates ([ee04c6d](https://github.com/Devidian/rw-manager-backend/commit/ee04c6d5848dfb3158431a50f954459ff2a24005))
+* prevent merged server records from returning during refresh ([4497934](https://github.com/Devidian/rw-manager-backend/commit/4497934835bde4f47d7733b191b846ed47bf4bc6))
+
+
+### Documentation
+
+* prepare Manager backend 0.9.0 stable release ([0d57ab5](https://github.com/Devidian/rw-manager-backend/commit/0d57ab5f564bba77de06292c3e8f0fa86de1006f))
+* record backend RC rollout evidence ([7d02ff8](https://github.com/Devidian/rw-manager-backend/commit/7d02ff89cbe8f1943491bf6370a688f21e0da9e9))
+* record duplicate repair acceptance and fix cleanup script ([622303c](https://github.com/Devidian/rw-manager-backend/commit/622303c9608b246245b5c9469fe06c62a37edb11))
+* record final alias cleanup verification ([573a8a5](https://github.com/Devidian/rw-manager-backend/commit/573a8a5de69e78115278467d2fa480fc725d655c))
+
+
+### Build
+
+* publish backend images from stable v tags ([949415b](https://github.com/Devidian/rw-manager-backend/commit/949415b7d557553ec1c62ee8978ab7f35d1395e6))
+* publish stable Manager backend Docker tags ([b710308](https://github.com/Devidian/rw-manager-backend/commit/b710308e4f1e8e0868f305726ad8c395d910d005))
+
 ## [0.8.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.7.0...rw-manager-backend-v0.8.0) (2026-10-26)
 
 
