@@ -8,6 +8,7 @@ import { getStoredServerLiveStatus } from './server-live-status-service.js';
 import { subscribeServerLiveUpdates } from './server-live-update-service.js';
 import { startWebSocketHeartbeat } from './websocket-heartbeat-service.js';
 import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
+import { maskPublicSteamIds } from './public-steam-id-service.js';
 
 interface SubscribeMessage {
   type: 'server.status.subscribe' | 'server.status.set-servers';
@@ -17,6 +18,7 @@ interface SubscribeMessage {
 }
 
 interface SubscriberState {
+  authenticated: boolean;
   serverIds: Set<string>;
   snapshots: Map<string, ServerLiveStatusResponse>;
   sequence: number;
@@ -44,6 +46,7 @@ export function attachServerStatusLiveService(server: HttpServer): ServerStatusL
 
   webSocketServer.on('connection', (socket) => {
     let subscribed = false;
+    let authenticated = false;
     let updates = Promise.resolve();
     const subscribeTimeout = setTimeout(
       () => closeWithError(socket, 'subscribe_timeout'),
@@ -53,9 +56,13 @@ export function attachServerStatusLiveService(server: HttpServer): ServerStatusL
     socket.on('message', (data) => {
       updates = updates.then(async () => {
         const message = parseServerStatusSubscribeMessage(data, subscribed);
-        if (!subscribed) await authorize(message.token);
-        const snapshotItems = await snapshotItemsFor(message.serverIds);
+        if (!subscribed) authenticated = await authorize(message.token);
+        const snapshotItems = (await snapshotItemsFor(message.serverIds)).map((item) => ({
+          ...item,
+          value: authenticated ? item.value : maskPublicSteamIds(item.value) as ServerLiveStatusResponse,
+        }));
         const state = subscribers.get(socket) ?? {
+          authenticated,
           serverIds: new Set<string>(),
           snapshots: new Map<string, ServerLiveStatusResponse>(),
           sequence: 0,
@@ -101,10 +108,11 @@ export function attachServerStatusLiveService(server: HttpServer): ServerStatusL
   const unsubscribeUpdates = subscribeServerLiveUpdates(({ serverId, value }) => {
     for (const [socket, state] of subscribers) {
       if (!state.serverIds.has(serverId)) continue;
+      const outgoing = state.authenticated ? value : maskPublicSteamIds(value) as ServerLiveStatusResponse;
       const previous = state.snapshots.get(serverId);
-      state.snapshots.set(serverId, value);
+      state.snapshots.set(serverId, outgoing);
       if (!previous) continue;
-      const changes = serverLiveStatusChanges(previous, value);
+      const changes = serverLiveStatusChanges(previous, outgoing);
       if (!Object.keys(changes.changed).length && !changes.removedFields.length) continue;
       state.sequence += 1;
       sendServerStatusChange(socket, {
@@ -193,11 +201,12 @@ export function serverLiveStatusChanges(
   return { changed, removedFields };
 }
 
-async function authorize(token: string | undefined): Promise<void> {
-  const user = token ? await getUserFromBearerToken(`Bearer ${token}`) : null;
+async function authorize(token: string | undefined): Promise<boolean> {
+  const user = AppConfig.enableAuth && token ? await getUserFromBearerToken(`Bearer ${token}`) : null;
   if (AppConfig.enableAuth && AppConfig.forceAuth && !user) {
     throw new ServerStatusProtocolError('unauthorized');
   }
+  return !!user;
 }
 
 async function snapshotItemsFor(

@@ -70,6 +70,12 @@ such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 In-flight refreshes update existing records without recreating sources removed
 by a confirmed merge.
 
+`GET /api/storage/player/:uid/history` requires a valid bearer session even
+when `FORCE_AUTH=false`; it returns HTTP 401 without one. Public storage and
+data JSON responses, plus server-status live WebSocket frames, show guests only
+the first and last digit of 17-digit Steam IDs. Authenticated users retain full
+IDs. When `ENABLE_AUTH=false`, player history remains unavailable.
+
 With `SUPER_ADMIN_ID` configured, `GET /api/storage/server/duplicates` proposes
 strong and possible matches from name, short name, map, game mode, and OS.
 Default-named records and groups without an online instance are excluded.

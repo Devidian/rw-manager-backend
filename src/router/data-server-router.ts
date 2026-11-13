@@ -16,8 +16,10 @@ import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-o
 import { getMapGlobalMarketplaceOffersHandler } from '../handler/get-map-global-marketplace-offers-handler.js';
 import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
+import { maskGuestSteamIds } from '../service/public-steam-id-service.js';
 
 const dataServerRouter = Router();
+dataServerRouter.use(maskGuestSteamIds);
 
 dataServerRouter.get('/server/:id/header', getServerHeaderHandler);
 

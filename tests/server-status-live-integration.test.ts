@@ -6,6 +6,11 @@ const getStoredServerLiveStatus = jest.fn(async (serverId: string) => {
   if (serverId === 'missing') throw new Error('SERVER_NOT_FOUND');
   if (serverId === 'no-query') throw new Error('QUERY_URL_MISSING');
   if (serverId === 'internal') throw 'unexpected';
+  if (serverId === 'steam') return {
+    status: 'online' as const,
+    onlinePlayers: [{ uid: '76561198000000000' }],
+    lastChecked: '2026-08-03T12:00:00.000Z',
+  };
   return serverId === 'server-a'
     ? {
         status: 'online' as const,
@@ -123,6 +128,31 @@ describe('server status live endpoint', () => {
       socket.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: [serverId] }));
       await expect(result.then(([message]) => message)).resolves.toMatchObject({ type: 'error', code });
     }
+  });
+
+  test('masks guest snapshots and updates while preserving signed-in player IDs', async () => {
+    const guest = await connect(`${baseUrl}/api/storage/server-live`);
+    const guestMessages = messages(guest, 2);
+    guest.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['steam'] }));
+    const [, guestSnapshot] = await guestMessages;
+    expect(guestSnapshot).toMatchObject({ items: [{ value: { onlinePlayers: [{ uid: '7***************0' }] } }] });
+    const guestUpdate = messages(guest, 1);
+    publishServerLiveUpdate('steam', {
+      status: 'online', onlinePlayers: [{ uid: '76561198000000001' }], lastChecked: '2026-08-03T12:01:00.000Z',
+    });
+    await expect(guestUpdate.then(([message]) => message)).resolves.toMatchObject({
+      changed: { onlinePlayers: [{ uid: '7***************1' }] },
+    });
+    guest.close();
+
+    process.env.ENABLE_AUTH = 'true';
+    authState.user = { id: 'user-1' };
+    const signedIn = await connect(`${baseUrl}/api/storage/server-live`);
+    const signedInMessages = messages(signedIn, 2);
+    signedIn.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['steam'], token: 'valid' }));
+    const [, signedInSnapshot] = await signedInMessages;
+    expect(signedInSnapshot).toMatchObject({ items: [{ value: { onlinePlayers: [{ uid: '76561198000000000' }] } }] });
+    signedIn.close();
   });
 
   test('enforces auth and reports invalid messages after subscription', async () => {
