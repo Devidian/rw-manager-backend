@@ -52,6 +52,18 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.9.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.0...rw-manager-backend-v0.9.1) (2026-11-13)
+
+
+### Fixed
+
+* restrict player profiles and mask guest Steam IDs ([d645b1a](https://github.com/Devidian/rw-manager-backend/commit/d645b1ad69c67a19bd205a623aaf18946966e3c4))
+
+
+### Documentation
+
+* prepare Manager backend 0.9.1 stable release ([919b99c](https://github.com/Devidian/rw-manager-backend/commit/919b99cedc21919ebd39f0a50a140a23d1a5e549))
+
 ## [0.9.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.8.0...rw-manager-backend-v0.9.0) (2026-11-11)
 
 
