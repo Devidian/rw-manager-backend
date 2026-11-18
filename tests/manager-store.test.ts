@@ -101,6 +101,14 @@ describe('manager-store', () => {
     timingSafeEqualMock.mockReset().mockReturnValue(true);
   });
 
+  test('deletes a Manager account without deleting its servers', async () => {
+    state.users = [user()];
+    state.servers = [server()];
+    await expect(store.deleteUserOnly('user-1')).resolves.toBe(true);
+    expect(state.users).toEqual([]);
+    expect(state.servers).toHaveLength(1);
+  });
+
   test('uses JSON fallback for server and user mutations', async () => {
     const createdServer = await store.addServer(
       'Created',

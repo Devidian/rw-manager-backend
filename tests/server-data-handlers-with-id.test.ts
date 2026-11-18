@@ -16,6 +16,7 @@ const getCachedPluginDataMock = jest.fn<(serverId: string) => { plugins?: unknow
 const getFirstCachedPluginDataMock = jest.fn<() => { plugins?: unknown[] } | undefined>();
 const getStoredServerMapMock = jest.fn<(serverId: string) => Promise<unknown>>();
 const getServerMapMock = jest.fn<() => Promise<unknown>>();
+const getUserFromBearerTokenMock = jest.fn(async () => ({ steamId: 'known-1', steamVerifiedAt: new Date() }));
 
 jest.unstable_mockModule('typia', () => ({
   default: { assert: (value: unknown) => value },
@@ -32,6 +33,9 @@ jest.unstable_mockModule('../src/service/server-plugin-data-service.js', () => (
 }));
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   findServerById: findServerByIdMock,
+}));
+jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({
+  getUserFromBearerToken: getUserFromBearerTokenMock,
 }));
 jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   getCachedPluginData: getCachedPluginDataMock,
@@ -111,6 +115,19 @@ describe('server data handlers with server id routes', () => {
     expect(mapResponse.json).toHaveBeenCalledWith({ schemaVersion: 6 });
   });
 
+  test('omits satellite metadata from a guest map response', async () => {
+    getUserFromBearerTokenMock.mockResolvedValueOnce(null as never);
+    getStoredServerMapMock.mockResolvedValueOnce({ available: true, metadata: {
+      tileUrl: 'https://map.example/tiles/{z}/{x}/{y}.png',
+      satelliteTileUrl: 'https://map.example/satellite/{z}/{x}/{y}.png',
+    } });
+    const response = createResponse();
+    await getServerMapHandler(request(), response.res);
+    expect(response.json).toHaveBeenCalledWith({ available: true, metadata: {
+      tileUrl: 'https://map.example/tiles/{z}/{x}/{y}.png',
+    } });
+  });
+
   test('maps route errors without calling server data services', async () => {
     prepareServerRouteMock.mockRejectedValueOnce({ status: 404, error: 'Server not found' });
 
@@ -162,6 +179,15 @@ describe('server data handlers with server id routes', () => {
     });
   });
 
+  test('returns an empty export to a verified user when no players participate', async () => {
+    getCachedServerPlayersMock.mockReturnValueOnce([]);
+    findServerByIdMock.mockResolvedValueOnce({ knownPlayers: [], onlinePlayers: [] });
+    const response = createResponse();
+    await getAllPlayersHandler(request(), response.res);
+    expect(response.status).not.toHaveBeenCalled();
+    expect(response.json).toHaveBeenCalledWith({ items: [] });
+  });
+
   test('lists cached players without server route and skips duplicate or invalid fallback players', async () => {
     serverIdFromRequestMock.mockReturnValueOnce(undefined);
     getCachedServerPlayersMock.mockReturnValueOnce([{ uid: 'db-1', name: 'Db Player' }]);
@@ -176,9 +202,8 @@ describe('server data handlers with server id routes', () => {
     expect(prepareServerRouteMock).not.toHaveBeenCalled();
     expect(findServerByIdMock).not.toHaveBeenCalled();
     expect(getCachedServerPlayersMock).toHaveBeenCalledWith(undefined);
-    expect(response.json).toHaveBeenCalledWith({
-      items: [{ uid: 'db-1', name: 'Db Player' }],
-    });
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(response.json).toHaveBeenCalledWith({ error: 'FORBIDDEN' });
   });
 
   test('maps player list route errors to client errors', async () => {
@@ -196,6 +221,7 @@ describe('server data handlers with server id routes', () => {
 function request() {
   return {
     params: { serverId: 'server-1' },
+    header: () => undefined,
   } as unknown as Request;
 }
 

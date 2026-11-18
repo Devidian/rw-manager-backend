@@ -1,5 +1,6 @@
 import { nonStorageDb as db } from './non-storage-store.js';
 import { getMongoCollections } from './mongodb.js';
+import { mappingByUids } from '../service/player-identity-service.js';
 import type {
   ServerStatisticsBucket,
   ServerStatisticsSample,
@@ -64,6 +65,8 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
   const id = bucketId(sample.serverId, hourStart);
   const playerCount = playerCountFromSample(sample);
   const onlinePlayerUids = normalizeSampleUids(sample);
+  const mappings = await mappingByUids(onlinePlayerUids);
+  const onlinePlayerIds = [...mappings.values()].map((item) => item._id.toHexString());
   const updatedAt = sample.sampledAt.toISOString();
   const mongo = getMongoCollections();
 
@@ -83,9 +86,11 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
         },
         $max: { maxPlayers: playerCount },
         $set: { updatedAt },
-        ...(onlinePlayerUids.length > 0
-          ? { $addToSet: { onlinePlayerUids: { $each: onlinePlayerUids } } }
-          : {}),
+        ...(onlinePlayerUids.length || onlinePlayerIds.length
+          ? { $addToSet: {
+            ...(onlinePlayerUids.length ? { onlinePlayerUids: { $each: onlinePlayerUids } } : {}),
+            ...(onlinePlayerIds.length ? { onlinePlayerIds: { $each: onlinePlayerIds } } : {}),
+          } } : {}),
       },
       { upsert: true },
     );
@@ -106,6 +111,7 @@ export async function recordServerStatisticsSample(sample: ServerStatisticsSampl
     playerSampleTotal: (existing?.playerSampleTotal ?? 0) + playerCount,
     maxPlayers: Math.max(existing?.maxPlayers ?? 0, playerCount),
     onlinePlayerUids: uniqueStrings([...(existing?.onlinePlayerUids ?? []), ...onlinePlayerUids]),
+    onlinePlayerIds: uniqueStrings([...(existing?.onlinePlayerIds ?? []), ...onlinePlayerIds]),
     updatedAt,
   });
 
@@ -184,4 +190,34 @@ export async function listGlobalStatisticsBuckets(params: {
     })
     .sort((a, b) => a.hourStart.localeCompare(b.hourStart) || a.serverId.localeCompare(b.serverId))
     .map((bucket) => finalizeBucket(bucket));
+}
+
+/** Erases a player's identifiers while retaining anonymous aggregate samples. */
+export async function forgetPlayerStatistics(serverId: string, uid: string, mappingId?: string): Promise<void> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await mongo.serverStatistics.updateMany({ serverId }, {
+      $pull: {
+        onlinePlayerUids: uid,
+        ...(mappingId ? { onlinePlayerIds: mappingId } : {}),
+      },
+    } as unknown as Parameters<typeof mongo.serverStatistics.updateMany>[1]);
+    return;
+  }
+  for (const bucket of jsonBuckets()) {
+    if (bucket.serverId !== serverId) continue;
+    bucket.onlinePlayerUids = bucket.onlinePlayerUids.filter((entry) => entry !== uid);
+    if (mappingId) bucket.onlinePlayerIds = bucket.onlinePlayerIds?.filter((entry) => entry !== mappingId);
+  }
+  await db.write();
+}
+
+export async function deleteServerStatistics(serverId: string): Promise<void> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await mongo.serverStatistics.deleteMany({ serverId });
+    return;
+  }
+  db.data.serverStatistics = jsonBuckets().filter((bucket) => bucket.serverId !== serverId);
+  await db.write();
 }

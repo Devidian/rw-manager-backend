@@ -8,9 +8,12 @@ import {
   claimServerConnectorCredential,
   replaceServerConnectorCredential,
   replaceServerConnectorCredentialIfCurrent,
+  saveMasterServer,
 } from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
+import { cachedMasterEndpoint, removeCachedMasterEndpoint } from './master-only-cache-service.js';
+import { isServerSuppressed } from './server-suppression-service.js';
 import {
   createGameConnectorCredential,
   decryptGameConnectorCredentialWithKeyRing,
@@ -48,6 +51,13 @@ export function registerGameConnectorEventHandler(handler: GameConnectorEventHan
 
 export function hasActiveGameConnectorFeature(serverId: string, event: string): boolean {
   return activeSessions?.get(serverId)?.events.includes(event) ?? false;
+}
+
+export function acknowledgePlayerErasure(serverId: string, requestId: string): void {
+  const session = activeSessions?.get(serverId);
+  if (session?.socket.readyState === WebSocket.OPEN && session.events.includes('playerErasure')) {
+    send(session.socket, { type: 'connector.playerErasure.completed', schemaVersion: 1, requestId });
+  }
 }
 
 /** Requests a credential reset only over the server's already authenticated connector session. */
@@ -142,20 +152,27 @@ async function handleFirstMessage(request: IncomingMessage, data: RawData): Prom
 async function provision(request: IncomingMessage, gamePort: number): Promise<string> {
   if (!AppConfig.gameConnectorCredentialKey) throw new ConnectorProtocolError('connector_not_configured');
   const peerIp = peerIpFromRequest(request);
+  if (await isServerSuppressed(peerIp, gamePort, `http://${peerIp}:${gamePort - 1}`)) {
+    throw new ConnectorProtocolError('server_suppressed');
+  }
   // The client-provided port is accepted only as a discriminator for the
   // proxy-authenticated peer IP; identity still comes from the fresh catalog.
   const candidates = (await listServers()).filter(
     (server) => server.ip === peerIp && server.port === gamePort,
   );
-  if (candidates.length !== 1) throw new ConnectorProtocolError(candidates.length ? 'pairing_ambiguous' : 'server_not_found');
-  const server = candidates[0];
-
+  const cached = cachedMasterEndpoint(peerIp, gamePort);
+  if (candidates.length > 1) throw new ConnectorProtocolError('pairing_ambiguous');
+  if (candidates.length === 0 && !cached) throw new ConnectorProtocolError('server_not_found');
+  // A connected OZ Tools instance independently authorizes persistence.
+  const server = candidates[0] ?? cached!;
   const credential = createGameConnectorCredential();
   const encrypted = encryptGameConnectorCredential(credential, AppConfig.gameConnectorCredentialKey);
+  if (!candidates.length) await saveMasterServer(server, true);
   const stored = server.connectorCredential
     ? await replaceServerConnectorCredential(server.id, encrypted)
     : await claimServerConnectorCredential(server.id, encrypted);
   if (!stored) throw new ConnectorProtocolError('provision_failed');
+  if (!candidates.length) removeCachedMasterEndpoint(peerIp, gamePort);
   defaultLogger.log(`Game connector ${server.connectorCredential ? 'reprovisioned' : 'provisioned'} for server ${server.id}`);
   return credential;
 }
@@ -188,7 +205,9 @@ async function handleAuthenticatedMessage(socket: WebSocket, serverId: string, s
     if (isConnectorFeaturesRequest(message)
         && message.events.length <= 64 && message.events.every((event) => typeof event === 'string' && /^[a-z][A-Za-z0-9]{0,63}$/.test(event))) {
       session.events = [...new Set(message.events)];
-      send(socket, { type: 'connector.features.accepted', schemaVersion: 1, events: session.events });
+      send(socket, { type: 'connector.features.accepted', schemaVersion: 1, events: session.events,
+        ...(session.events.includes('playerErasure') ? { playerErasure: true } : {}),
+      });
       return;
     }
     if (isConnectorEventRequest(message) && /^[a-z][A-Za-z0-9]{0,63}$/.test(message.event)

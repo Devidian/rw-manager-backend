@@ -1,12 +1,14 @@
 import {
   addServer,
-  deleteUserAndOwnedServers,
+  deleteUserOnly,
   findServerById,
   findUserById,
   listServers as listStoredServers,
   listUsers as listStoredUsers,
   removePinnedServer,
+  removeServerFromAllPins,
   removeServer,
+  saveMasterServer,
   toPublicUser,
   updateServer,
   updateUser,
@@ -22,6 +24,14 @@ import type { UpdateServerRequest } from '../dto/update-server-request.js';
 import type { UpdateStorageUserRequest } from '../dto/update-storage-user-request.js';
 import { mapPublicUserToDto } from '../mapper/user-mapper.js';
 import { mapServerToDto } from '../mapper/server-mapper.js';
+import { cachedMasterServers, cachedMasterByQueryUrl, removeCachedMasterEndpoint } from './master-only-cache-service.js';
+import { suppressServer, unsuppressServer } from './server-suppression-service.js';
+import { deleteServerStatistics } from '../db/server-statistics-store.js';
+import { clearServerLiveStatusCacheEntry } from './server-live-status-service.js';
+import { closeGameConnectorSession } from './game-connector-websocket-service.js';
+import { forgetPlayerFromServer } from './forgotten-player-service.js';
+import { clearPluginDataCacheEntry } from './plugin-data-cache-service.js';
+import { closeServerMapLiveSubscriptions } from './map-live-service.js';
 import {
   canAdminServer,
   fetchBackendAdmins,
@@ -56,6 +66,18 @@ async function fetchQueryUrlName(
   } catch {
     return undefined;
   }
+}
+
+async function assertContactOwner(queryUrl: string, steamId: string | undefined): Promise<void> {
+  if (!steamId) throw new Error('UNAUTHORIZED');
+  let contact: unknown;
+  try {
+    const response = await fetch(new URL('info', `${queryUrl.replace(/\/+$/, '')}/`).toString());
+    if (response.ok) contact = ((await response.json()) as { contact?: unknown }).contact;
+  } catch {
+    // An unreachable server cannot prove ownership.
+  }
+  if (contact !== steamId) throw new Error('SERVER_CONTACT_MISMATCH');
 }
 
 async function verifyServerNameMatch(
@@ -107,8 +129,13 @@ function assertServerWriteAccess(
   current: ServerConfig,
   context: StorageRequestContext,
 ): Promise<void> {
-  const isOwner = !AppConfig.enableAuth || current.userId === context.userId;
+  const isOwner = !AppConfig.enableAuth || (!!context.userId && current.userId === context.userId);
   if (isOwner) return Promise.resolve();
+
+  const contact = current.info && typeof current.info === 'object'
+    ? (current.info as { contact?: unknown }).contact
+    : undefined;
+  if (contact === context.userSteamId && typeof contact === 'string') return Promise.resolve();
 
   return canAdminServer(current.backendUrl, context.userSteamId).then((admin) => {
     if (!admin) {
@@ -141,7 +168,7 @@ function isUnavailableForSevenDays(server: ServerConfig, now = Date.now()): bool
 function canListServer(server: ServerConfig, context: StorageRequestContext): boolean {
   if (isSuperAdmin(context.userSteamId)) return true;
   if (server.blocked === true) return false;
-  return !isUnavailableForSevenDays(server);
+  return true;
 }
 
 function normalizedQueryUrl(value: unknown): string | undefined {
@@ -158,12 +185,13 @@ function normalizedQueryUrl(value: unknown): string | undefined {
 }
 
 export async function listServers(context: StorageRequestContext): Promise<ServerDto[]> {
-  return (await listStoredServers())
+  const stored = (await listStoredServers())
     .flatMap((server): ServerDto[] => {
       if (!canListServer(server, context)) return [];
       const queryUrl = normalizedQueryUrl(server.queryUrl);
       return queryUrl ? [mapServerToDto({ ...server, queryUrl })] : [];
     });
+  return [...stored, ...cachedMasterServers()];
 }
 
 export async function createServer(
@@ -197,6 +225,29 @@ export async function createServer(
     userSteamId: context.userSteamId,
     queryUrlName,
   });
+  await assertContactOwner(queryUrlSerialized, context.userSteamId);
+  let masterIp: string | undefined;
+  let masterPort: number | undefined;
+  try {
+    const url = new URL(queryUrlSerialized);
+    if (url.protocol === 'http:' && /^\d+$/.test(url.port)) {
+      masterIp = url.hostname;
+      masterPort = Number(url.port) + 1;
+    }
+  } catch {
+    // A verified reverse proxy URL has no derivable master endpoint.
+  }
+
+  const cached = cachedMasterByQueryUrl(queryUrlSerialized);
+  if (cached) {
+    const infoName = cached.info && typeof cached.info === 'object'
+      ? (cached.info as { name?: unknown }).name : undefined;
+    cached.label = typeof infoName === 'string' && infoName.trim() ? infoName.trim() : label;
+    await saveMasterServer(cached, true);
+    await unsuppressServer(cached.ip, cached.port, queryUrlSerialized);
+    if (cached.ip && cached.port) removeCachedMasterEndpoint(cached.ip, cached.port);
+    return mapServerToDto(cached);
+  }
 
   const server = await addServer(
     label,
@@ -205,6 +256,7 @@ export async function createServer(
     context.userId,
     typeof isPublic === 'boolean' ? isPublic : false,
   );
+  await unsuppressServer(masterIp, masterPort, queryUrlSerialized);
   return mapServerToDto(server);
 }
 
@@ -272,7 +324,17 @@ export async function deleteServer(
   }
 
   await assertServerWriteAccess(current, context);
+  await suppressServer(current.ip, current.port, current.queryUrl);
+  await deleteServerStatistics(current.id);
+  await removeServerFromAllPins(current.id);
+  clearServerLiveStatusCacheEntry(current.id);
+  clearPluginDataCacheEntry(current.id);
+  closeGameConnectorSession(current.id);
+  closeServerMapLiveSubscriptions(current.id);
   await removeServer(current.id);
+  for (const uid of new Set((current.knownPlayers ?? []).map((player) => player.uid))) {
+    if (uid) await forgetPlayerFromServer(current.id, uid);
+  }
 }
 
 export async function pinServer(
@@ -404,7 +466,7 @@ export async function deleteStorageUser(
     throw new Error('CANNOT_DELETE_SELF');
   }
 
-  if (!await deleteUserAndOwnedServers(userId)) {
+  if (!await deleteUserOnly(userId)) {
     throw new Error('USER_NOT_FOUND');
   }
 }

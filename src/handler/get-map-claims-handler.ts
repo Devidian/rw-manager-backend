@@ -1,3 +1,4 @@
+import { requestMapLayerAccess } from './map-layer-access.js';
 import type { Request, Response } from 'express';
 import typia from 'typia';
 import type { GetMapClaimsResponse } from '../dto/get-map-claims-response.js';
@@ -8,6 +9,9 @@ import { prepareServerRoute, serverRouteError } from './server-route-context.js'
 export async function getMapClaimsHandler(req: Request, res: Response) {
   try {
     const server = await prepareServerRoute(req);
+    if (!requestMapLayerAccess((req as RequestWithUser).user, server?.id).manager) {
+      return res.status(403).json({ error: 'map consent required' });
+    }
     const user = (req as RequestWithUser).user;
     const items = server
       ? await getMapClaims(undefined, server.id, user?.steamId)

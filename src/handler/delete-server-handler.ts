@@ -12,7 +12,7 @@ export async function deleteServerHandler(req: Request, res: Response) {
         : request.params.id[0];
     await deleteServer(serverId, {
       userId: request.user?.id,
-      userSteamId: request.user?.steamId,
+      userSteamId: request.user?.steamVerifiedAt ? request.user.steamId : undefined,
     });
     const response: OkResponse = { ok: true };
     return res.json(response);

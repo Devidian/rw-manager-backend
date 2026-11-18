@@ -1,5 +1,7 @@
 # rw-manager-backend
 
+Each master-list refresh fetches the server's `/info` response with a bounded timeout. Its name becomes the catalog label; the contact Steam ID is kept in the transient cache for servers without a participation marker so a verified contact can sign in and approve one. Approval always rechecks the live `/info` contact.
+
 Backend API for Rising World server management with TypeScript, Express 5,
 MongoDB storage and plugin-route cache integration.
 
@@ -25,10 +27,12 @@ that server's renderer directory, for example
 Renderer metadata may additionally expose `satelliteTileUrl`; the map response
 passes it through only after validating the server-specific satellite path.
 
-`GET /api/storage/player/:uid/history` reads durable `knownPlayers` records
+`GET /api/storage/player/:id/history` reads durable `knownPlayers` records
 for servers visible in the normal public list. Admin Utils player snapshots
 refresh those records, including available playtime. The profile endpoint does
 not query game servers and continues to work when a player database is offline.
+
+When connected Admin Utils reports `playerConsentRevoked` with the player's UID and server DBID, the backend verifies that pair against the server's known players. A Manager revocation removes the player and their statistics; a map revocation strips stored position fields. Both invalidate cached plugin data. A disconnected server is reconciled on its next valid consent-filtered plugin export.
 
 The backend does not require a Rising World installation to start. Missing
 plugin-route cache data disables only the corresponding optional data features.
@@ -70,11 +74,15 @@ such as `queryUrl` and `backendUrl`, while exposing the new `mapUrl`,
 In-flight refreshes update existing records without recreating sources removed
 by a confirmed merge.
 
-`GET /api/storage/player/:uid/history` requires a valid bearer session even
-when `FORCE_AUTH=false`; it returns HTTP 401 without one. Public storage and
-data JSON responses, plus server-status live WebSocket frames, show guests only
-the first and last digit of 17-digit Steam IDs. Authenticated users retain full
-IDs. When `ENABLE_AUTH=false`, player history remains unavailable.
+`GET /api/storage/player/:id/history` accepts only a 24 character mapping
+ObjectId and requires a bearer session even when `FORCE_AUTH=false`. A private
+or unchecked player's history additionally requires a verified Steam login by
+that player. Player REST and live responses expose the mapping ID but replace
+private or unchecked names and UIDs with `**PRIVATE**`. Only a verified Steam
+admin of the specific server sees those values in server player lists and map
+players. Global views never grant this exception. Guests still see public
+17-digit Steam IDs with only their first and last digits. When
+`ENABLE_AUTH=false`, player history remains unavailable.
 
 With `SUPER_ADMIN_ID` configured, `GET /api/storage/server/duplicates` proposes
 strong and possible matches from name, short name, map, game mode, and OS.
@@ -105,6 +113,12 @@ counts, unique IDs and statistics aggregates, marked in MongoDB, then renamed
 to `data.json.bak`. Do not restore an old JSON-writing backend over migrated
 storage. With `ENABLE_STORAGE=false`, the backend uses deliberately ephemeral
 in-memory state only; it never creates or writes a JSON database.
+
+Storage bootstrap also adds `player_mappings` and ObjectId references to
+stored server players and statistic buckets. The migration is repeatable and
+retains internal UID fields. Back up MongoDB and Compose before the first
+runtime start with this version. The hourly Steam check requires
+`STEAM_API_KEY`; until a successful check, player identities are anonymous.
 
 ```text
 MONGODB_URI=mongodb://rwmanager:rwmanager-dev-password@mongodb:27017/rw-manager?replicaSet=rs0&authSource=admin
@@ -158,13 +172,11 @@ The first frame subscribes with `server.status.subscribe`; later
 `server.status.set-servers` frames replace the complete subscribed server set
 without reconnecting. The backend sends an initial `server.status.snapshot`
 and then `server.status.changed` field deltas. REST remains available for
-manual refresh and fallback. `MAX_PINNED_SERVERS` is the authoritative account
-favorite limit (default `50`) exposed by `GET /api/` for the frontend.
-`SERVER_LIVE_MAX_SERVER_IDS` independently bounds favorites plus administered
-servers on one socket (default `1000`, never lower than the favorite limit).
+manual refresh and fallback for authenticated users.
+`SERVER_LIVE_MAX_SERVER_IDS` bounds subscribed servers on one socket.
 
-This route fetches `queryUrl`, `queryUrl + /info`, and
-`queryUrl + /playerlist` server-side, coalesces concurrent requests, and uses
+The live status route fetches `queryUrl` and `queryUrl + /info` server-side,
+coalesces concurrent requests, and uses
 `LIVE_QUERY_PROXY_CACHE_TTL_MS` to avoid repeated load when multiple users open
 the same server page or list. Periodic query refreshes store the same live
 fields (`status`, `queryData`, `infoData`, `onlinePlayers`, `lastChecked`, and
@@ -180,12 +192,12 @@ GET /api/storage/server/:id/statistics
 GET /api/storage/server/:id/statistics?from=2026-06-25T00:00:00.000Z&to=2026-06-26T00:00:00.000Z
 ```
 
-Authenticated users can pin and unpin servers:
-
-```text
-POST /api/storage/server/:id/pin
-DELETE /api/storage/server/:id/pin
-```
+The stored server catalog is public, including offline participating servers.
+`GET /api/storage/server/:id/guest-online-players` reads current names and count
+from the native player list without persisting them. Steam login requires a
+consented player export, a live verified server contact, or the superadmin ID.
+Dashboard data, statistics, map overlays, market offers, and live channels
+require an authenticated Manager account.
 
 Superadmins can force-refresh stored query `data` and `info`:
 

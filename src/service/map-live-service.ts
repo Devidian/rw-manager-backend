@@ -13,16 +13,20 @@ import type {
   MapPlayer,
 } from '../interfaces/map-layer.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
+import { mapLayerAccess, restrictMapLayerCapabilities } from './map-layer-access.js';
 import { mapLiveSnapshotFromEntry } from './map-layer-service.js';
 import { startWebSocketHeartbeat, runWebSocketHeartbeat } from './websocket-heartbeat-service.js';
 import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
 import {
   onlinePlayersFromEntry,
+  getCachedPluginData,
   refreshPluginDataForServer,
   type PluginDataCacheEntry,
 } from './plugin-data-cache-service.js';
 import { storedLiveStatusResponse } from './server-live-status-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
+import { projectPlayerData } from './player-projection-service.js';
+import { subscribePlayerVisibilityChanges } from './player-identity-service.js';
 
 export type MapLiveLayer =
   | 'capabilities'
@@ -43,9 +47,11 @@ interface ServerSubscription {
   sequence: number;
   timer?: ReturnType<typeof setTimeout>;
   running: boolean;
+  projectionQueue: Promise<void>;
 }
 
 interface MapLiveSubscriber {
+  authenticated: boolean;
   userSteamId?: string;
   snapshot?: MapLiveSnapshot;
 }
@@ -85,12 +91,31 @@ const LIVE_PATH = '/api/storage/map-live';
 const MAX_MESSAGE_BYTES = 8192;
 const MAX_BUFFERED_BYTES = 65536;
 const SUBSCRIBE_TIMEOUT_MS = 10000;
+const activeSubscriptions = new Set<Map<string, ServerSubscription>>();
+
+export function closeServerMapLiveSubscriptions(serverId: string): void {
+  for (const subscriptions of activeSubscriptions) {
+    const subscription = subscriptions.get(serverId);
+    if (!subscription) continue;
+    if (subscription.timer) clearTimeout(subscription.timer);
+    subscriptions.delete(serverId);
+    for (const socket of subscription.subscribers.keys()) socket.close(1008, 'server_removed');
+    subscription.subscribers.clear();
+  }
+}
 
 export function attachMapLiveService(server: HttpServer): MapLiveService {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   const subscriptions = new Map<string, ServerSubscription>();
+  activeSubscriptions.add(subscriptions);
   const unregisterEndpoint = registerWebSocketEndpoint(server, LIVE_PATH, webSocketServer);
   const stopHeartbeat = startWebSocketHeartbeat(webSocketServer);
+  const stopVisibilityUpdates = subscribePlayerVisibilityChanges((serverId) => {
+    const subscription = subscriptions.get(serverId);
+    const entry = subscription && getCachedPluginData(serverId);
+    if (subscription && entry) void queuePublishChanges(serverId, subscription, entry)
+      .catch((error) => defaultLogger.error('Map visibility update failed:', error));
+  });
 
   webSocketServer.on('connection', (socket) => {
     let subscribedServerId: string | undefined;
@@ -98,13 +123,13 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
 
     socket.once('message', (data) => {
       void parseAndAuthorizeSubscription(data)
-        .then(async ({ message, userSteamId }) => {
+        .then(async ({ message, userSteamId, authenticated }) => {
           const serverConfig = await findServerById(message.serverId);
           if (!serverConfig) throw new MapLiveProtocolError('server_not_found');
           clearTimeout(subscribeTimeout);
           subscribedServerId = message.serverId;
           const subscription = subscriptionFor(subscriptions, message.serverId);
-          subscription.subscribers.set(socket, { userSteamId });
+          subscription.subscribers.set(socket, { userSteamId, authenticated });
           send(socket, {
             type: 'subscribed',
             schemaVersion: 1,
@@ -130,8 +155,10 @@ export function attachMapLiveService(server: HttpServer): MapLiveService {
 
   return {
     close: () => {
+      activeSubscriptions.delete(subscriptions);
       unregisterEndpoint();
       stopHeartbeat();
+      stopVisibilityUpdates();
       for (const subscription of subscriptions.values()) {
         if (subscription.timer) clearTimeout(subscription.timer);
         for (const socket of subscription.subscribers.keys()) socket.close(1001, 'server_shutdown');
@@ -146,15 +173,13 @@ export const runMapLiveHeartbeat = runWebSocketHeartbeat;
 
 async function parseAndAuthorizeSubscription(
   data: RawData,
-): Promise<{ message: SubscribeMessage; userSteamId?: string }> {
+): Promise<{ message: SubscribeMessage; userSteamId?: string; authenticated: boolean }> {
   const message = parseSubscribeMessage(data);
   const user = message.token
     ? await getUserFromBearerToken(`Bearer ${message.token}`)
     : null;
-  if (AppConfig.enableAuth && AppConfig.forceAuth) {
-    if (!user) throw new MapLiveProtocolError('unauthorized');
-  }
-  return { message, userSteamId: user?.steamId };
+  if (!user) throw new MapLiveProtocolError('unauthorized');
+  return { message, userSteamId: user?.steamVerifiedAt ? user.steamId : undefined, authenticated: !!user };
 }
 
 export function parseSubscribeMessage(data: RawData): SubscribeMessage {
@@ -199,7 +224,7 @@ function startServerLoop(
       const result = await refreshPluginDataForServer(serverConfig);
       if (result.entry) {
         publishLivePlayerStatus(serverId, serverConfig, result.entry);
-        publishChanges(serverId, subscription, result.entry);
+        await queuePublishChanges(serverId, subscription, result.entry);
       }
     } catch (error) {
       defaultLogger.warn('Map live refresh failed:', {
@@ -240,19 +265,40 @@ function publishLivePlayerStatus(
   });
 }
 
-function publishChanges(
+function queuePublishChanges(serverId: string, subscription: ServerSubscription, entry: PluginDataCacheEntry): Promise<void> {
+  const next = subscription.projectionQueue.then(() => publishChanges(serverId, subscription, entry));
+  subscription.projectionQueue = next.catch(() => undefined);
+  return next;
+}
+
+async function publishChanges(
   serverId: string,
   subscription: ServerSubscription,
   entry: PluginDataCacheEntry,
-): void {
+): Promise<void> {
   const generatedAt = new Date();
   const messages: Array<{ socket: WebSocket; layers: MapLiveLayer[]; changes: MapLiveChanges }> = [];
   for (const [socket, subscriber] of subscription.subscribers) {
-    const next = mapLiveSnapshotFromEntry(entry, generatedAt, subscriber.userSteamId);
+    const access = mapLayerAccess(entry, subscriber.userSteamId);
+    const raw = mapLiveSnapshotFromEntry(entry, generatedAt, subscriber.userSteamId);
+    raw.capabilities = restrictMapLayerCapabilities(raw.capabilities, access);
+    if (!access.manager) {
+      raw.claims = [];
+      raw.gpsGlobalMarkers = [];
+      raw.marketplaceOffers = {};
+      raw.globalMarketplaceOffers = [];
+    }
+    if (!access.players) raw.players = [];
+    const next = await projectPlayerData(raw, { serverId, userSteamId: subscriber.userSteamId,
+      guest: !subscriber.authenticated }) as MapLiveSnapshot;
     const previous = subscriber.snapshot;
     subscriber.snapshot = next;
-    if (!previous) continue;
-    const changes = mapLiveChanges(previous, next);
+    const changes = previous ? mapLiveChanges(previous, next) : {
+      capabilities: { value: next.capabilities },
+      claims: { upserted: next.claims, removedIds: [] },
+      players: { upserted: next.players, removedIds: [] },
+      gpsGlobalMarkers: { upserted: next.gpsGlobalMarkers, removedIds: [] },
+    };
     const layers = Object.keys(changes) as MapLiveLayer[];
     if (layers.length) messages.push({ socket, layers, changes });
   }
@@ -345,7 +391,7 @@ function subscriptionFor(
 ): ServerSubscription {
   const existing = subscriptions.get(serverId);
   if (existing) return existing;
-  const created: ServerSubscription = { subscribers: new Map(), sequence: 0, running: false };
+  const created: ServerSubscription = { subscribers: new Map(), sequence: 0, running: false, projectionQueue: Promise.resolve() };
   subscriptions.set(serverId, created);
   return created;
 }

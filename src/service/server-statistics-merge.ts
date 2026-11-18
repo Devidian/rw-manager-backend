@@ -26,6 +26,7 @@ export function mergeServerStatisticsBuckets(targetId: string, buckets: ServerSt
       averagePlayers: best.sampleCount > 0 ? playerSampleTotal / best.sampleCount : 0,
       availability: best.sampleCount > 0 ? best.onlineSampleCount / best.sampleCount * 100 : 0,
       onlinePlayerUids: [...new Set(entries.flatMap((entry) => entry.onlinePlayerUids ?? []))],
+      onlinePlayerIds: [...new Set(entries.flatMap((entry) => entry.onlinePlayerIds ?? []))],
     };
   });
 }

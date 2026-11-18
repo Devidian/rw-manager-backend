@@ -76,6 +76,7 @@ function collection(name: string, count = 0, initialDocuments: Record<string, un
     name,
     createIndex: jest.fn(async () => undefined),
     dropIndex: jest.fn(async () => undefined),
+    updateOne: jest.fn(async () => undefined),
     bulkWrite: jest.fn(async (operations: Array<{ updateOne: { filter: { id: string }; update: { $setOnInsert: Record<string, unknown> } } }>) => {
       for (const operation of operations) {
         if (!documents.some((document) => document.id === operation.updateOne.filter.id)) {
@@ -83,9 +84,11 @@ function collection(name: string, count = 0, initialDocuments: Record<string, un
         }
       }
     }),
-    find: jest.fn((filter: { id?: { $in?: string[] } } = {}) => ({
-      toArray: async () => filter.id?.$in ? documents.filter((document) => filter.id!.$in!.includes(document.id as string)) : documents,
-    })),
+    find: jest.fn((filter: { id?: { $in?: string[] }; 'onlinePlayerUids.0'?: { $exists?: boolean } } = {}) => {
+      const found = (filter.id?.$in ? documents.filter((document) => filter.id!.$in!.includes(document.id as string)) : documents)
+        .filter((document) => !filter['onlinePlayerUids.0']?.$exists || (Array.isArray(document.onlinePlayerUids) && document.onlinePlayerUids.length > 0));
+      return { toArray: async () => found, async *[Symbol.asyncIterator]() { yield* found; } };
+    }),
   };
 }
 
@@ -145,10 +148,14 @@ describe('db/mongodb', () => {
     const servers = collection('servers');
     const users = collection('users');
     const statistics = collection('server_statistics');
+    const mappings = collection('player_mappings');
+    const suppressed = collection('suppressed_servers');
     collectionMock
       .mockReturnValueOnce(servers)
       .mockReturnValueOnce(users)
-      .mockReturnValueOnce(statistics);
+      .mockReturnValueOnce(statistics)
+      .mockReturnValueOnce(mappings)
+      .mockReturnValueOnce(suppressed);
 
     const collections = await mongodb.bootstrapMongoDb();
 
@@ -156,6 +163,8 @@ describe('db/mongodb', () => {
       servers,
       users,
       serverStatistics: statistics,
+      playerMappings: mappings,
+      suppressedServers: suppressed,
     });
     expect(mongoClientConstructorMock).toHaveBeenCalledWith('mongodb://example', {
       serverSelectionTimeoutMS: 5000,
@@ -185,7 +194,7 @@ describe('db/mongodb', () => {
     expect(logMock).toHaveBeenCalledWith('MongoDB connected: rw-manager-test');
 
     await expect(mongodb.bootstrapMongoDb()).resolves.toBe(collections);
-    expect(collectionMock).toHaveBeenCalledTimes(3);
+    expect(collectionMock).toHaveBeenCalledTimes(5);
   });
 
   test('closes failed clients without entering a JSON fallback path', async () => {
@@ -194,10 +203,14 @@ describe('db/mongodb', () => {
     const servers = collection('servers', 1);
     const users = collection('users', 1);
     const statistics = collection('server_statistics', 1);
+    const mappings = collection('player_mappings');
+    const suppressed = collection('suppressed_servers');
     collectionMock
       .mockReturnValueOnce(servers)
       .mockReturnValueOnce(users)
-      .mockReturnValueOnce(statistics);
+      .mockReturnValueOnce(statistics)
+      .mockReturnValueOnce(mappings)
+      .mockReturnValueOnce(suppressed);
 
     await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
     expect(mongoClientConstructorMock).toHaveBeenCalledWith('mongodb://fallback-var', {
@@ -223,11 +236,15 @@ describe('db/mongodb', () => {
     const servers = collection('servers');
     const users = collection('users');
     const statistics = collection('server_statistics');
+    const mappings = collection('player_mappings');
+    const suppressed = collection('suppressed_servers');
     const migrations = { findOne: jest.fn(async () => null), insertOne: jest.fn(async () => undefined) };
     collectionMock
       .mockReturnValueOnce(servers)
       .mockReturnValueOnce(users)
       .mockReturnValueOnce(statistics)
+      .mockReturnValueOnce(mappings)
+      .mockReturnValueOnce(suppressed)
       .mockReturnValueOnce(migrations);
 
     try {
@@ -249,6 +266,8 @@ describe('db/mongodb', () => {
         servers,
         users,
         server_statistics: statistics,
+        player_mappings: mappings,
+        suppressed_servers: suppressed,
         migrations,
       })[name]);
       await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
@@ -270,11 +289,15 @@ describe('db/mongodb', () => {
     const servers = collection('servers', 0, [{ ...jsonState.servers![0], label: 'Current Mongo server' }]);
     const users = collection('users', 0, [{ ...jsonState.users![0], username: 'current-user' }]);
     const statistics = collection('server_statistics', 0, [{ ...jsonState.serverStatistics![0], sampleCount: 99, onlineSampleCount: 99, playerSampleTotal: 99, maxPlayers: 99 }]);
+    const mappings = collection('player_mappings');
+    const suppressed = collection('suppressed_servers');
     const migrations = { findOne: jest.fn(async () => null), insertOne: jest.fn(async () => undefined) };
     collectionMock
       .mockReturnValueOnce(servers)
       .mockReturnValueOnce(users)
       .mockReturnValueOnce(statistics)
+      .mockReturnValueOnce(mappings)
+      .mockReturnValueOnce(suppressed)
       .mockReturnValueOnce(migrations);
 
     try {
@@ -287,5 +310,42 @@ describe('db/mongodb', () => {
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }
+  });
+
+  test('player reference migration resumes without name or slot matching', async () => {
+    const server = { _id: 'server-document', id: 'server-1', lastChecked: '2026-06-25T01:00:00.000Z',
+      knownPlayers: [{ id: 1, uid: 'uid-a', name: 'Same', lastseen: 100 }, { id: 7, uid: '7', name: 'Slot' }],
+      onlinePlayers: [{ id: 2, uid: 'uid-b', name: 'Same' }, { id: 3, name: 'Same' }] };
+    const bucket = { _id: 'bucket-document', hourStart: '2026-06-25T02:00:00.000Z', onlinePlayerUids: ['uid-a', 'uid-b'] };
+    const mappings = new Map<string, { _id: { toHexString: () => string }; uid: string; globalLastSeen?: Date }>();
+    const serverUpdate = jest.fn(async (_filter: unknown, update: { $set: Record<string, unknown> }) => Object.assign(server, update.$set));
+    const bucketBulkWrite = jest.fn(async (operations: Array<{ updateOne: { update: { $set: Record<string, unknown> } } }>) => {
+      for (const operation of operations) Object.assign(bucket, operation.updateOne.update.$set);
+    });
+    const mappingUpdate = jest.fn(async (filter: { uid: string }, update: { $setOnInsert?: { uid: string }; $max?: { globalLastSeen: Date } }) => {
+      const existing = mappings.get(filter.uid);
+      if (!existing && update.$setOnInsert) mappings.set(filter.uid, { _id: { toHexString: () => filter.uid === 'uid-a'
+        ? 'aaaaaaaaaaaaaaaaaaaaaaaa' : 'bbbbbbbbbbbbbbbbbbbbbbbb' }, uid: filter.uid });
+      if (update.$max) mappings.get(filter.uid)!.globalLastSeen = update.$max.globalLastSeen;
+    });
+    const next = {
+      servers: { find: () => ({ async *[Symbol.asyncIterator]() { yield server; } }), updateOne: serverUpdate },
+      serverStatistics: { find: () => ({ async *[Symbol.asyncIterator]() { yield bucket; } }), bulkWrite: bucketBulkWrite },
+      playerMappings: { updateOne: mappingUpdate, bulkWrite: async (operations: Array<{ updateOne: { filter: { uid: string }; update: { $setOnInsert?: { uid: string }; $max?: { globalLastSeen: Date } } } }>) => {
+        for (const operation of operations) await mappingUpdate(operation.updateOne.filter, operation.updateOne.update);
+      }, find: (filter: { uid: { $in: string[] } }) => ({
+        toArray: async () => filter.uid.$in.flatMap((uid) => mappings.has(uid) ? [mappings.get(uid)!] : []),
+      }) },
+    };
+    await mongodb.migratePlayerReferences(next as never);
+    await mongodb.migratePlayerReferences(next as never);
+    expect([...mappings.keys()].sort()).toEqual(['uid-a', 'uid-b']);
+    expect(mappings.get('uid-b')?.globalLastSeen).toEqual(new Date('2026-06-25T02:00:00.000Z'));
+    expect(server.knownPlayers[0]).toMatchObject({ playerMappingId: 'aaaaaaaaaaaaaaaaaaaaaaaa' });
+    expect(server.knownPlayers[1]).not.toHaveProperty('playerMappingId');
+    expect(server.onlinePlayers[0]).toMatchObject({ playerMappingId: 'bbbbbbbbbbbbbbbbbbbbbbbb' });
+    expect(server.onlinePlayers[1]).not.toHaveProperty('playerMappingId');
+    expect(bucket).toMatchObject({ onlinePlayerIds: ['aaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbb'] });
+    expect(bucketBulkWrite).toHaveBeenCalledTimes(1);
   });
 });

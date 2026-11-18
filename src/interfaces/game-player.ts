@@ -1,6 +1,7 @@
 export interface DbPlayer {
   id?: number;
   uid: string;
+  playerMappingId?: string;
   name?: string;
   posx?: number;
   posy?: number;

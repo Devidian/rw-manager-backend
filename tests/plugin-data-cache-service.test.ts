@@ -1,14 +1,21 @@
 import { jest } from '@jest/globals';
-import {
+const hasActiveGameConnectorFeatureMock = jest.fn<() => boolean>().mockReturnValue(true);
+jest.unstable_mockModule('../src/service/game-connector-websocket-service.js', () => ({
+  hasActiveGameConnectorFeature: hasActiveGameConnectorFeatureMock,
+  requestGameConnectorCredentialReset: () => false,
+  closeGameConnectorSession: () => undefined,
+  registerGameConnectorEventHandler: () => () => undefined,
+}));
+const {
   clearPluginDataCache,
   ensurePluginDataForServer,
   getFirstCachedPluginData,
   getCachedPluginData,
   onlinePlayersFromEntry,
   refreshPluginDataForServer,
-} from '../src/service/plugin-data-cache-service.js';
+} = await import('../src/service/plugin-data-cache-service.js');
 import type { ServerConfig } from '../src/interfaces/server-config.js';
-import { getCachedServerPlayers } from '../src/service/server-plugin-data-service.js';
+const { getCachedServerPlayers } = await import('../src/service/server-plugin-data-service.js');
 import { encryptGameConnectorCredential } from '../src/service/game-connector-credential-service.js';
 
 function server(input: Partial<ServerConfig> = {}): ServerConfig {
@@ -28,6 +35,7 @@ describe('plugin data cache service', () => {
 
   beforeEach(() => {
     clearPluginDataCache();
+    hasActiveGameConnectorFeatureMock.mockReturnValue(true);
     process.env.PLUGIN_DATA_CACHE_TTL_MS = '60000';
     global.fetch = originalFetch;
   });
@@ -43,7 +51,8 @@ describe('plugin data cache service', () => {
       .mockResolvedValueOnce(response({ schemaVersion: 1, plugins: [
         { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
       ] }))
-      .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
+      .mockResolvedValueOnce(response({ areas: [] }))
+      .mockResolvedValueOnce(response({ consentVersion: 1, players: [] })) as typeof fetch;
     global.fetch = fetchMock;
 
     const result = await refreshPluginDataForServer(server({ onlinePlayers: [] }));
@@ -55,15 +64,37 @@ describe('plugin data cache service', () => {
       'https://query.example/pluginlist',
       expect.any(Object),
     );
-    expect(fetchMock).toHaveBeenCalledWith('https://query.example/playerlist', expect.any(Object));
+    expect(fetchMock).not.toHaveBeenCalledWith('https://query.example/playerlist', expect.any(Object));
+  });
+
+  test('does not cache player data from an old export without a consent version', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'OZ - Admin Utils', version: '0.14.0' }] }))
+      .mockResolvedValueOnce(response({ areas: [] }))
+      .mockResolvedValueOnce(response({ players: [{ dbId: 4, uid: 'old-player', name: 'Old' }] }))
+      .mockResolvedValueOnce(response({ config: {} })) as typeof fetch;
+    const result = await refreshPluginDataForServer(server());
+    expect(result.entry?.plugins).toHaveLength(1);
+    expect(result.entry?.data['ozadminutils.playerlist']).toBeUndefined();
+    expect(result.entry?.data.__onlinePlayers).toBeUndefined();
+  });
+
+  test('does not request playerlist without an active consent-capable connector', async () => {
+    hasActiveGameConnectorFeatureMock.mockReturnValue(false);
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'OZ - Admin Utils', version: '0.14.0' }] }))
+      .mockResolvedValueOnce(response({ areas: [] }))
+      .mockResolvedValueOnce(response({ config: {} })) as typeof fetch;
+    global.fetch = fetchMock;
+    const result = await refreshPluginDataForServer(server());
+    expect(result.entry?.data['ozadminutils.playerlist']).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/playerlist'))).toBe(false);
   });
 
   test('refresh replaces cached missing versions with native plain versions', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({ plugins: [{ name: 'Example' }] }))
-      .mockResolvedValueOnce(response({ players: [] }))
-      .mockResolvedValueOnce(response({ plugins: [{ name: 'Example', version: '1.2.3' }] }))
-      .mockResolvedValueOnce(response({ players: [] })) as typeof fetch;
+      .mockResolvedValueOnce(response({ plugins: [{ name: 'Example', version: '1.2.3' }] })) as typeof fetch;
     global.fetch = fetchMock;
     const target = server({ onlinePlayers: [] });
     const first = await refreshPluginDataForServer(target);
@@ -86,9 +117,8 @@ describe('plugin data cache service', () => {
           { directory: 'Broken', valid: false },
         ],
       }))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'online-p1', name: 'Online Player' }] }))
       .mockResolvedValueOnce(response({ areas: [{ id: 42, name: 'Spawn Claim' }] }))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }] }))
+      .mockResolvedValueOnce(response({ consentVersion: 1, players: [{ dbId: 4, uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, connected: true }] }))
       .mockResolvedValueOnce(response({ config: { Server_Admins: 'steam-admin' } }))
       .mockResolvedValueOnce(response({ markers: [{ id: 1, name: 'Spawn' }] }))
       .mockResolvedValueOnce(response({ zones: [{ areaId: 42 }] }))
@@ -101,7 +131,8 @@ describe('plugin data cache service', () => {
       }))
       .mockResolvedValueOnce(response({ criers: [] }))
       .mockResolvedValueOnce(response({ traders: [] }))
-      .mockResolvedValueOnce(response({ offers: [{ id: 7, itemName: 'Stone' }] })) as typeof fetch;
+      .mockResolvedValueOnce(response({ offers: [{ id: 7, itemName: 'Stone' }] }))
+      .mockResolvedValueOnce(response({ offers: [] })) as typeof fetch;
     global.fetch = fetchMock;
 
     const result = await refreshPluginDataForServer(server({ onlinePlayers: [{ uid: 'p1' }] }));
@@ -110,7 +141,7 @@ describe('plugin data cache service', () => {
     expect(result.entry?.plugins).toHaveLength(4);
     expect(result.entry?.data).toEqual({
       'ozadminutils.worldAreas': { areas: [{ id: 42, name: 'Spawn Claim' }] },
-      'ozadminutils.playerlist': { players: [{ uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, online: true }] },
+      'ozadminutils.playerlist': { consentVersion: 1, players: [{ dbId: 4, uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, connected: true }] },
       'ozadminutils.serverConfig': { config: { Server_Admins: 'steam-admin' } },
       'ozadminutils.info': {
         schemaVersion: 1,
@@ -123,8 +154,9 @@ describe('plugin data cache service', () => {
       'ozgps.globalMarkers': { markers: [{ id: 1, name: 'Spawn' }] },
       'ozmarketplace.zones': { zones: [{ areaId: 42 }] },
       'ozshop.zones': { zones: [{ areaId: 42 }] },
+      'ozmarketplace.offers.global': { offers: [] },
       'ozmarketplace.offers.42': { offers: [{ id: 7, itemName: 'Stone' }] },
-      __onlinePlayers: [{ uid: 'online-p1', name: 'Online Player' }],
+      __onlinePlayers: [{ dbId: 4, uid: 'p1', name: 'Player', posx: 1, posz: 2, lastseen: 1000, connected: true }],
     });
     expect(getCachedPluginData('server-1')?.data).toEqual(result.entry?.data);
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -134,70 +166,69 @@ describe('plugin data cache service', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://query.example/playerlist',
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
       'https://query.example/plugins/oz---admin-utils/world-areas',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
+      3,
       'https://query.example/plugins/oz---admin-utils/playerlist',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      5,
+      4,
       'https://query.example/plugins/oz---admin-utils/server-config',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      6,
+      5,
       'https://query.example/plugins/oz---gps/marker?type=global',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      7,
+      6,
       'https://query.example/plugins/oz---marketplace/zones',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      8,
+      7,
       'https://query.example/plugins/oz---shop/zones',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      9,
+      8,
       'https://query.example/plugins/oz---admin-utils/info',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      10,
+      9,
       'https://query.example/plugins/oz---marketplace/criers',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      11,
+      10,
       'https://query.example/plugins/oz---shop/traders',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      12,
+      11,
       'https://query.example/plugins/oz---marketplace/offers?areaId=42',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      12,
+      'https://query.example/plugins/oz---marketplace/offers?global=true',
       expect.any(Object),
     );
   });
 
-  test('keeps game-owned routes unauthenticated and sends the paired credential only to plugin routes', async () => {
+  test('sends the paired credential only to plugin routes', async () => {
     process.env.GAME_CONNECTOR_CREDENTIAL_KEY = 'connector-test-key-with-at-least-32-characters';
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({ schemaVersion: 1, plugins: [
         { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
       ] }))
-      .mockResolvedValueOnce(response({ players: [] }))
       .mockResolvedValueOnce(response({ areas: [] }))
-      .mockResolvedValueOnce(response({ players: [] }))
+      .mockResolvedValueOnce(response({ consentVersion: 1, players: [] }))
       .mockResolvedValueOnce(response({ config: {} }))
       .mockResolvedValueOnce(response({ schemaVersion: 1 })) as typeof fetch;
     global.fetch = fetchMock;
@@ -213,27 +244,26 @@ describe('plugin data cache service', () => {
       'https://query.example/pluginlist',
       expect.not.objectContaining({ headers: expect.anything() }),
     ]);
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ headers: undefined }));
     expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
+      2,
       'https://query.example/plugins/oz---admin-utils/world-areas',
       expect.objectContaining({ headers: { Authorization: 'Bearer paired-credential' } }),
     );
   });
 
-  test('uses the game-owned player list instead of persisted plugin players', async () => {
+  test('uses only consent-filtered plugin players for online identity', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response({
         schemaVersion: 1,
         plugins: [{ directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true }],
       }))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'live-player', name: 'Live' }] }))
       .mockResolvedValueOnce(response({ areas: [] }))
       .mockResolvedValueOnce(response({
+        consentVersion: 1,
         players: [
-          { uid: 'offline-player', name: 'Offline' },
-          { uid: 'live-player', name: 'Live', online: true },
+          { dbId: 2, uid: 'offline-player', name: 'Offline', connected: false },
+          { dbId: 3, uid: 'live-player', name: 'Live', connected: true },
         ],
       }))
       .mockResolvedValueOnce(response({ config: {} })) as typeof fetch;
@@ -241,8 +271,8 @@ describe('plugin data cache service', () => {
 
     const result = await refreshPluginDataForServer(server({ onlinePlayers: [{ uid: 'stale-player' }] }));
 
-    expect(result.entry?.data.__onlinePlayers).toEqual([{ uid: 'live-player', name: 'Live' }]);
-    expect(onlinePlayersFromEntry(result.entry!)).toEqual([{ uid: 'live-player', name: 'Live' }]);
+    expect(result.entry?.data.__onlinePlayers).toEqual([{ dbId: 3, uid: 'live-player', name: 'Live', connected: true }]);
+    expect(onlinePlayersFromEntry(result.entry!)).toEqual([{ dbId: 3, uid: 'live-player', name: 'Live', connected: true }]);
   });
 
   test('reads only the cached game player list', () => {
@@ -317,9 +347,9 @@ describe('plugin data cache service', () => {
           { directory: 'OZAdminUtils', name: 'OZ - Admin Utils', version: '1', valid: true },
         ],
       }))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'player-55', name: 'Player 55' }] }))
       .mockResolvedValueOnce(response({ areas: [] }))
       .mockResolvedValueOnce(response({
+        consentVersion: 1,
         players: [{
           id: 55,
           uid: 'player-55',
@@ -395,7 +425,7 @@ describe('plugin data cache service', () => {
     await refreshPluginDataForServer(server({ onlinePlayers: [] }));
     await expect(ensurePluginDataForServer(server({ onlinePlayers: [] })))
       .resolves.toBe(getCachedPluginData('server-1'));
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('does not derive native plugin URL from legacy backend map URL', async () => {

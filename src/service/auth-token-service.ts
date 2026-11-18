@@ -9,6 +9,7 @@ import {
 } from '../db/manager-store.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
+import { managerAccess } from './manager-access-service.js';
 
 type JwtPayload = {
   sub: string;
@@ -112,6 +113,13 @@ export async function getUserFromBearerTokenAsync(
     if (payload.exp <= Math.floor(Date.now() / 1000)) return null;
     defaultLogger.debug(payload);
     const user = await findUserById(payload.sub);
+    if (!user?.steamVerifiedAt || !user.steamId) return null;
+    if (user.steamId !== AppConfig.superAdminId &&
+        (await managerAccess(user.steamId, user.managerServerIds)).confirmedDenied) {
+      const { deleteUserOnly } = await import('../db/manager-store.js');
+      await deleteUserOnly(user.id);
+      return null;
+    }
     return user ? toPrivateUser(user) : null;
   } catch {
     return null;

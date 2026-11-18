@@ -9,6 +9,6 @@ export interface PlayerServerHistoryItem {
 }
 
 export interface GetPlayerServerHistoryResponse {
-  uid: string;
+  id: string;
   items: PlayerServerHistoryItem[];
 }

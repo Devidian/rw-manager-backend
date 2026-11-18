@@ -29,6 +29,8 @@ import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-ha
 import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
 import { getPlayerServerHistoryHandler } from '../handler/get-player-server-history-handler.js';
 import { maskGuestSteamIds, requirePlayerProfileAuth } from '../service/public-steam-id-service.js';
+import { approveMasterServerHandler } from '../handler/approve-master-server-handler.js';
+import { getGuestOnlinePlayersHandler } from '../handler/get-guest-online-players-handler.js';
 
 const storageRouter = Router();
 storageRouter.use(maskGuestSteamIds);
@@ -51,39 +53,39 @@ const noAuth: RequestHandler = (_req, _res, next) => next();
 const requireServerGetAuth =
   AppConfig.enableAuth && AppConfig.forceAuth ? requireAuth : noAuth;
 
-storageRouter.get('/server', requireServerGetAuth, listServersHandler);
-storageRouter.get('/statistics', requireServerGetAuth, getGlobalStatisticsHandler);
-storageRouter.get('/player/:uid/history', requirePlayerProfileAuth, getPlayerServerHistoryHandler);
+storageRouter.get('/server', listServersHandler);
+storageRouter.get('/statistics', getGlobalStatisticsHandler);
+storageRouter.get('/server/:id/guest-online-players', getGuestOnlinePlayersHandler);
+storageRouter.get('/player/:id/history', requirePlayerProfileAuth, getPlayerServerHistoryHandler);
+storageRouter.post('/server/:id/approve', requireAuth, approveMasterServerHandler);
 storageRouter.post('/server/refresh-query-data', requireAuth, refreshServerQueryDataHandler);
-storageRouter.get('/server/:id/live', requireServerGetAuth, getServerLiveStatusHandler);
-storageRouter.get('/server/:id/statistics', requireServerGetAuth, getServerStatisticsHandler);
-storageRouter.get('/server/:id/map', requireServerGetAuth, getServerMapHandler);
-storageRouter.get('/server/:id/plugins', requireServerGetAuth, listServerPluginsHandler);
-storageRouter.get('/server/:id/player', requireServerGetAuth, getAllPlayersHandler);
+storageRouter.get('/server/:id/live', requireAuth, getServerLiveStatusHandler);
+storageRouter.get('/server/:id/statistics', getServerStatisticsHandler);
+storageRouter.get('/server/:id/map', getServerMapHandler);
+storageRouter.get('/server/:id/plugins', listServerPluginsHandler);
+storageRouter.get('/server/:id/player', requireAuth, getAllPlayersHandler);
 storageRouter.get('/server/:id/config', requireAuth, getServerConfigHandler);
 storageRouter.get('/server/:id/admins', requireServerGetAuth, getServerAdminListHandler);
-storageRouter.get('/server/:id/map/layers', requireServerGetAuth, getMapLayerCapabilitiesHandler);
-storageRouter.get('/server/:id/map/layers/claims', requireServerGetAuth, getMapClaimsHandler);
-storageRouter.get('/server/:id/map/layers/players', requireServerGetAuth, getMapPlayersHandler);
+storageRouter.get('/server/:id/map/layers', getMapLayerCapabilitiesHandler);
+storageRouter.get('/server/:id/map/layers/claims', requireAuth, getMapClaimsHandler);
+storageRouter.get('/server/:id/map/layers/players', requireAuth, getMapPlayersHandler);
 storageRouter.get('/server/:id/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
 storageRouter.get(
   '/server/:id/map/layers/gps-global-markers',
-  requireServerGetAuth,
+  requireAuth,
   getMapGpsGlobalMarkersHandler,
 );
-storageRouter.get('/server/:id/map/layers/:kind', requireServerGetAuth, getMapNpcMarketsHandler);
+storageRouter.get('/server/:id/map/layers/:kind', requireAuth, getMapNpcMarketsHandler);
 storageRouter.get(
   '/server/:id/map/layers/marketplaces/global/offers',
-  requireServerGetAuth,
+  requireAuth,
   getMapGlobalMarketplaceOffersHandler,
 );
 storageRouter.get(
   '/server/:id/map/layers/marketplaces/:areaId/offers',
-  requireServerGetAuth,
+  requireAuth,
   getMapMarketplaceOffersHandler,
 );
-storageRouter.post('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, pinServerHandler);
-storageRouter.delete('/server/:id/pin', AppConfig.enableAuth ? requireAuth : noAuth, unpinServerHandler);
 
 if (AppConfig.superAdminId) {
   storageRouter.get('/server/duplicates', requireAuth, listServerDuplicatesHandler);

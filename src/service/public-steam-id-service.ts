@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { getUserFromBearerToken } from './auth-token-service.js';
 import { AppConfig } from '../utils/app-config.js';
+import { projectPlayerData } from './player-projection-service.js';
 
 const STEAM_ID = /(?<!\d)\d{17}(?!\d)/g;
 
@@ -31,7 +32,23 @@ export const maskGuestSteamIds: RequestHandler = async (req, res, next) => {
     res.json = ((body: unknown) => {
       res.vary('Authorization');
       res.setHeader('Cache-Control', 'private, no-store');
-      return json(user ? body : maskPublicSteamIds(body));
+      const path = req.path ?? '';
+      const match = /^\/server\/([^/]+)/.exec(path);
+      const legacyPlayerMatch = /^\/([^/]+)\/player$/.exec(path);
+      const serverId = match && match[1] !== 'refresh-query-data' && match[1] !== 'map'
+        ? decodeURIComponent(match[1])
+        : legacyPlayerMatch ? decodeURIComponent(legacyPlayerMatch[1]) : undefined;
+      void projectPlayerData(body, {
+        userSteamId: user?.steamVerifiedAt ? user.steamId : undefined,
+        guest: !user,
+        serverId,
+        global: path === '/statistics' || path.startsWith('/player/'),
+      }).then((projected) => { json(projected); }).catch(() => {
+        if (res.headersSent) return res.destroy();
+        res.status(503);
+        json({ error: 'PLAYER_PROJECTION_UNAVAILABLE' });
+      });
+      return res;
     }) as typeof res.json;
     next();
   } catch (error) {

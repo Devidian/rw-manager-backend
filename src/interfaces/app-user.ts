@@ -19,6 +19,8 @@ export interface PublicUser {
 // private user interface (own profile, the user himself)
 export interface PrivateUser extends PublicUser {
   email: string & Format<'email'>;
+  /** Set only after a successful Steam OpenID verification. */
+  steamVerifiedAt?: Date;
 }
 
 // internal user interface using josn db
@@ -29,5 +31,6 @@ export interface JsonDbUser extends PrivateUser {
   apiTokenHash?: string;
   apiTokenSalt?: string;
   apiTokenCreatedAt?: Date;
+  managerServerIds?: string[];
   createdAt: Date;
 }

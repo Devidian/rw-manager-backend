@@ -3,7 +3,6 @@ import { jest } from '@jest/globals';
 const findServerByIdMock = jest.fn();
 const listServerStatisticsBucketsMock = jest.fn();
 const listGlobalStatisticsBucketsMock = jest.fn();
-const getCachedServerPlayersMock = jest.fn();
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   findServerById: findServerByIdMock,
@@ -11,9 +10,6 @@ jest.unstable_mockModule('../src/db/manager-store.js', () => ({
 jest.unstable_mockModule('../src/db/server-statistics-store.js', () => ({
   listServerStatisticsBuckets: listServerStatisticsBucketsMock,
   listGlobalStatisticsBuckets: listGlobalStatisticsBucketsMock,
-}));
-jest.unstable_mockModule('../src/service/server-plugin-data-service.js', () => ({
-  getCachedServerPlayers: getCachedServerPlayersMock,
 }));
 
 const { getGlobalStatistics, getServerStatistics } = await import('../src/service/server-statistics-service.js');
@@ -24,33 +20,21 @@ describe('server statistics service', () => {
     findServerByIdMock.mockImplementation((serverId: string) => Promise.resolve({ id: serverId }));
     listServerStatisticsBucketsMock.mockResolvedValue([]);
     listGlobalStatisticsBucketsMock.mockResolvedValue([]);
-    getCachedServerPlayersMock.mockReturnValue([]);
   });
 
-  test('enriches global statistic player uids with names from cached backend player data', async () => {
+  test('global statistics contain aggregate data without player lists', async () => {
     listGlobalStatisticsBucketsMock.mockResolvedValue([
       bucket('server-1', ['uid-2', 'uid-1']),
       bucket('server-2', ['uid-3', 'uid-2']),
     ]);
-    getCachedServerPlayersMock.mockImplementation((serverId: string) => {
-      if (serverId === 'server-1') return [{ uid: 'uid-1', name: 'Alice' }];
-      if (serverId === 'server-2') return [{ uid: 'uid-3', name: 'Zed' }];
-      return [];
-    });
-
-    await expect(getGlobalStatistics({})).resolves.toMatchObject({
-      players: [
-        { uid: 'uid-1', name: 'Alice' },
-        { uid: 'uid-2' },
-        { uid: 'uid-3', name: 'Zed' },
-      ],
-    });
-    expect(getCachedServerPlayersMock).toHaveBeenCalledWith('server-1');
-    expect(getCachedServerPlayersMock).toHaveBeenCalledWith('server-2');
+    const result = await getGlobalStatistics({});
+    expect(result).not.toHaveProperty('players');
+    expect(result.buckets).toHaveLength(2);
+    expect(result.buckets[0]).not.toHaveProperty('onlinePlayerUids');
   });
 
-  test('enriches global statistic player names from observed server players', async () => {
-    listGlobalStatisticsBucketsMock.mockResolvedValue([
+  test('server statistics reveal player references only to exported server members', async () => {
+    listServerStatisticsBucketsMock.mockResolvedValue([
       bucket('server-1', ['standalone-player']),
     ]);
     findServerByIdMock.mockResolvedValue({
@@ -58,9 +42,10 @@ describe('server statistics service', () => {
       knownPlayers: [{ uid: 'standalone-player', name: 'Observed Alice' }],
     });
 
-    await expect(getGlobalStatistics({})).resolves.toMatchObject({
-      players: [{ uid: 'standalone-player', name: 'Observed Alice' }],
-    });
+    const guest = await getServerStatistics({ serverId: 'server-1' });
+    expect(guest.buckets[0].onlinePlayerUids).toEqual([]);
+    const member = await getServerStatistics({ serverId: 'server-1', viewerUid: 'standalone-player' });
+    expect(member.buckets[0].onlinePlayerUids).toEqual(['standalone-player']);
   });
 
   test('validates server existence and date ranges', async () => {

@@ -2,7 +2,13 @@ import { jest } from '@jest/globals';
 import { mkdtemp, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {
+jest.unstable_mockModule('../src/service/game-connector-websocket-service.js', () => ({
+  hasActiveGameConnectorFeature: () => true,
+  requestGameConnectorCredentialReset: () => false,
+  closeGameConnectorSession: () => undefined,
+  registerGameConnectorEventHandler: () => () => undefined,
+}));
+const {
   getMapClaims,
   getMapGlobalMarketplaceOffers,
   getMapNpcMarkets,
@@ -10,11 +16,11 @@ import {
   getMapLayerCapabilities,
   getMapMarketplaceOffers,
   getMapPlayers,
-} from '../src/service/map-layer-service.js';
-import {
+} = await import('../src/service/map-layer-service.js');
+const {
   clearPluginDataCache,
   refreshPluginDataForServer,
-} from '../src/service/plugin-data-cache-service.js';
+} = await import('../src/service/plugin-data-cache-service.js');
 
 describe('map layer service', () => {
   const originalEnv = { ...process.env };
@@ -260,7 +266,6 @@ describe('map layer service', () => {
         { directory: 'OZLandClaim', name: 'OZ - Land Claim', valid: true },
       ],
     }))
-      .mockResolvedValueOnce(response({ players: [] }))
       .mockResolvedValueOnce(response({
         settings: {
           defaultAreaPermission: 'custom-guest',
@@ -275,6 +280,7 @@ describe('map layer service', () => {
         ]),
       }))
       .mockResolvedValueOnce(response({
+        consentVersion: 1,
         players: [
           { id: 1, uid: '', name: 'No UID', posx: 10, posz: 20, lastseen: 0 },
           { id: 2, uid: 'bad-pos', name: 'Bad Position', posx: Number.NaN, posz: 20, lastseen: 0 },
@@ -331,11 +337,7 @@ describe('map layer service', () => {
     await expect(getMapPlayers(false, root, new Date('2026-01-01T00:00:00.000Z'), 'server-1'))
       .resolves.toEqual([]);
     await expect(getMapPlayers(true, root, new Date('2026-01-01T00:00:00.000Z'), 'server-1'))
-      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({
-        id: '1',
-        state: 'long-term-offline',
-        lastSeen: '1970-01-01T00:00:00.000Z',
-      })]));
+      .resolves.toEqual([expect.objectContaining({ id: 'old', state: 'long-term-offline' })]);
     await expect(getMapGpsGlobalMarkers(root, 'server-1')).resolves.toEqual([
       { id: 1, name: 'Valid', x: 1, y: 2, z: 3, icon: 'i', color: '#fff', createdAt: 'x' },
     ]);
@@ -370,7 +372,6 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         { directory: 'OZLandClaim', name: 'OZ - Land Claim', version: '0.18.0', valid: true },
       ],
     }))
-    .mockResolvedValueOnce(response({ players: [{ uid: 'player-1', name: 'Cached Player' }] }))
     .mockResolvedValueOnce(response({
       settings: {
         allowClaimSale: 'true',
@@ -478,6 +479,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
       ]),
     }))
     .mockResolvedValueOnce(response({
+      consentVersion: 1,
       players: [{
         id: 5,
         uid: 'player-1',
@@ -486,6 +488,7 @@ function mockPluginRouteResponses(includeCityAreas = false): void {
         posz: 22,
         lastseen: 1767225600,
         online: true,
+        connected: true,
       }],
     }))
     .mockResolvedValueOnce(response({ config: { Server_Admins: 'steam-admin' } }))

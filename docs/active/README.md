@@ -6,5 +6,4 @@ Each task must include objective, ownership, dependencies, risks, validation str
 
 ## Current Tasks
 
-No backend implementation tasks are currently active. Completed plans are kept
-in `docs/archive/`.
+- [Player identity and Steam profile privacy](player-identity-steam-privacy.md)

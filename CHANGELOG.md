@@ -1,5 +1,17 @@
 ## Unreleased
 
+- Fetch `/info` for every master-list server, cache unapproved contact owners for Steam eligibility, and use the live `/info.name` as the server label.
+
+- gate Steam account creation on consent-filtered player exports, live verified server contacts, or the superadmin ID; revoke confirmed losses without deleting servers.
+- expose the stored server catalog publicly, including offline servers, and add a read-through guest online-name endpoint.
+- close guest statistics, player, market, map overlay, and live routes across REST aliases and WebSockets; remove pin routes.
+
+- accept authenticated `playerConsentRevoked` connector events to remove a server's matching player/statistics or strip map positions immediately, depending on purpose.
+
+- add durable player ObjectId mappings, repeatable server/statistic references, and hourly Steam profile visibility checks.
+- anonymize private and unchecked player names and UIDs in REST and both live channels; limit the server-admin exception to fresh native admin data and verified Steam accounts.
+- require ObjectId player history paths and verified matching Steam identity for private history.
+
 - require a valid session for player-server history and mask public Steam IDs for guests in REST and live status responses.
 - prevent stale query-refresh snapshots from recreating merged source records.
 - prefer online evidence and retain player UIDs when duplicate statistics overlap; record alias samples under the canonical ID.

@@ -31,7 +31,12 @@ const state = {
 };
 
 const addServerMock = jest.fn();
+const saveMasterServerMock = jest.fn();
 const removeServerMock = jest.fn<() => Promise<void>>().mockResolvedValue();
+const removeServerFromAllPinsMock = jest.fn<() => Promise<void>>().mockResolvedValue();
+const deleteServerStatisticsMock = jest.fn<() => Promise<void>>().mockResolvedValue();
+const suppressServerMock = jest.fn<() => Promise<void>>().mockResolvedValue();
+const unsuppressServerMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 const updateServerMock = jest.fn();
 const findServerByIdMock = jest.fn();
 const findUserByIdMock = jest.fn();
@@ -41,6 +46,7 @@ const toPublicUserMock = jest.fn();
 const updateUserMock = jest.fn();
 const removePinnedServerMock = jest.fn();
 const deleteUserAndOwnedServersMock = jest.fn();
+const deleteUserOnlyMock = jest.fn();
 const mapServerToDtoMock = jest.fn();
 const mapPublicUserToDtoMock = jest.fn();
 const canAdminServerMock = jest.fn();
@@ -49,16 +55,42 @@ const writeMock = jest.fn<() => Promise<void>>().mockResolvedValue();
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   addServer: addServerMock,
+  saveMasterServer: saveMasterServerMock,
   findServerById: findServerByIdMock,
   findUserById: findUserByIdMock,
   listServers: listServersMock,
   listUsers: listUsersMock,
   removeServer: removeServerMock,
+  removeServerFromAllPins: removeServerFromAllPinsMock,
   toPublicUser: toPublicUserMock,
   updateServer: updateServerMock,
   updateUser: updateUserMock,
   removePinnedServer: removePinnedServerMock,
   deleteUserAndOwnedServers: deleteUserAndOwnedServersMock,
+  deleteUserOnly: deleteUserOnlyMock,
+}));
+
+jest.unstable_mockModule('../src/db/server-statistics-store.js', () => ({
+  deleteServerStatistics: deleteServerStatisticsMock,
+}));
+jest.unstable_mockModule('../src/service/server-suppression-service.js', () => ({
+  suppressServer: suppressServerMock,
+  unsuppressServer: unsuppressServerMock,
+}));
+jest.unstable_mockModule('../src/service/server-live-status-service.js', () => ({
+  clearServerLiveStatusCacheEntry: jest.fn(),
+}));
+jest.unstable_mockModule('../src/service/game-connector-websocket-service.js', () => ({
+  closeGameConnectorSession: jest.fn(),
+}));
+jest.unstable_mockModule('../src/service/forgotten-player-service.js', () => ({
+  forgetPlayerFromServer: jest.fn(),
+}));
+jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
+  clearPluginDataCacheEntry: jest.fn(),
+}));
+jest.unstable_mockModule('../src/service/map-live-service.js', () => ({
+  closeServerMapLiveSubscriptions: jest.fn(),
 }));
 
 jest.unstable_mockModule('../src/mapper/server-mapper.js', () => ({
@@ -75,6 +107,7 @@ jest.unstable_mockModule('../src/service/can-admin-server-service.js', () => ({
 }));
 
 const storageService = await import('../src/service/storage-service.js');
+const masterCache = await import('../src/service/master-only-cache-service.js');
 
 function createServerRecord(overrides: Partial<StoredServer> = {}): StoredServer {
   return {
@@ -120,6 +153,7 @@ describe('storage-service', () => {
     process.env.SUPER_ADMIN_ID = 'steam-admin';
     state.servers = [];
     state.users = [];
+    masterCache.clearMasterOnlyCache();
     addServerMock.mockReset();
     removeServerMock.mockClear();
     updateServerMock.mockReset();
@@ -158,6 +192,11 @@ describe('storage-service', () => {
       state.users = state.users.filter((user) => user.id !== id);
       state.servers = state.servers.filter((server) => server.userId !== id);
       return true;
+    });
+    deleteUserOnlyMock.mockReset().mockImplementation(async (id: string) => {
+      const exists = state.users.some((user) => user.id === id);
+      state.users = state.users.filter((user) => user.id !== id);
+      return exists;
     });
     mapServerToDtoMock.mockReset().mockImplementation((server: StoredServer) => ({
       id: server.id,
@@ -205,6 +244,7 @@ describe('storage-service', () => {
       { id: 'a', label: 'Server', blocked: undefined, blockedAt: undefined },
       { id: 'b', label: 'Server', blocked: undefined, blockedAt: undefined },
       { id: 'c', label: 'Server', blocked: undefined, blockedAt: undefined },
+      { id: 'stale-offline', label: 'Server', blocked: undefined, blockedAt: undefined },
     ]);
     await expect(storageService.listServers({ userId: 'user-1', userSteamId: 'steam-admin' })).resolves.toHaveLength(5);
     jest.useRealTimers();
@@ -448,6 +488,10 @@ describe('storage-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ name: 'Query Name' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ contact: 'steam-1' }),
       }) as typeof fetch;
     fetchBackendAdminsMock.mockResolvedValueOnce([]);
 
@@ -482,7 +526,7 @@ describe('storage-service', () => {
         },
         { userId: 'user-1', userSteamId: 'steam-1' },
       ),
-    ).resolves.toEqual({ id: 'server-10', label: 'Server' });
+    ).rejects.toThrow('SERVER_CONTACT_MISMATCH');
 
     process.env.ENABLE_AUTH = 'true';
     global.fetch = jest.fn().mockRejectedValue(new Error('offline')) as typeof fetch;
@@ -497,6 +541,25 @@ describe('storage-service', () => {
         { userId: 'user-1', userSteamId: 'steam-1' },
       ),
     ).rejects.toThrow('QUERY_URL_NAME_REQUIRED');
+  });
+
+  test('matching info.contact approves a cached master server without creating a duplicate', async () => {
+    process.env.ENABLE_AUTH = 'true';
+    const cached = {
+      id: 'server-cached', label: 'Catalog', queryUrl: 'http://query.example:4254',
+      ip: '203.0.113.7', port: 4255, public: true, createdAt: new Date(),
+      info: { contact: '76561198000000001' },
+    };
+    masterCache.replaceMasterOnlyCache(new Map([[cached.id, cached]]));
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, json: async () => ({ contact: '76561198000000001' }),
+    }) as typeof fetch;
+    saveMasterServerMock.mockResolvedValue(cached);
+    await storageService.createServer({ label: 'Approved', queryUrl: cached.queryUrl, public: true },
+      { userId: 'owner', userSteamId: '76561198000000001' });
+    expect(saveMasterServerMock).toHaveBeenCalledWith(expect.objectContaining({ id: cached.id, label: 'Approved' }), true);
+    expect(addServerMock).not.toHaveBeenCalled();
+    expect(masterCache.cachedMasterServers()).toEqual([]);
   });
 
   test('patchServer validates ownership, duplicates, backend checks, and missing updates', async () => {
@@ -591,6 +654,9 @@ describe('storage-service', () => {
       }),
     ).resolves.toBeUndefined();
     expect(removeServerMock).toHaveBeenCalledWith('server-1');
+    expect(suppressServerMock).toHaveBeenCalledWith(undefined, undefined, 'https://query.example.com');
+    expect(deleteServerStatisticsMock).toHaveBeenCalledWith('server-1');
+    expect(removeServerFromAllPinsMock).toHaveBeenCalledWith('server-1');
   });
 
   test('user management helpers enforce super admin permissions and validate patch values', async () => {
@@ -646,6 +712,6 @@ describe('storage-service', () => {
       storageService.deleteStorageUser('steam-admin', 'user-1', 'user-2'),
     ).resolves.toBeUndefined();
     expect(state.users.map((user) => user.id)).toEqual(['user-1']);
-    expect(state.servers).toEqual([]);
+    expect(state.servers).toHaveLength(1);
   });
 });

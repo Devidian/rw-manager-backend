@@ -8,7 +8,7 @@ import { getStoredServerLiveStatus } from './server-live-status-service.js';
 import { subscribeServerLiveUpdates } from './server-live-update-service.js';
 import { startWebSocketHeartbeat } from './websocket-heartbeat-service.js';
 import { registerWebSocketEndpoint } from './websocket-upgrade-router.js';
-import { maskPublicSteamIds } from './public-steam-id-service.js';
+import { projectPlayerData } from './player-projection-service.js';
 
 interface SubscribeMessage {
   type: 'server.status.subscribe' | 'server.status.set-servers';
@@ -19,14 +19,16 @@ interface SubscribeMessage {
 
 interface SubscriberState {
   authenticated: boolean;
+  userSteamId?: string;
   serverIds: Set<string>;
   snapshots: Map<string, ServerLiveStatusResponse>;
   sequence: number;
+  pending: Promise<void>;
 }
 
 export interface ServerLiveStatusChanges {
   changed: Partial<ServerLiveStatusResponse>;
-  removedFields: Array<'queryData' | 'infoData' | 'onlinePlayers' | 'errorMessage'>;
+  removedFields: Array<'queryData' | 'infoData' | 'onlinePlayers' | 'publicPlayerCount' | 'errorMessage'>;
 }
 
 export interface ServerStatusLiveService {
@@ -47,6 +49,7 @@ export function attachServerStatusLiveService(server: HttpServer): ServerStatusL
   webSocketServer.on('connection', (socket) => {
     let subscribed = false;
     let authenticated = false;
+    let userSteamId: string | undefined;
     let updates = Promise.resolve();
     const subscribeTimeout = setTimeout(
       () => closeWithError(socket, 'subscribe_timeout'),
@@ -56,16 +59,23 @@ export function attachServerStatusLiveService(server: HttpServer): ServerStatusL
     socket.on('message', (data) => {
       updates = updates.then(async () => {
         const message = parseServerStatusSubscribeMessage(data, subscribed);
-        if (!subscribed) authenticated = await authorize(message.token);
-        const snapshotItems = (await snapshotItemsFor(message.serverIds)).map((item) => ({
+        if (!subscribed) {
+          const authorization = await authorize(message.token);
+          userSteamId = authorization.userSteamId;
+          authenticated = authorization.authenticated;
+        }
+        const snapshotItems = await Promise.all((await snapshotItemsFor(message.serverIds)).map(async (item) => ({
           ...item,
-          value: authenticated ? item.value : maskPublicSteamIds(item.value) as ServerLiveStatusResponse,
-        }));
+          value: await projectPlayerData(item.value, { serverId: item.serverId, userSteamId,
+            guest: !authenticated }) as ServerLiveStatusResponse,
+        })));
         const state = subscribers.get(socket) ?? {
           authenticated,
+          userSteamId,
           serverIds: new Set<string>(),
           snapshots: new Map<string, ServerLiveStatusResponse>(),
           sequence: 0,
+          pending: Promise.resolve(),
         };
         state.serverIds = new Set(message.serverIds);
         state.snapshots = new Map(snapshotItems.map((item) => [item.serverId, item.value]));
@@ -108,21 +118,24 @@ export function attachServerStatusLiveService(server: HttpServer): ServerStatusL
   const unsubscribeUpdates = subscribeServerLiveUpdates(({ serverId, value }) => {
     for (const [socket, state] of subscribers) {
       if (!state.serverIds.has(serverId)) continue;
-      const outgoing = state.authenticated ? value : maskPublicSteamIds(value) as ServerLiveStatusResponse;
-      const previous = state.snapshots.get(serverId);
-      state.snapshots.set(serverId, outgoing);
-      if (!previous) continue;
-      const changes = serverLiveStatusChanges(previous, outgoing);
-      if (!Object.keys(changes.changed).length && !changes.removedFields.length) continue;
-      state.sequence += 1;
-      sendServerStatusChange(socket, {
-        type: 'server.status.changed',
-        schemaVersion: 1,
-        serverId,
-        sequence: state.sequence,
-        generatedAt: new Date().toISOString(),
-        ...changes,
-      });
+      state.pending = state.pending.then(async () => {
+        const outgoing = await projectPlayerData(value, { serverId, userSteamId: state.userSteamId,
+          guest: !state.authenticated }) as ServerLiveStatusResponse;
+        const previous = state.snapshots.get(serverId);
+        state.snapshots.set(serverId, outgoing);
+        if (!previous) return;
+        const changes = serverLiveStatusChanges(previous, outgoing);
+        if (!Object.keys(changes.changed).length && !changes.removedFields.length) return;
+        state.sequence += 1;
+        sendServerStatusChange(socket, {
+          type: 'server.status.changed',
+          schemaVersion: 1,
+          serverId,
+          sequence: state.sequence,
+          generatedAt: new Date().toISOString(),
+          ...changes,
+        });
+      }).catch((error) => defaultLogger.error('Server live projection failed:', error));
     }
   });
 
@@ -188,7 +201,7 @@ export function serverLiveStatusChanges(
 ): ServerLiveStatusChanges {
   const changed: Partial<ServerLiveStatusResponse> = {};
   const removedFields: ServerLiveStatusChanges['removedFields'] = [];
-  const optionalFields = ['queryData', 'infoData', 'onlinePlayers', 'errorMessage'] as const;
+  const optionalFields = ['queryData', 'infoData', 'onlinePlayers', 'publicPlayerCount', 'errorMessage'] as const;
   if (previous.status !== next.status) changed.status = next.status;
   for (const field of optionalFields) {
     if (next[field] === undefined && previous[field] !== undefined) {
@@ -201,12 +214,12 @@ export function serverLiveStatusChanges(
   return { changed, removedFields };
 }
 
-async function authorize(token: string | undefined): Promise<boolean> {
-  const user = AppConfig.enableAuth && token ? await getUserFromBearerToken(`Bearer ${token}`) : null;
-  if (AppConfig.enableAuth && AppConfig.forceAuth && !user) {
+async function authorize(token: string | undefined): Promise<{ authenticated: boolean; userSteamId?: string }> {
+  const user = token ? await getUserFromBearerToken(`Bearer ${token}`) : null;
+  if (!user) {
     throw new ServerStatusProtocolError('unauthorized');
   }
-  return !!user;
+  return { authenticated: !!user, userSteamId: user?.steamVerifiedAt ? user.steamId : undefined };
 }
 
 async function snapshotItemsFor(
@@ -220,10 +233,11 @@ async function snapshotItemsFor(
 
 function assignOptionalField(
   target: Partial<ServerLiveStatusResponse>,
-  field: 'queryData' | 'infoData' | 'onlinePlayers' | 'errorMessage',
+  field: 'queryData' | 'infoData' | 'onlinePlayers' | 'publicPlayerCount' | 'errorMessage',
   value: unknown,
 ): void {
   if (field === 'onlinePlayers' && Array.isArray(value)) target.onlinePlayers = value;
+  else if (field === 'publicPlayerCount' && typeof value === 'number') target.publicPlayerCount = value;
   else if (field === 'errorMessage' && typeof value === 'string') target.errorMessage = value;
   else if (field === 'queryData') target.queryData = value;
   else if (field === 'infoData') target.infoData = value;

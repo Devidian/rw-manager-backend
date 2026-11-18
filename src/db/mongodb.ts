@@ -1,4 +1,4 @@
-import { MongoClient, type Collection, type Db, type Document } from 'mongodb';
+import { MongoClient, ObjectId, type Collection, type Db, type Document } from 'mongodb';
 import { access, readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { AppConfig } from '../utils/app-config.js';
@@ -11,6 +11,19 @@ export interface MongoCollections {
   servers: Collection<ServerConfig & Document>;
   users: Collection<JsonDbUser & Document>;
   serverStatistics: Collection<ServerStatisticsBucket & Document>;
+  playerMappings: Collection<PlayerMapping & Document>;
+  suppressedServers: Collection<{ endpoint: string; suppressedAt: Date } & Document>;
+}
+
+export interface PlayerMapping {
+  _id: ObjectId;
+  uid: string;
+  name?: string;
+  privateFlag?: boolean;
+  globalLastSeen?: Date;
+  steamCheckedAt?: Date;
+  steamMissingSince?: Date;
+  steamError?: string;
 }
 
 export function getMongoClient(): MongoClient | undefined {
@@ -69,9 +82,12 @@ export async function bootstrapMongoDb(): Promise<MongoCollections | undefined> 
       servers: database.collection<ServerConfig & Document>('servers'),
       users: database.collection<JsonDbUser & Document>('users'),
       serverStatistics: database.collection<ServerStatisticsBucket & Document>('server_statistics'),
+      playerMappings: database.collection<PlayerMapping & Document>('player_mappings'),
+      suppressedServers: database.collection<{ endpoint: string; suppressedAt: Date } & Document>('suppressed_servers'),
     };
     await ensureIndexes(collections);
     if (AppConfig.enableStorage) await migrateLegacyJson(collections);
+    if (AppConfig.enableStorage) await migratePlayerReferences(collections);
     defaultLogger.log(`MongoDB connected: ${AppConfig.mongoDatabaseName}`);
     return collections;
   } catch (error) {
@@ -304,6 +320,8 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
   await Promise.all([
     next.servers.createIndex({ id: 1 }, { unique: true }),
     next.servers.createIndex({ alternateIds: 1 }, { unique: true, sparse: true }),
+    next.servers.createIndex({ 'knownPlayers.uid': 1 }),
+    next.servers.createIndex({ 'onlinePlayers.uid': 1 }),
     next.servers.createIndex(
       { ip: 1, port: 1 },
       {
@@ -320,7 +338,74 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
     next.users.createIndex({ steamId: 1 }, { unique: true, sparse: true }),
     next.serverStatistics.createIndex({ id: 1 }, { unique: true }),
     next.serverStatistics.createIndex({ serverId: 1, hourStart: 1 }, { unique: true }),
+    next.suppressedServers.createIndex({ endpoint: 1 }, { unique: true }),
+    next.playerMappings.createIndex({ uid: 1 }, { unique: true }),
+    next.playerMappings.createIndex({ globalLastSeen: 1, steamCheckedAt: 1 }),
   ]);
+}
+
+/** Additive and repeatable: a crash leaves only rows that are safe to revisit. */
+export async function migratePlayerReferences(next: MongoCollections): Promise<void> {
+  const playerRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  for await (const server of next.servers.find({}, { projection: { _id: 1, knownPlayers: 1, onlinePlayers: 1, lastChecked: 1 } })) {
+    const knownPlayers = Array.isArray(server.knownPlayers) ? server.knownPlayers : [];
+    const onlinePlayers = Array.isArray(server.onlinePlayers) ? server.onlinePlayers : [];
+    const uids = [...new Set([...knownPlayers, ...onlinePlayers].flatMap((value) => {
+      const uid = playerRecord(value).uid ?? playerRecord(value).UID;
+      return typeof uid === 'string' && uid.trim() && !(typeof playerRecord(value).id === 'number' && uid.trim() === String(playerRecord(value).id)) ? [uid.trim()] : [];
+    }))];
+    for (const uid of uids) {
+      const player = [...knownPlayers, ...onlinePlayers].map(playerRecord).find((item) => (item.uid ?? item.UID) === uid);
+      const name = player?.name ?? player?.Name;
+      await next.playerMappings.updateOne({ uid }, { $setOnInsert: { uid, ...(typeof name === 'string' && name.trim() ? { name: name.trim() } : {}) } }, { upsert: true });
+      const knownSeen = knownPlayers.map(playerRecord).filter((item) => item.uid === uid)
+        .map((item) => typeof item.lastseen === 'number' ? item.lastseen * 1000 : 0);
+      const onlineSeen = onlinePlayers.map(playerRecord).some((item) => (item.uid ?? item.UID) === uid)
+        ? new Date(server.lastChecked ?? 0).getTime() : 0;
+      const latest = Math.max(0, ...knownSeen, Number.isFinite(onlineSeen) ? onlineSeen : 0);
+      if (latest > 0) await next.playerMappings.updateOne({ uid }, { $max: { globalLastSeen: new Date(latest) } });
+    }
+    const mappings = await next.playerMappings.find({ uid: { $in: uids } }).toArray();
+    const ids = new Map(mappings.map((item) => [item.uid, item._id.toHexString()]));
+    const attach = (items: unknown[]) => items.map((value) => {
+      const item = playerRecord(value);
+      const uid = item.uid ?? item.UID;
+      return typeof uid === 'string' && ids.has(uid)
+        ? { ...item, playerMappingId: ids.get(uid) } : value;
+    });
+    await next.servers.updateOne({ _id: server._id }, { $set: { knownPlayers: attach(knownPlayers) as ServerConfig['knownPlayers'], onlinePlayers: attach(onlinePlayers) } });
+  }
+  const statisticUids = new Map<string, Date | undefined>();
+  const statisticQuery = { 'onlinePlayerUids.0': { $exists: true } };
+  for await (const bucket of next.serverStatistics.find(statisticQuery, { projection: { onlinePlayerUids: 1, hourStart: 1 } })) {
+    const observedAt = new Date(bucket.hourStart ?? 0);
+    for (const uid of bucket.onlinePlayerUids ?? []) {
+      if (typeof uid !== 'string' || !uid.trim()) continue;
+      const previous = statisticUids.get(uid);
+      if (!statisticUids.has(uid) || (Number.isFinite(observedAt.getTime()) && observedAt.getTime() > (previous?.getTime() ?? 0))) {
+        statisticUids.set(uid, Number.isFinite(observedAt.getTime()) && observedAt.getTime() > 0 ? observedAt : previous);
+      }
+    }
+  }
+  const uidEntries = [...statisticUids];
+  for (let offset = 0; offset < uidEntries.length; offset += 1000) {
+    await next.playerMappings.bulkWrite(uidEntries.slice(offset, offset + 1000).map(([uid, observedAt]) => ({
+      updateOne: { filter: { uid }, update: {
+        $setOnInsert: { uid }, ...(observedAt ? { $max: { globalLastSeen: observedAt } } : {}),
+      }, upsert: true },
+    })), { ordered: false });
+  }
+  const statisticMappings = await next.playerMappings.find({ uid: { $in: [...statisticUids.keys()] } }).toArray();
+  const statisticIds = new Map(statisticMappings.map((item) => [item.uid, item._id.toHexString()]));
+  const statisticUpdates = [];
+  for await (const bucket of next.serverStatistics.find(statisticQuery, { projection: { _id: 1, onlinePlayerUids: 1, onlinePlayerIds: 1 } })) {
+    const ids = [...new Set((bucket.onlinePlayerUids ?? []).map((uid) => statisticIds.get(uid)).filter((id): id is string => !!id))];
+    if (ids.length === bucket.onlinePlayerIds?.length && ids.every((id) => bucket.onlinePlayerIds?.includes(id))) continue;
+    statisticUpdates.push({ updateOne: { filter: { _id: bucket._id }, update: { $set: { onlinePlayerIds: ids } } } });
+    if (statisticUpdates.length >= 1000) await next.serverStatistics.bulkWrite(statisticUpdates.splice(0), { ordered: false });
+  }
+  if (statisticUpdates.length) await next.serverStatistics.bulkWrite(statisticUpdates, { ordered: false });
 }
 
 function isExpectedMissingIndexError(error: unknown): boolean {

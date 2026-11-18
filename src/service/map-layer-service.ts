@@ -541,7 +541,7 @@ function cachedMapPlayers(
   return players.flatMap((player): MapPlayer[] => {
     if (!player || typeof player !== 'object') return [];
     const value = player as Record<string, unknown>;
-    const { id, uid, name, posx, posz, lastseen } = value;
+    const { name, posx, posz, lastseen } = value;
     if (
       typeof name !== 'string' ||
       typeof posx !== 'number' ||
@@ -550,7 +550,8 @@ function cachedMapPlayers(
       !Number.isFinite(posx) ||
       !Number.isFinite(posz)
     ) return [];
-    const playerId = typeof uid === 'string' && uid ? uid : String(id ?? '');
+    const uid = value.uid ?? value.UID;
+    const playerId = typeof uid === 'string' ? uid.trim() : '';
     if (!playerId) return [];
     const recent = lastseen >= threshold;
     const online = onlineUids.has(playerId);

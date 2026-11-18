@@ -1,5 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { MongoServerError } from 'mongodb';
 import { v4 } from 'uuid';
+import { attachPlayerReferences } from '../service/player-identity-service.js';
 import { nonStorageDb as db } from './non-storage-store.js';
 import { getMongoCollections } from './mongodb.js';
 import type {
@@ -25,6 +27,7 @@ type ServerPatch = Partial<
     | 'status'
     | 'onlinePlayers'
     | 'knownPlayers'
+    | 'privacyPendingDeletes'
     | 'blocked'
     | 'blockedAt'
     | 'lastChecked'
@@ -73,6 +76,7 @@ export function toPrivateUser(user: JsonDbUser): PrivateUser {
     state: user.state,
     role: user.role,
     steamId: user.steamId,
+    steamVerifiedAt: user.steamVerifiedAt,
     pinnedServers: Array.isArray(user.pinnedServers) ? user.pinnedServers : [],
     intercomChannels: Array.isArray(user.intercomChannels) ? user.intercomChannels : ['global', 'web'],
     createdAt: user.createdAt,
@@ -152,7 +156,8 @@ export async function addServer(
 export async function saveServer(server: ServerConfig, allowCreate = false): Promise<ServerConfig> {
   const mongo = getMongoCollections();
   if (mongo) {
-    const { connectorCredential: _credential, ...fields } = server;
+    const referenced = await attachPlayerReferences(server);
+    const { connectorCredential: _credential, ...fields } = referenced;
     await mongo.servers.updateOne({ id: server.id }, { $set: fields }, { upsert: allowCreate });
     return server;
   }
@@ -174,7 +179,8 @@ export async function saveMasterServer(server: ServerConfig, allowCreate = true)
 
   const mongo = getMongoCollections();
   if (mongo) {
-    const { connectorCredential: _credential, ...fields } = server;
+    const referenced = await attachPlayerReferences(server);
+    const { connectorCredential: _credential, ...fields } = referenced;
     await mongo.servers.updateOne({ ip: server.ip, port: server.port }, { $set: fields }, { upsert: allowCreate });
     return server;
   }
@@ -192,6 +198,25 @@ export async function saveMasterServer(server: ServerConfig, allowCreate = true)
   }
   await db.write();
   return server;
+}
+
+/** Approval must never replace an existing server or its connector data. */
+export async function insertMasterServerIfAbsent(server: ServerConfig, ip: string, port: number): Promise<boolean> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    const { connectorCredential: _credential, ...fields } = server;
+    try {
+      const result = await mongo.servers.updateOne({ ip, port }, { $setOnInsert: fields }, { upsert: true });
+      return result.upsertedCount === 1;
+    } catch (error) {
+      if (error instanceof MongoServerError && error.code === 11000) return false;
+      throw error;
+    }
+  }
+  if (db.data.servers.some((item) => item.id === server.id || item.ip === ip && item.port === port)) return false;
+  db.data.servers.push(server);
+  await db.write();
+  return true;
 }
 
 /** Only pairing may create credentials; stale catalog/status snapshots cannot replace them. */
@@ -292,6 +317,19 @@ export async function removeServer(id: string): Promise<void> {
     return;
   }
   db.data.servers = db.data.servers.filter((server) => server.id !== id);
+  await db.write();
+}
+
+export async function removeServerFromAllPins(serverId: string): Promise<void> {
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await mongo.users.updateMany({ pinnedServers: serverId },
+      { $pull: { pinnedServers: serverId } } as unknown as Parameters<typeof mongo.users.updateMany>[1]);
+    return;
+  }
+  for (const user of db.data.users) {
+    user.pinnedServers = (user.pinnedServers ?? []).filter((id) => id !== serverId);
+  }
   await db.write();
 }
 
@@ -415,13 +453,14 @@ export async function setUserSteamId(id: string, steamId: string): Promise<Priva
   const user = await findUserById(id);
   if (!user) return null;
   user.steamId = steamId || undefined;
+  user.steamVerifiedAt = steamId ? new Date() : undefined;
   await saveUser(user);
   return toPrivateUser(user);
 }
 
 export async function updateUser(
   id: string,
-  patch: Partial<Pick<JsonDbUser, 'username' | 'state' | 'role' | 'pinnedServers' | 'intercomChannels' | 'lastSeenAt' | 'apiTokenHash' | 'apiTokenSalt' | 'apiTokenCreatedAt'>>,
+  patch: Partial<Pick<JsonDbUser, 'username' | 'state' | 'role' | 'pinnedServers' | 'intercomChannels' | 'lastSeenAt' | 'apiTokenHash' | 'apiTokenSalt' | 'apiTokenCreatedAt' | 'steamVerifiedAt' | 'managerServerIds'>>,
 ): Promise<JsonDbUser | null> {
   const user = await findUserById(id);
   if (!user) return null;
@@ -472,6 +511,19 @@ export async function deleteUserAndOwnedServers(userId: string): Promise<boolean
   }
   db.data.users = db.data.users.filter((entry) => entry.id !== userId);
   db.data.servers = db.data.servers.filter((entry) => entry.userId !== userId);
+  await db.write();
+  return true;
+}
+
+/** Remove a Manager identity while retaining the public server catalog. */
+export async function deleteUserOnly(userId: string): Promise<boolean> {
+  if (!await findUserById(userId)) return false;
+  const mongo = getMongoCollections();
+  if (mongo) {
+    await mongo.users.deleteOne({ id: userId });
+    return true;
+  }
+  db.data.users = db.data.users.filter((entry) => entry.id !== userId);
   await db.write();
   return true;
 }

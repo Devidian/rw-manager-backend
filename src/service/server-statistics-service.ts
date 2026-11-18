@@ -2,8 +2,6 @@ import { findServerById } from '../db/manager-store.js';
 import { listGlobalStatisticsBuckets, listServerStatisticsBuckets } from '../db/server-statistics-store.js';
 import type { GlobalStatisticsResponse } from '../dto/global-statistics-response.js';
 import type { ServerStatisticsResponse } from '../dto/server-statistics-response.js';
-import { getCachedServerPlayers } from './server-plugin-data-service.js';
-import type { DbPlayer } from '../interfaces/game-player.js';
 
 function parseDate(value: unknown, field: string): Date | undefined {
   if (value === undefined) return undefined;
@@ -21,6 +19,7 @@ export async function getServerStatistics(params: {
   serverId: string;
   from?: unknown;
   to?: unknown;
+  viewerUid?: string;
 }): Promise<ServerStatisticsResponse> {
   const server = await findServerById(params.serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
@@ -36,11 +35,14 @@ export async function getServerStatistics(params: {
     from,
     to,
   });
+  const canSeePlayers = !!params.viewerUid && server.knownPlayers?.some((player) => player.uid === params.viewerUid) === true;
   return {
     serverId: server.id,
     from: from?.toISOString(),
     to: to?.toISOString(),
-    buckets,
+    buckets: canSeePlayers ? buckets : buckets.map((bucket) => ({
+      ...bucket, onlinePlayerUids: [], onlinePlayerIds: [],
+    })),
   };
 }
 
@@ -55,29 +57,9 @@ export async function getGlobalStatistics(params: {
   }
 
   const buckets = await listGlobalStatisticsBuckets({ from, to });
-  const playerNamesByUid = new Map<string, string>();
-  for (const serverId of new Set(buckets.map((bucket) => bucket.serverId))) {
-    const server = await findServerById(serverId);
-    const players: DbPlayer[] = [
-      ...getCachedServerPlayers(serverId),
-      ...(server?.knownPlayers ?? []),
-    ];
-    for (const player of players) {
-      if (player.name && !playerNamesByUid.has(player.uid)) {
-        playerNamesByUid.set(player.uid, player.name);
-      }
-    }
-  }
-  const players = [...new Set(buckets.flatMap((bucket) => bucket.onlinePlayerUids))]
-    .sort()
-    .map((uid) => ({
-      uid,
-      ...(playerNamesByUid.has(uid) ? { name: playerNamesByUid.get(uid) } : {}),
-    }));
   return {
     from: from?.toISOString(),
     to: to?.toISOString(),
-    buckets,
-    players,
+    buckets: buckets.map(({ onlinePlayerUids: _uids, onlinePlayerIds: _ids, ...bucket }) => bucket),
   };
 }

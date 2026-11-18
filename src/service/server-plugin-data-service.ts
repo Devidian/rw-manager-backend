@@ -52,8 +52,8 @@ function cacheEntry(serverId?: string): PluginDataCacheEntry | undefined {
 function normalizeDbPlayer(value: unknown): DbPlayer | null {
   if (!value || typeof value !== 'object') return null;
   const player = value as Record<string, unknown>;
-  const id = numberOrNull(player.id);
-  const uid = uidOrNull(player, id);
+  const id = numberOrNull(player.dbId) ?? numberOrNull(player.id);
+  const uid = uidOrNull(player);
   const name = stringOrNull(player.name);
   const posx = numberOrNull(player.posx);
   const posy = numberOrNull(player.posy);
@@ -120,10 +120,10 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function uidOrNull(player: Record<string, unknown>, fallbackId: number | null): string | null {
+function uidOrNull(player: Record<string, unknown>): string | null {
   const uid = stringOrNull(player.uid) ?? stringOrNull(player.UID);
   if (uid !== null && uid.trim()) return uid.trim();
-  return fallbackId !== null ? String(fallbackId) : null;
+  return null;
 }
 
 function platformOrNull(value: unknown): string | number | null {

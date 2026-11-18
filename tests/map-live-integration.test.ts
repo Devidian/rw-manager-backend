@@ -4,25 +4,41 @@ import { WebSocket, type RawData } from 'ws';
 import type { MapLiveSnapshot } from '../src/interfaces/map-layer.js';
 
 const state = { forceAuth: false, snapshotCall: 0, refreshMode: 'normal' as 'normal' | 'none' | 'reject' | 'slow' };
-const authState: { user: { steamId: string } | null } = { user: null };
+const authState: { user: { steamId: string; steamVerifiedAt: Date } | null } = { user: null };
 let resolveSlowRefresh: (() => void) | undefined;
+let visibilityListener: ((serverId: string) => void) | undefined;
+const entry = { data: { 'ozadminutils.playerlist': {
+  consentVersion: 1, players: [{ uid: 'steam-admin' }], mapViewerUids: ['steam-admin'],
+} } };
 const findServerById = jest.fn(async (id: string) => id === 'missing' ? null : ({ id, queryUrl: 'http://query' }));
 const getUserFromBearerToken = jest.fn(async () => authState.user);
 const refreshPluginDataForServer = jest.fn(async () => {
   if (state.refreshMode === 'none') return {};
   if (state.refreshMode === 'reject') throw 'refresh failed';
   if (state.refreshMode === 'slow') await new Promise<void>((resolve) => { resolveSlowRefresh = resolve; });
-  return { entry: {} };
+  return { entry };
 });
 const onlinePlayersFromEntry = jest.fn(() => undefined);
 const publishServerLiveUpdate = jest.fn();
 const mapLiveSnapshotFromEntry = jest.fn(() => state.snapshotCall++ === 0 ? snapshot() : changedSnapshot());
 
-jest.unstable_mockModule('../src/db/manager-store.js', () => ({ findServerById }));
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({ findServerById, listServers: jest.fn(async () => []) }));
 jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({ getUserFromBearerToken }));
 jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   refreshPluginDataForServer,
   onlinePlayersFromEntry,
+  getCachedPluginData: jest.fn(() => entry),
+}));
+jest.unstable_mockModule('../src/service/player-identity-service.js', () => ({
+  subscribePlayerVisibilityChanges: jest.fn((listener: (serverId: string) => void) => {
+    visibilityListener = listener;
+    return () => { visibilityListener = undefined; };
+  }),
+  mappingByUids: jest.fn(async () => new Map([['one', { _id: { toHexString: () => 'aaaaaaaaaaaaaaaaaaaaaaaa' },
+    uid: 'one', steamCheckedAt: new Date(), privateFlag: false }]])),
+  stableUid: (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : undefined,
+  isPrivate: () => true,
+  privateMarker: () => '**PRIVATE**',
 }));
 jest.unstable_mockModule('../src/service/map-layer-service.js', () => ({ mapLiveSnapshotFromEntry }));
 jest.unstable_mockModule('../src/service/server-live-status-service.js', () => ({
@@ -53,7 +69,7 @@ describe('map live endpoint integration', () => {
     state.forceAuth = false;
     state.snapshotCall = 0;
     state.refreshMode = 'normal';
-    authState.user = null;
+    authState.user = { steamId: 'steam-admin', steamVerifiedAt: new Date() };
     resolveSlowRefresh = undefined;
     onlinePlayersFromEntry.mockReturnValue(undefined);
     server = http.createServer((_request, response) => response.end('ok'));
@@ -72,20 +88,21 @@ describe('map live endpoint integration', () => {
 
   test('keeps one server-scoped refresh loop and emits entity deltas', async () => {
     const socket = await connect(`${baseUrl}/api/storage/map-live`);
-    const subscribedMessage = messages(socket, 1);
-    socket.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a' }));
+    const subscribedMessage = messages(socket, 2);
+    socket.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a', token: 'valid' }));
     const [subscribed] = await subscribedMessage;
     expect(subscribed).toMatchObject({ type: 'subscribed', serverId: 'server-a' });
 
     const changedMessage = messages(socket, 1);
     const second = await connect(`${baseUrl}/api/storage/map-live`);
     const secondSubscribed = messages(second, 1);
-    second.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a' }));
+    second.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a', token: 'valid' }));
     await secondSubscribed;
     const [changed] = await changedMessage;
     expect(changed).toMatchObject({
-      type: 'map.layers.changed', serverId: 'server-a', sequence: 1,
+      type: 'map.layers.changed', serverId: 'server-a', sequence: 2,
       layers: expect.arrayContaining(['players', 'claims']),
+      changes: { players: { upserted: [{ name: 'One' }] } },
     });
     expect(refreshPluginDataForServer).toHaveBeenCalled();
     second.close();
@@ -96,7 +113,7 @@ describe('map live endpoint integration', () => {
     onlinePlayersFromEntry.mockReturnValue([{ uid: 'live-player', name: 'Live' }]);
     const socket = await connect(`${baseUrl}/api/storage/map-live`);
     const subscribedMessage = messages(socket, 1);
-    socket.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a' }));
+    socket.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a', token: 'valid' }));
     await subscribedMessage;
 
     await waitUntil(() => publishServerLiveUpdate.mock.calls.length > 0);
@@ -107,15 +124,30 @@ describe('map live endpoint integration', () => {
     socket.close();
   });
 
+  test('publishes a map delta when Steam visibility changes', async () => {
+    const socket = await connect(`${baseUrl}/api/storage/map-live`);
+    const subscribedMessage = messages(socket, 2);
+    socket.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a', token: 'valid' }));
+    await subscribedMessage;
+    await waitUntil(() => state.snapshotCall > 0);
+    state.refreshMode = 'none';
+    const changedMessage = messages(socket, 1);
+    visibilityListener?.('server-a');
+    await expect(changedMessage.then(([message]) => message)).resolves.toMatchObject({
+      type: 'map.layers.changed', changes: { players: { upserted: [{ name: 'One' }] } },
+    });
+    socket.close();
+  });
+
   test('rejects unknown servers and missing authentication', async () => {
     const missing = await connect(`${baseUrl}/api/storage/map-live`);
     const missingResult = messages(missing, 1);
-    missing.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'missing' }));
+    missing.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'missing', token: 'valid' }));
     await expect(missingResult.then(([message]) => message)).resolves.toMatchObject({
       type: 'error', code: 'server_not_found',
     });
 
-    state.forceAuth = true;
+    authState.user = null;
     const unauthorized = await connect(`${baseUrl}/api/storage/map-live`);
     const unauthorizedResult = messages(unauthorized, 1);
     unauthorized.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'server-a' }));
@@ -123,8 +155,7 @@ describe('map live endpoint integration', () => {
       type: 'error', code: 'unauthorized',
     });
 
-    state.forceAuth = false;
-    authState.user = { steamId: 'steam-admin' };
+    authState.user = { steamId: 'steam-admin', steamVerifiedAt: new Date() };
     const authenticated = await connect(`${baseUrl}/api/storage/map-live`);
     const authenticatedResult = messages(authenticated, 1);
     authenticated.send(JSON.stringify({
@@ -140,7 +171,7 @@ describe('map live endpoint integration', () => {
     state.refreshMode = 'none';
     const noEntry = await connect(`${baseUrl}/api/storage/map-live`);
     const noEntrySubscribed = messages(noEntry, 1);
-    noEntry.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'no-entry' }));
+    noEntry.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'no-entry', token: 'valid' }));
     await noEntrySubscribed;
     await delay(20);
     noEntry.close();
@@ -148,7 +179,7 @@ describe('map live endpoint integration', () => {
     state.refreshMode = 'reject';
     const rejected = await connect(`${baseUrl}/api/storage/map-live`);
     const rejectedSubscribed = messages(rejected, 1);
-    rejected.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'rejected' }));
+    rejected.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'rejected', token: 'valid' }));
     await rejectedSubscribed;
     await delay(5);
     rejected.close();
@@ -156,7 +187,7 @@ describe('map live endpoint integration', () => {
     state.refreshMode = 'slow';
     const slow = await connect(`${baseUrl}/api/storage/map-live`);
     const slowSubscribed = messages(slow, 1);
-    slow.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'slow' }));
+    slow.send(JSON.stringify({ type: 'subscribe', schemaVersion: 1, serverId: 'slow', token: 'valid' }));
     await slowSubscribed;
     await waitUntil(() => resolveSlowRefresh !== undefined);
     slow.close();

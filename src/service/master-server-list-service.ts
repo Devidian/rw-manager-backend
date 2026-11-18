@@ -1,3 +1,4 @@
+import { cachedPublicPlayerCount, clearPublicPlayerCount, refreshPublicPlayerCount } from './public-online-player-service.js';
 import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import {
@@ -15,12 +16,14 @@ import type { MasterServerListEntry, MasterServerListResponse } from '../interfa
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
-import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { fetchNativePluginList, hasNativePluginRoute } from './native-plugin-list.js';
 import { clearServerLiveStatusCacheEntry, storedLiveStatusResponse } from './server-live-status-service.js';
 import { closeGameConnectorSession } from './game-connector-websocket-service.js';
+import { replaceMasterOnlyCache } from './master-only-cache-service.js';
+import { isServerSuppressed } from './server-suppression-service.js';
+export { cachedMasterServers, clearMasterOnlyCache } from './master-only-cache-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
@@ -54,12 +57,6 @@ function steamIdOrUndefined(value: unknown): string | undefined {
   return serialized && STEAM_ID_PATTERN.test(serialized) ? serialized : undefined;
 }
 
-function playersFromPayload(payload: unknown): unknown[] | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const players = (payload as { players?: unknown }).players;
-  return Array.isArray(players) ? players : undefined;
-}
-
 function onlinePlayerUids(players: unknown[] | undefined): string[] {
   if (!players) return [];
   return [...new Set(players.flatMap((player): string[] => {
@@ -75,10 +72,11 @@ function numberFromPayload(payload: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function playerCountFromQueryData(queryData: unknown, onlinePlayers: unknown[] | undefined): number {
-  return onlinePlayers?.length
-    ?? numberFromPayload(queryData, 'playercount')
+function playerCountFromQueryData(queryData: unknown, onlinePlayers: unknown[] | undefined, publicCount?: number): number {
+  return numberFromPayload(queryData, 'playercount')
     ?? numberFromPayload(queryData, 'players')
+    ?? publicCount
+    ?? onlinePlayers?.length
     ?? 0;
 }
 
@@ -108,6 +106,7 @@ async function fetchJson(url: string, authorization?: string): Promise<{ ok: tru
   try {
     const response = await fetch(url, {
       headers: authorization ? { Authorization: authorization } : undefined,
+      signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
     });
     if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
     return { ok: true, data: await response.json() };
@@ -134,11 +133,10 @@ async function fetchMasterServerList(): Promise<MasterServerListResponse | undef
 async function refreshQueryData(server: ServerConfig, now: Date, requireExisting = false): Promise<boolean> {
   if (!server.queryUrl || !shouldRefreshQueryData(server, now)) return false;
 
-  const [data, info, plugins, playerlist] = await Promise.all([
+  const [data, info, plugins] = await Promise.all([
     fetchJson(server.queryUrl),
     fetchJson(new URL('info', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
     fetchNativePluginList(server.queryUrl, AppConfig.liveQueryProxyTimeoutMs),
-    fetchJson(new URL('playerlist', `${server.queryUrl.replace(/\/+$/, '')}/`).toString()),
   ]);
   const nativeInfo = hasNativePluginRoute(plugins, 'oz---admin-utils')
     ? await fetchNativePluginJson(server, new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${server.queryUrl.replace(/\/+$/, '')}/`).toString())
@@ -153,26 +151,26 @@ async function refreshQueryData(server: ServerConfig, now: Date, requireExisting
   if (data.ok) server.data = data.data;
   if (info.ok) {
     server.info = info.data;
+    const name = info.data && typeof info.data === 'object'
+      ? stringOrUndefined((info.data as { name?: unknown }).name) : undefined;
+    if (name) server.label = name;
   }
   if (nativeInfo.ok) {
     const parsedNativeInfo = parseNativeAdminUtilsInfo(nativeInfo.data);
     server.adminUid = parsedNativeInfo?.adminUid ?? server.adminUid;
     server.mapUrl = parsedNativeInfo?.mapUrl ?? server.mapUrl;
   }
-  server.onlinePlayers = server.status === 'offline'
-    ? []
-    : playerlist.ok ? playersFromPayload(playerlist.data) : undefined;
-  server.knownPlayers = mergeKnownPlayers(
-    server.knownPlayers,
-    observedPlayersFromValues(server.onlinePlayers, now),
-  );
+  if (server.status === 'offline') {
+    server.onlinePlayers = [];
+    clearPublicPlayerCount(server.id);
+  } else await refreshPublicPlayerCount(server);
   server.queryDataUpdatedAt = now;
 
   await recordServerStatisticsSample({
     serverId: server.id,
     sampledAt: now,
     online: server.status === 'online',
-    playerCount: server.status === 'offline' ? 0 : playerCountFromQueryData(server.data, server.onlinePlayers),
+    playerCount: server.status === 'offline' ? 0 : playerCountFromQueryData(server.data, server.onlinePlayers, cachedPublicPlayerCount(server)),
     onlinePlayerUids: server.status === 'offline' ? [] : onlinePlayerUids(server.onlinePlayers),
   });
 
@@ -221,10 +219,20 @@ async function runMasterServerListRefresh(options: {
     const entries = Array.isArray(response?.data)
       ? response.data as MasterServerListEntry[]
       : [];
+    const infoByQueryUrl = new Map<string, Awaited<ReturnType<typeof fetchJson>>>();
+    for (let offset = 0; offset < entries.length; offset += 8) {
+      await Promise.all(entries.slice(offset, offset + 8).map(async (entry) => {
+        const queryUrl = queryUrlFor(entry);
+        if (!queryUrl) return;
+        infoByQueryUrl.set(queryUrl,
+          await fetchJson(new URL('info', `${queryUrl.replace(/\/+$/, '')}/`).toString()));
+      }));
+    }
 
     let inserted = 0;
     let updated = 0;
     let refreshed = 0;
+    const nextCache = new Map<string, ServerConfig>();
 
     for (const entry of entries) {
       const queryUrl = queryUrlFor(entry);
@@ -233,6 +241,7 @@ async function runMasterServerListRefresh(options: {
       const ip = stringOrUndefined(entry.ip);
       const port = numberOrUndefined(entry.port);
       if (!ip || port === undefined) continue;
+      if (await isServerSuppressed(ip, port, queryUrl)) continue;
 
       let server = await findServerByMasterEndpoint(ip, port);
       const allowCreate = !server;
@@ -248,7 +257,6 @@ async function runMasterServerListRefresh(options: {
           firstSeen: now,
           lastSeen: now,
         };
-        inserted += 1;
       } else {
         // A merged catalog record retains its oldest identity across refreshes.
         // Migrate only legacy IDs that have not been deliberately aliased.
@@ -260,6 +268,25 @@ async function runMasterServerListRefresh(options: {
       }
 
       applyMasterEntry(server, entry, now);
+      // Keep the current /info contact in memory for every master-list entry,
+      // including servers that have not opted in yet.
+      const info = infoByQueryUrl.get(queryUrl) ?? { ok: false as const, error: 'FETCH_FAILED' };
+      if (info.ok && info.data && typeof info.data === 'object') {
+        server.info = info.data;
+        const name = stringOrUndefined((info.data as { name?: unknown }).name);
+        if (name) server.label = name;
+      }
+      if (allowCreate) {
+        // The public master list is a display source, not permission to retain
+        // server data. The description marker is one independent opt-in path.
+        if (!info.ok || typeof info.data !== 'object' || !info.data ||
+            typeof (info.data as { description?: unknown }).description !== 'string' ||
+            !(info.data as { description: string }).description.includes('[rw-servers]')) {
+          nextCache.set(server.id, server);
+          continue;
+        }
+        inserted += 1;
+      }
       const queryRefreshed = options.refreshQueryData && await refreshQueryData(server, now, !allowCreate);
       if (queryRefreshed) {
         refreshed += 1;
@@ -267,6 +294,7 @@ async function runMasterServerListRefresh(options: {
       await saveMasterServer(server, allowCreate);
       if (queryRefreshed) publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
     }
+    replaceMasterOnlyCache(nextCache);
 
     // A successful fetch is authoritative for catalog presence. Failed fetches
     // never reach this point, so transient master-list outages cannot prune data.

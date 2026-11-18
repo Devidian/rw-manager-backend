@@ -14,10 +14,6 @@ import { generateApiTokenHandler } from '../handler/generate-api-token-handler.j
 
 const authRouter = Router();
 
-authRouter.post('/register', registerUserHandler);
-authRouter.post('/login', loginUserHandler);
-authRouter.post('/steam-connect', requireAuth, steamConnectHandler);
-authRouter.post('/steam-disconnect', requireAuth, steamDisconnectHandler);
 authRouter.post('/steam', steamLoginHandler);
 authRouter.get('/validate', requireAuth, validateUserHandler);
 authRouter.patch('/self', requireAuth, updateSelfHandler);

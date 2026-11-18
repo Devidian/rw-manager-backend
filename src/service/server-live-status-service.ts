@@ -1,15 +1,18 @@
-import { findServerById, listServers, updateServer } from '../db/manager-store.js';
+import { cachedPublicPlayerCount, clearPublicPlayerCount, refreshPublicPlayerCount } from './public-online-player-service.js';
+import { findServerById, updateServer } from '../db/manager-store.js';
 import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
 import type { ServerLiveStatusResponse } from '../dto/server-live-status-response.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 import { defaultLogger } from '../utils/logger.js';
-import { mergeKnownPlayers, observedPlayersFromValues } from './observed-player-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { fetchNativePluginList, hasNativePluginRoute } from './native-plugin-list.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
-import { hasActiveGameConnectorFeature, registerGameConnectorEventHandler } from './game-connector-websocket-service.js';
+import { registerGameConnectorEventHandler } from './game-connector-websocket-service.js';
+import { serializePlayerDataWrite } from './player-data-write-queue.js';
+import { forgetPlayerFromServer } from './forgotten-player-service.js';
+import { clearPluginDataCacheEntry } from './plugin-data-cache-service.js';
 
 const NATIVE_ADMIN_UTILS_ROUTE = 'plugins/oz---admin-utils';
 
@@ -20,11 +23,71 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<ServerLiveStatusResponse>>();
-const playerListRefreshAttemptedAt = new Map<string, number>();
 
 registerGameConnectorEventHandler(async (serverId, event, data) => {
-  if (event === 'playerStatus') await acceptConnectorPlayerStatus(serverId, data);
+  if (event === 'playerStatus') await serializePlayerDataWrite(serverId, () => acceptConnectorPlayerStatus(serverId, data));
+  if (event === 'playerConsentRevoked') await serializePlayerDataWrite(serverId, () => acceptConnectorPlayerConsentRevoked(serverId, data));
+  if (event === 'playerErasure') await serializePlayerDataWrite(serverId, () => acceptConnectorPlayerErasure(serverId, data));
 });
+
+async function acceptConnectorPlayerErasure(serverId: string, payload: unknown): Promise<void> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('INVALID_PLAYER_ERASURE');
+  const { requestId, uid, dbId } = payload as { requestId?: unknown; uid?: unknown; dbId?: unknown };
+  if (typeof requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(requestId)) {
+    throw new Error('INVALID_PLAYER_ERASURE');
+  }
+  await acceptConnectorPlayerConsentRevoked(serverId, { uid, dbId, purpose: 'manager' }, true);
+  const { acknowledgePlayerErasure } = await import('./game-connector-websocket-service.js');
+  acknowledgePlayerErasure(serverId, requestId);
+}
+
+/** An authenticated game connector can remove only a player known on its own server. */
+export async function acceptConnectorPlayerConsentRevoked(serverId: string, payload: unknown, reconcileAccount = false): Promise<void> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('INVALID_CONSENT_REVOKE');
+  const { uid, dbId, purpose } = payload as { uid?: unknown; dbId?: unknown; purpose?: unknown };
+  if (typeof uid !== 'string' || !uid.trim() || typeof dbId !== 'number'
+      || !Number.isSafeInteger(dbId) || dbId <= 0 || (purpose !== undefined && purpose !== 'manager' && purpose !== 'map'))
+    throw new Error('INVALID_CONSENT_REVOKE');
+  const server = await findServerById(serverId);
+  if (purpose === 'map') clearPluginDataCacheEntry(serverId);
+  if (!server) return;
+  const ownsPlayer = server.knownPlayers?.some((player) => player.uid === uid && player.id === dbId);
+  if (!ownsPlayer && (purpose === 'map' || !server.privacyPendingDeletes?.includes(uid))) return;
+  if (purpose === 'map') {
+    const knownPlayers = (server.knownPlayers ?? []).map((player) => player.uid === uid ? withoutPlayerLocation(player) : player);
+    const onlinePlayers = (server.onlinePlayers ?? []).map((player) =>
+      player && typeof player === 'object' && (player as { uid?: unknown }).uid === uid
+        ? withoutPlayerLocation(player as Record<string, unknown>) : player);
+    await updateServer(server.id, { knownPlayers, onlinePlayers });
+    clearPluginDataCacheEntry(server.id);
+    cache.delete(server.id);
+    publishServerLiveUpdate(server.id, { ...storedLiveStatusResponse(server), onlinePlayers });
+    return;
+  }
+  const knownPlayers = (server.knownPlayers ?? []).filter((player) => player.uid !== uid);
+  const onlinePlayers = (server.onlinePlayers ?? []).filter((player) =>
+    !player || typeof player !== 'object' || (player as { uid?: unknown }).uid !== uid);
+  const privacyPendingDeletes = [...new Set([...(server.privacyPendingDeletes ?? []), uid])];
+  await updateServer(server.id, { knownPlayers, onlinePlayers, privacyPendingDeletes });
+  clearPluginDataCacheEntry(server.id);
+  await forgetPlayerFromServer(server.id, uid);
+  if (reconcileAccount && /^\d{17}$/.test(uid)) {
+    const { revokeManagerAccountIfDenied } = await import('./manager-access-service.js');
+    await revokeManagerAccountIfDenied(uid);
+  }
+  await updateServer(server.id, { privacyPendingDeletes: privacyPendingDeletes.filter((pending) => pending !== uid) });
+  cache.delete(server.id);
+  publishServerLiveUpdate(server.id, { ...storedLiveStatusResponse(server), onlinePlayers });
+}
+
+function withoutPlayerLocation<T extends object>(player: T): T {
+  const result = { ...player } as Record<string, unknown>;
+  for (const key of ['posx', 'posy', 'posz', 'rotx', 'roty', 'rotz', 'rotw',
+    'primaryspawn', 'secondaryspawn', 'tertiaryspawn', 'lastspawn', 'position', 'lastPosition']) {
+    delete result[key];
+  }
+  return result as T;
+}
 
 async function fetchJson(
   url: string,
@@ -52,16 +115,6 @@ function buildInfoUrl(queryUrl: string): string {
 
 function buildNativeAdminUtilsInfoUrl(queryUrl: string): string {
   return new URL(`${NATIVE_ADMIN_UTILS_ROUTE}/info`, `${queryUrl.replace(/\/+$/, '')}/`).toString();
-}
-
-function buildPlayerListUrl(queryUrl: string): string {
-  return new URL('playerlist', `${queryUrl.replace(/\/+$/, '')}/`).toString();
-}
-
-function playersFromPayload(payload: unknown): unknown[] | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const players = (payload as { players?: unknown }).players;
-  return Array.isArray(players) ? players : undefined;
 }
 
 function onlinePlayerUids(players: unknown[] | undefined): string[] {
@@ -114,11 +167,14 @@ export function storedLiveStatusResponse(server: ServerConfig): ServerLiveStatus
     queryData: server.data,
     infoData: server.info,
     onlinePlayers: arrayOrUndefined(server.onlinePlayers),
+    publicPlayerCount: status === 'online' ? cachedPublicPlayerCount(server) : undefined,
     errorMessage: stringOrUndefined(server.errorMessage),
   };
 }
 
 async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatusResponse): Promise<void> {
+  const latest = await findServerById(server.id);
+  if (!latest) return;
   let changed = false;
 
   if (response.queryData !== undefined) {
@@ -130,11 +186,8 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
   server.lastChecked = new Date(response.lastChecked);
   server.errorMessage = response.errorMessage;
   // An offline server cannot retain a stale player list in storage or statistics.
-  server.onlinePlayers = response.status === 'offline' ? [] : response.onlinePlayers;
-  server.knownPlayers = mergeKnownPlayers(
-    server.knownPlayers,
-    observedPlayersFromValues(response.onlinePlayers, response.lastChecked),
-  );
+  server.onlinePlayers = response.status === 'offline' ? [] : latest.onlinePlayers;
+  response.onlinePlayers = server.onlinePlayers;
   changed = true;
 
   if (response.infoData !== undefined) {
@@ -157,7 +210,6 @@ async function persistLiveStatus(server: ServerConfig, response: ServerLiveStatu
       lastChecked: server.lastChecked,
       errorMessage: server.errorMessage,
       onlinePlayers: server.onlinePlayers,
-      knownPlayers: server.knownPlayers,
       queryDataUpdatedAt: server.queryDataUpdatedAt,
     });
     publishServerLiveUpdate(server.id, response);
@@ -168,6 +220,7 @@ export async function getStoredServerLiveStatus(serverId: string): Promise<Serve
   const server = await findServerById(serverId);
   if (!server) throw new Error('SERVER_NOT_FOUND');
   if (!server.queryUrl) throw new Error('QUERY_URL_MISSING');
+  if (storedLiveStatusResponse(server).status === 'online') await refreshPublicPlayerCount(server);
   return storedLiveStatusResponse(server);
 }
 
@@ -175,22 +228,18 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
   const queryUrl = server.queryUrl;
   const startedAt = Date.now();
   defaultLogger.debug(`Live server query started: ${queryUrl}`);
-  const [queryResult, infoResult, plugins, playerlistResult] = await Promise.all([
+  const [queryResult, infoResult, plugins] = await Promise.all([
     fetchJson(queryUrl),
     fetchJson(buildInfoUrl(queryUrl), AppConfig.liveQueryProxyTimeoutMs),
     fetchNativePluginList(queryUrl, AppConfig.liveQueryProxyTimeoutMs),
-    fetchJson(buildPlayerListUrl(queryUrl), AppConfig.playerListTimeoutMs),
   ]);
   const nativeInfoResult = hasNativePluginRoute(plugins, 'oz---admin-utils')
     ? await fetchNativePluginJson(server, buildNativeAdminUtilsInfoUrl(queryUrl))
     : { ok: false as const, error: 'PLUGIN_NOT_EXPOSED' };
 
   const lastChecked = new Date().toISOString() as ServerLiveStatusResponse['lastChecked'];
-  const onlinePlayers = playerlistResult.ok
-    ? playersFromPayload(playerlistResult.data)
-    : undefined;
   const response: ServerLiveStatusResponse = {
-    status: queryResult.ok || onlinePlayers !== undefined ? 'online' : 'offline',
+    status: queryResult.ok ? 'online' : 'offline',
     lastChecked,
   };
 
@@ -208,7 +257,10 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
       server.adminUid = nativeInfo.adminUid ?? server.adminUid;
     }
   }
-  response.onlinePlayers = response.status === 'offline' ? [] : onlinePlayers;
+  response.onlinePlayers = response.status === 'offline' ? [] : server.onlinePlayers;
+  if (response.status === 'online') {
+    response.publicPlayerCount = await refreshPublicPlayerCount({ ...server, status: 'online' });
+  } else clearPublicPlayerCount(server.id);
 
   defaultLogger.debug('Live server query completed:', {
     queryUrl,
@@ -220,75 +272,24 @@ async function fetchLiveStatus(server: ServerConfig): Promise<ServerLiveStatusRe
 
 function playerCountFromLiveStatus(response: ServerLiveStatusResponse): number {
   if (response.status === 'offline') return 0;
-  const playerListCount = numberFromPayload(
-    { playercount: response.onlinePlayers?.length },
-    'playercount',
-  );
-  if (playerListCount !== undefined) return playerListCount;
   const queryCount = numberFromPayload(response.queryData, 'playercount');
-  return queryCount ?? 0;
-}
-
-function playerListRefreshIntervalMs(server: ServerConfig): number {
-  return Array.isArray(server.onlinePlayers) && server.onlinePlayers.length > 0
-    ? AppConfig.activePlayerListRefreshIntervalMs
-    : AppConfig.playerListRefreshIntervalMs;
-}
-
-function lastPlayerListRefreshAt(server: ServerConfig): number {
-  const attemptedAt = playerListRefreshAttemptedAt.get(server.id);
-  if (attemptedAt !== undefined) return attemptedAt;
-  const lastChecked = server.lastChecked ? new Date(server.lastChecked).getTime() : Number.NaN;
-  return Number.isFinite(lastChecked) ? lastChecked : 0;
-}
-
-async function refreshOnlinePlayersForServer(server: ServerConfig, now: number): Promise<boolean> {
-  if (!server.queryUrl || server.status !== 'online') return false;
-  if (hasActiveGameConnectorFeature(server.id, 'playerStatus')) return false;
-  if (now - lastPlayerListRefreshAt(server) < playerListRefreshIntervalMs(server)) return false;
-  playerListRefreshAttemptedAt.set(server.id, now);
-
-  const playerlistResult = await fetchJson(
-    buildPlayerListUrl(server.queryUrl),
-    AppConfig.playerListTimeoutMs,
-  );
-  const onlinePlayers = playerlistResult.ok ? playersFromPayload(playerlistResult.data) : undefined;
-  if (onlinePlayers === undefined) return false;
-
-  const lastChecked = new Date(now);
-  server.onlinePlayers = onlinePlayers;
-  server.knownPlayers = mergeKnownPlayers(
-    server.knownPlayers,
-    observedPlayersFromValues(onlinePlayers, lastChecked.toISOString()),
-  );
-  server.lastChecked = lastChecked;
-  await updateServer(server.id, {
-    onlinePlayers: server.onlinePlayers,
-    knownPlayers: server.knownPlayers,
-    lastChecked: server.lastChecked,
-  });
-  publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
-  return true;
+  return queryCount ?? response.publicPlayerCount ?? response.onlinePlayers?.length ?? 0;
 }
 
 /** Accepts only a complete, bounded runtime player-list snapshot from the authenticated game connector. */
 export async function acceptConnectorPlayerStatus(serverId: string, payload: unknown): Promise<void> {
   const players = connectorOnlinePlayers(payload);
   if (players === undefined) throw new Error('INVALID_PLAYER_STATUS');
+  clearPublicPlayerCount(serverId);
   const server = await findServerById(serverId);
   if (!server) return;
   const lastChecked = new Date();
   server.onlinePlayers = players;
-  server.knownPlayers = mergeKnownPlayers(
-    server.knownPlayers,
-    observedPlayersFromValues(players, lastChecked.toISOString()),
-  );
   server.status = 'online';
   server.lastChecked = lastChecked;
   server.errorMessage = undefined;
   await updateServer(server.id, {
     onlinePlayers: server.onlinePlayers,
-    knownPlayers: server.knownPlayers,
     status: server.status,
     lastChecked: server.lastChecked,
     errorMessage: undefined,
@@ -300,31 +301,24 @@ export async function acceptConnectorPlayerStatus(serverId: string, payload: unk
 
 function connectorOnlinePlayers(payload: unknown): unknown[] | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
-  const value = payload as { schemaVersion?: unknown; players?: unknown };
-  if (value.schemaVersion !== 1 || !Array.isArray(value.players) || value.players.length > 500) return undefined;
+  const value = payload as { schemaVersion?: unknown; consentVersion?: unknown; players?: unknown };
+  if (value.schemaVersion !== 1 || value.consentVersion !== 1
+      || !Array.isArray(value.players) || value.players.length > 500) return undefined;
   const players = value.players.filter((player): player is Record<string, unknown> => (
-    !!player && typeof player === 'object' && typeof (player as { uid?: unknown }).uid === 'string'
+    !!player && typeof player === 'object' && !Array.isArray(player)
+    && typeof (player as { uid?: unknown }).uid === 'string'
+    && typeof (player as { dbId?: unknown }).dbId === 'number'
+    && Number.isSafeInteger((player as { dbId: number }).dbId)
+    && (player as { dbId: number }).dbId > 0
   ));
   if (players.length !== value.players.length) return undefined;
-  return players.filter((player) => player.connected !== false);
+  return players.filter((player) => player.connected !== false)
+    .map((player) => ({ ...player, slotId: player.id, id: player.dbId }));
 }
 
 export async function refreshDueServerPlayerLists(): Promise<{ checked: number; refreshed: number }> {
-  const now = Date.now();
-  const servers = await listServers();
-  let refreshed = 0;
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(AppConfig.playerListRefreshConcurrency, servers.length) },
-    async () => {
-      while (nextIndex < servers.length) {
-        const server = servers[nextIndex++];
-        if (await refreshOnlinePlayersForServer(server, now)) refreshed += 1;
-      }
-    },
-  );
-  await Promise.all(workers);
-  return { checked: servers.length, refreshed };
+  // Public counts are refreshed with server status. No separate scheduler is needed.
+  return { checked: 0, refreshed: 0 };
 }
 
 export async function getServerLiveStatus(serverId: string): Promise<ServerLiveStatusResponse> {
@@ -340,7 +334,7 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
   }
 
   if (isQueryDataFresh(server, now)) {
-    const response = storedLiveStatusResponse(server);
+    const response = await getStoredServerLiveStatus(serverId);
     cache.set(serverId, {
       expiresAt: Date.now() + AppConfig.liveQueryProxyCacheTtlMs,
       response,
@@ -383,12 +377,11 @@ export async function getServerLiveStatus(serverId: string): Promise<ServerLiveS
 export function clearServerLiveStatusCache(): void {
   cache.clear();
   inflight.clear();
-  playerListRefreshAttemptedAt.clear();
 }
 
 /** Removes in-memory status for a catalog record that was pruned after a successful master-list refresh. */
 export function clearServerLiveStatusCacheEntry(serverId: string): void {
   cache.delete(serverId);
   inflight.delete(serverId);
-  playerListRefreshAttemptedAt.delete(serverId);
+  clearPublicPlayerCount(serverId);
 }

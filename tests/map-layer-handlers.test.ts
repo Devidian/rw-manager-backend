@@ -12,6 +12,12 @@ const getMapGpsGlobalMarkersMock = jest.fn<() => Promise<unknown[] | null>>();
 const getMapMarketplaceOffersMock = jest.fn<(areaId: number) => Promise<unknown[] | null>>();
 const getUserFromBearerTokenMock = jest.fn<() => { role: string } | null>();
 
+jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => {
+  const entry = { data: { 'ozadminutils.playerlist': {
+    consentVersion: 1, players: [{ uid: 'steam-viewer' }], mapViewerUids: ['steam-viewer'],
+  } } };
+  return { getCachedPluginData: () => entry, getFirstCachedPluginData: () => entry };
+});
 jest.unstable_mockModule('typia', () => ({
   default: { assert: (value: unknown) => value },
 }));
@@ -49,19 +55,14 @@ describe('map layer handlers', () => {
     getMapMarketplaceOffersMock.mockResolvedValue([]);
   });
 
-  test('includes long-term player rows only for a verified admin token', async () => {
+  test('requires map consent and includes long-term markers for a consenting player', async () => {
     const response = createResponse();
-    getUserFromBearerTokenMock.mockReturnValue(null);
-    await getMapPlayersHandler(request(), response.res);
-    expect(getMapPlayersMock).toHaveBeenLastCalledWith(false);
+    await getMapPlayersHandler({ params: {} } as Request, response.res);
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(getMapPlayersMock).not.toHaveBeenCalled();
 
-    getUserFromBearerTokenMock.mockReturnValue({ role: 'user' });
     await getMapPlayersHandler(request(), response.res);
-    expect(getMapPlayersMock).toHaveBeenLastCalledWith(false);
-
-    getUserFromBearerTokenMock.mockReturnValue({ role: 'admin' });
-    await getMapPlayersHandler(request(), response.res);
-    expect(getMapPlayersMock).toHaveBeenLastCalledWith(true);
+    expect(getMapPlayersMock).toHaveBeenCalledWith(true);
   });
 
   test('validates marketplace area IDs before querying plugin data', async () => {
@@ -76,9 +77,9 @@ describe('map layer handlers', () => {
 
   test('returns capability and claim responses and handles service failures', async () => {
     const response = createResponse();
-    getMapLayerCapabilitiesMock.mockResolvedValue({ schemaVersion: 1 });
+    getMapLayerCapabilitiesMock.mockResolvedValue({ schemaVersion: 1, players: true });
     await getMapLayerCapabilitiesHandler(request(), response.res);
-    expect(response.json).toHaveBeenLastCalledWith({ schemaVersion: 1 });
+    expect(response.json).toHaveBeenLastCalledWith(expect.objectContaining({ schemaVersion: 1, players: false }));
 
     getMapClaimsMock.mockResolvedValue(null);
     await getMapClaimsHandler(request(), response.res);
@@ -164,6 +165,7 @@ describe('map layer handlers', () => {
 function request(params: Record<string, string> = {}) {
   return {
     params,
+    user: { role: 'user', steamId: 'steam-viewer', steamVerifiedAt: new Date() },
     header: jest.fn().mockReturnValue('Bearer token'),
   } as unknown as Request;
 }

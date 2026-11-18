@@ -1,3 +1,5 @@
+import { requestMapLayerAccess } from './map-layer-access.js';
+import type { RequestWithUser } from '../interfaces/request-with-user.js';
 import type { Request, Response } from 'express';
 import typia from 'typia';
 import type {
@@ -9,6 +11,9 @@ import { prepareServerRoute, serverRouteError } from './server-route-context.js'
 export async function getMapGpsGlobalMarkersHandler(req: Request, res: Response) {
   try {
     const server = await prepareServerRoute(req);
+    if (!requestMapLayerAccess((req as RequestWithUser).user, server?.id).manager) {
+      return res.status(403).json({ error: 'map consent required' });
+    }
     const items = server
       ? await getMapGpsGlobalMarkers(undefined, server.id)
       : await getMapGpsGlobalMarkers();

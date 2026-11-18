@@ -13,13 +13,14 @@ function bucket(serverId: string, values: Partial<ServerStatisticsBucket>): Serv
 test('prefers online evidence over numerous offline polls and retains player observations', () => {
   const merged = mergeServerStatisticsBuckets('old', [
     bucket('old', { sampleCount: 8, updatedAt: '2026-11-10T08:55:00.000Z' }),
-    bucket('new', { onlineSampleCount: 1, playerSampleTotal: 2, maxPlayers: 2, onlinePlayerUids: ['alice'] }),
-    bucket('other', { onlineSampleCount: 1, playerSampleTotal: 1, maxPlayers: 1, onlinePlayerUids: ['bob'] }),
+    bucket('new', { onlineSampleCount: 1, playerSampleTotal: 2, maxPlayers: 2, onlinePlayerUids: ['alice'], onlinePlayerIds: ['aaaaaaaaaaaaaaaaaaaaaaaa'] }),
+    bucket('other', { onlineSampleCount: 1, playerSampleTotal: 1, maxPlayers: 1, onlinePlayerUids: ['bob'], onlinePlayerIds: ['bbbbbbbbbbbbbbbbbbbbbbbb'] }),
   ]);
   expect(merged).toEqual([expect.objectContaining({
     id: 'old:2026-11-10T08:00:00.000Z', serverId: 'old', sampleCount: 1,
     onlineSampleCount: 1, availability: 100, maxPlayers: 2, averagePlayers: 2,
     onlinePlayerUids: ['alice', 'bob'],
+    onlinePlayerIds: ['aaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbb'],
   })]);
 });
 

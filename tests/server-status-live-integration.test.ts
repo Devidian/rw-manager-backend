@@ -19,7 +19,7 @@ const getStoredServerLiveStatus = jest.fn(async (serverId: string) => {
       }
     : { status: 'offline' as const, lastChecked: '2026-08-03T12:00:00.000Z' };
 });
-const authState: { user: { id: string } | null } = { user: null };
+const authState: { user: { id: string; steamId?: string; steamVerifiedAt?: Date } | null } = { user: null };
 const getUserFromBearerToken = jest.fn(async () => authState.user);
 
 jest.unstable_mockModule('../src/service/server-live-status-service.js', () => ({
@@ -27,6 +27,15 @@ jest.unstable_mockModule('../src/service/server-live-status-service.js', () => (
 }));
 jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({
   getUserFromBearerToken,
+}));
+jest.unstable_mockModule('../src/service/player-identity-service.js', () => ({
+  attachPlayerReferences: async (server: unknown) => server,
+  observePlayers: jest.fn(async () => undefined),
+  mappingByUids: jest.fn(async (uids: string[]) => new Map(uids.filter((uid) => /^\d{17}$/.test(uid)).map((uid) =>
+    [uid, { _id: { toHexString: () => 'aaaaaaaaaaaaaaaaaaaaaaaa' }, uid, steamCheckedAt: new Date(), privateFlag: false }]))),
+  stableUid: (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : undefined,
+  isPrivate: (mapping: unknown) => !mapping,
+  privateMarker: () => '**PRIVATE**',
 }));
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   defaultLogger: { debug: jest.fn(), error: jest.fn(), warn: jest.fn(), info: jest.fn() },
@@ -44,7 +53,7 @@ describe('server status live endpoint', () => {
   beforeEach(async () => {
     process.env.ENABLE_AUTH = 'false';
     process.env.FORCE_AUTH = 'false';
-    authState.user = null;
+    authState.user = { id: 'user-1' };
     server = http.createServer((_request, response) => response.end('ok'));
     closeLive = attachServerStatusLiveService(server).close;
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -64,7 +73,7 @@ describe('server status live endpoint', () => {
     const socket = await connect(`${baseUrl}/api/storage/server-live`);
     const initialMessages = messages(socket, 2);
     socket.send(JSON.stringify({
-      type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['server-a'],
+      type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['server-a'], token: 'valid',
     }));
     const [subscribed, snapshot] = await initialMessages;
     expect(subscribed).toMatchObject({
@@ -117,7 +126,7 @@ describe('server status live endpoint', () => {
     const missingMessage = messages(missing, 1);
     const missingClose = closeCode(missing);
     missing.send(JSON.stringify({
-      type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['missing'],
+      type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['missing'], token: 'valid',
     }));
     await expect(missingMessage.then(([message]) => message)).resolves.toMatchObject({ type: 'error', code: 'server_not_found' });
     await expect(missingClose).resolves.toBe(1003);
@@ -125,24 +134,17 @@ describe('server status live endpoint', () => {
     for (const [serverId, code] of [['no-query', 'query_url_missing'], ['internal', 'internal_error']]) {
       const socket = await connect(`${baseUrl}/api/storage/server-live`);
       const result = messages(socket, 1);
-      socket.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: [serverId] }));
+      socket.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: [serverId], token: 'valid' }));
       await expect(result.then(([message]) => message)).resolves.toMatchObject({ type: 'error', code });
     }
   });
 
-  test('masks guest snapshots and updates while preserving signed-in player IDs', async () => {
+  test('rejects guest subscriptions and accepts signed-in status snapshots', async () => {
+    authState.user = null;
     const guest = await connect(`${baseUrl}/api/storage/server-live`);
-    const guestMessages = messages(guest, 2);
+    const guestMessages = messages(guest, 1);
     guest.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['steam'] }));
-    const [, guestSnapshot] = await guestMessages;
-    expect(guestSnapshot).toMatchObject({ items: [{ value: { onlinePlayers: [{ uid: '7***************0' }] } }] });
-    const guestUpdate = messages(guest, 1);
-    publishServerLiveUpdate('steam', {
-      status: 'online', onlinePlayers: [{ uid: '76561198000000001' }], lastChecked: '2026-08-03T12:01:00.000Z',
-    });
-    await expect(guestUpdate.then(([message]) => message)).resolves.toMatchObject({
-      changed: { onlinePlayers: [{ uid: '7***************1' }] },
-    });
+    await expect(guestMessages.then(([message]) => message)).resolves.toMatchObject({ type: 'error', code: 'unauthorized' });
     guest.close();
 
     process.env.ENABLE_AUTH = 'true';
@@ -151,7 +153,8 @@ describe('server status live endpoint', () => {
     const signedInMessages = messages(signedIn, 2);
     signedIn.send(JSON.stringify({ type: 'server.status.subscribe', schemaVersion: 1, serverIds: ['steam'], token: 'valid' }));
     const [, signedInSnapshot] = await signedInMessages;
-    expect(signedInSnapshot).toMatchObject({ items: [{ value: { onlinePlayers: [{ uid: '76561198000000000' }] } }] });
+    expect(signedInSnapshot).toMatchObject({ items: [{ value: { status: 'online', onlinePlayers: [{}] } }] });
+    expect((signedInSnapshot.items as Array<{ value: { onlinePlayers: Array<Record<string, unknown>> } }>)[0].value.onlinePlayers[0]).not.toHaveProperty('uid');
     signedIn.close();
   });
 

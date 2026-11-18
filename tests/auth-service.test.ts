@@ -32,6 +32,8 @@ const setUserSteamIdMock = jest.fn();
 const toPrivateUserMock = jest.fn();
 const updateUserMock = jest.fn();
 const deleteUserAndOwnedServersMock = jest.fn();
+const deleteUserOnlyMock = jest.fn();
+const managerAccessMock = jest.fn<() => Promise<{ serverIds: string[]; confirmedDenied: boolean; preserveExisting: boolean }>>();
 const verifyUserPasswordMock = jest.fn();
 const createAuthTokenMock = jest.fn<(userId: string) => string>();
 const mapPrivateUserToDtoMock = jest.fn<(user: MutableDbUser) => { id: string; username: string }>();
@@ -50,8 +52,10 @@ jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   toPrivateUser: toPrivateUserMock,
   updateUser: updateUserMock,
   deleteUserAndOwnedServers: deleteUserAndOwnedServersMock,
+  deleteUserOnly: deleteUserOnlyMock,
   verifyUserPassword: verifyUserPasswordMock,
 }));
+jest.unstable_mockModule('../src/service/manager-access-service.js', () => ({ managerAccess: managerAccessMock }));
 
 jest.unstable_mockModule('../src/service/auth-token-service.js', () => ({
   createAuthToken: createAuthTokenMock,
@@ -137,6 +141,12 @@ describe('auth-service', () => {
       state.servers = state.servers.filter((entry) => entry.userId !== id);
       return true;
     });
+    deleteUserOnlyMock.mockReset().mockImplementation(async (id: string) => {
+      const exists = state.users.some((entry) => entry.id === id);
+      state.users = state.users.filter((entry) => entry.id !== id);
+      return exists;
+    });
+    managerAccessMock.mockReset().mockResolvedValue({ serverIds: ['server-1'], confirmedDenied: false, preserveExisting: false });
     verifyUserPasswordMock.mockReset();
     createAuthTokenMock.mockReset().mockImplementation((userId: string) => `token:${userId}`);
     mapPrivateUserToDtoMock.mockReset().mockImplementation((user: MutableDbUser) => ({
@@ -360,7 +370,7 @@ describe('auth-service', () => {
     await expect(authService.deleteSelf('missing')).rejects.toThrow('USER_NOT_FOUND');
     await expect(authService.deleteSelf('user-1')).resolves.toBeUndefined();
     expect(state.users).toEqual([]);
-    expect(state.servers).toEqual([{ userId: 'user-2' }]);
+    expect(state.servers).toEqual([{ userId: 'user-1' }, { userId: 'user-2' }]);
   });
 
   test('generateApiToken returns a one-time token and stores only hash metadata', async () => {
@@ -457,6 +467,23 @@ describe('auth-service', () => {
       'admin',
       'verified',
     );
+  });
+
+  test('rejects unverified Steam identities before creating an account or token', async () => {
+    managerAccessMock.mockResolvedValueOnce({ serverIds: [], confirmedDenied: true, preserveExisting: false });
+    await expect(authService.steamSignIn({ openId: 'https://steamcommunity.com/openid/id/76561198000000000' }))
+      .rejects.toThrow('MANAGER_ACCESS_DENIED');
+    expect(createUserMock).not.toHaveBeenCalled();
+    expect(createAuthTokenMock).not.toHaveBeenCalled();
+  });
+
+  test('allows a previously verified account during a source outage', async () => {
+    const existing = createUserRecord({ steamId: '76561198000000000' });
+    state.users = [existing];
+    managerAccessMock.mockResolvedValueOnce({ serverIds: [], confirmedDenied: false, preserveExisting: true });
+    await expect(authService.steamSignIn({ openId: 'https://steamcommunity.com/openid/id/76561198000000000' }))
+      .resolves.toMatchObject({ token: 'token:user-1' });
+    expect(createUserMock).not.toHaveBeenCalled();
   });
 
   test('steamSignIn migrates only the exact legacy Steam fallback name', async () => {

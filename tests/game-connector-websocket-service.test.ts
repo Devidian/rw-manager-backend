@@ -4,6 +4,10 @@ import { WebSocket, type RawData } from 'ws';
 
 const servers: Array<Record<string, unknown>> = [{ id: 'server-a', ip: '203.0.113.7', port: 4255 }];
 const listServers = jest.fn(async () => servers);
+const saveMasterServer = jest.fn(async (server: Record<string, unknown>) => {
+  servers.push(server);
+  return server;
+});
 const claimServerConnectorCredential = jest.fn(async (id: string, credential: string) => {
   const server = servers.find((entry) => entry.id === id);
   if (!server || server.connectorCredential) return false;
@@ -29,6 +33,7 @@ const replaceServerConnectorCredentialIfCurrent = jest.fn(async (
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   listServers,
+  saveMasterServer,
   claimServerConnectorCredential,
   replaceServerConnectorCredential,
   replaceServerConnectorCredentialIfCurrent,
@@ -46,6 +51,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 }));
 
 const {
+  acknowledgePlayerErasure,
   attachGameConnectorWebSocketService,
   hasActiveGameConnectorFeature,
   registerGameConnectorEventHandler,
@@ -209,6 +215,27 @@ describe('game connector WebSocket', () => {
     socket.send(JSON.stringify({ type: 'connector.event', schemaVersion: 1, event: 'playerStatus', sequence: 1, data: payload }));
 
     await expect(received).resolves.toEqual({ serverId: 'server-a', event: 'playerStatus', data: payload });
+    socket.close();
+  });
+
+  test('delivers the erasure receipt to the negotiated game connector', async () => {
+    const provision = await connect(baseUrl);
+    const provisioned = messages(provision, 1);
+    provision.send(JSON.stringify({ type: 'connector.provision', schemaVersion: 1, gamePort: 4255 }));
+    const [{ credential }] = await provisioned;
+    const socket = await connect(baseUrl);
+    const authenticated = messages(socket, 1);
+    socket.send(JSON.stringify({ type: 'connector.authenticate', schemaVersion: 1, credential }));
+    await authenticated;
+    const accepted = messages(socket, 1);
+    socket.send(JSON.stringify({ type: 'connector.features', schemaVersion: 1, events: ['playerErasure'] }));
+    await accepted;
+    const receipt = messages(socket, 1);
+    acknowledgePlayerErasure('server-other', 'other-request');
+    acknowledgePlayerErasure('server-a', 'request-1');
+    await expect(receipt).resolves.toEqual([
+      { type: 'connector.playerErasure.completed', schemaVersion: 1, requestId: 'request-1' },
+    ]);
     socket.close();
   });
 

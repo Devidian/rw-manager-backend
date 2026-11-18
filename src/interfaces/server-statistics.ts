@@ -9,6 +9,7 @@ export interface ServerStatisticsBucket {
   averagePlayers: number;
   availability: number;
   onlinePlayerUids: string[];
+  onlinePlayerIds?: string[];
   updatedAt: string;
 }
 

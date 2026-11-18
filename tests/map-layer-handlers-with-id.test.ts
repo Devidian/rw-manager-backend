@@ -25,6 +25,12 @@ const getMapMarketplaceOffersMock = jest.fn<(
   serverId?: string,
 ) => Promise<unknown[] | null>>();
 
+jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => {
+  const entry = { data: { 'ozadminutils.playerlist': {
+    consentVersion: 1, players: [{ uid: 'steam-viewer' }], mapViewerUids: ['steam-viewer'],
+  } } };
+  return { getCachedPluginData: () => entry, getFirstCachedPluginData: () => entry };
+});
 jest.unstable_mockModule('typia', () => ({
   default: { assert: (value: unknown) => value },
 }));
@@ -73,7 +79,7 @@ describe('map layer handlers with server id routes', () => {
   test('passes route server ids into map layer service calls', async () => {
     const claimsResponse = createResponse();
     await getMapClaimsHandler(request(), claimsResponse.res);
-    expect(getMapClaimsMock).toHaveBeenCalledWith(undefined, 'server-1', undefined);
+    expect(getMapClaimsMock).toHaveBeenCalledWith(undefined, 'server-1', 'steam-viewer');
     expect(claimsResponse.json).toHaveBeenCalledWith({
       schemaVersion: 1,
       available: true,
@@ -108,6 +114,7 @@ describe('map layer handlers with server id routes', () => {
 function request(params: Record<string, string> = {}) {
   return {
     params,
+    user: { role: 'user', steamId: 'steam-viewer', steamVerifiedAt: new Date() },
     header: jest.fn().mockReturnValue('Bearer token'),
   } as unknown as Request;
 }

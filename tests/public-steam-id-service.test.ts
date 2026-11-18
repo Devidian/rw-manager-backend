@@ -23,15 +23,16 @@ test('masks Steam IDs in nested public responses without changing source data', 
   expect(source.servers[0].onlinePlayers[0].uid).toBe(id);
 });
 
-test('guest responses are masked while authenticated responses keep full IDs', async () => {
+test('REST projection removes Steam IDs for guests and unrelated authenticated users', async () => {
   const json = jest.fn<(body: unknown) => Response>();
   const next = jest.fn<NextFunction>();
   const response = { json, vary: jest.fn(), setHeader: jest.fn() } as unknown as Response;
   json.mockReturnValue(response);
   getUserFromBearerToken.mockResolvedValueOnce(null);
   await maskGuestSteamIds({ method: 'GET', header: () => undefined } as unknown as Request, response, next);
-  response.json({ uid: id });
-  expect(json).toHaveBeenCalledWith({ uid: masked });
+  response.json({ uid: id, name: 'Ada' });
+  await new Promise(setImmediate);
+  expect(json).toHaveBeenCalledWith({ name: 'Ada' });
   expect(response.vary).toHaveBeenCalledWith('Authorization');
   expect(response.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
 
@@ -39,8 +40,9 @@ test('guest responses are masked while authenticated responses keep full IDs', a
   const authenticatedResponse = { json: authenticatedJson, vary: jest.fn(), setHeader: jest.fn() } as unknown as Response;
   getUserFromBearerToken.mockResolvedValueOnce({ id: 'user' });
   await maskGuestSteamIds({ method: 'GET', header: () => 'Bearer valid' } as unknown as Request, authenticatedResponse, next);
-  authenticatedResponse.json({ uid: id });
-  expect(authenticatedJson).toHaveBeenCalledWith({ uid: id });
+  authenticatedResponse.json({ uid: id, name: 'Ada' });
+  await new Promise(setImmediate);
+  expect(authenticatedJson).toHaveBeenCalledWith({ name: 'Ada' });
 });
 
 test('profile history requires a valid session', async () => {

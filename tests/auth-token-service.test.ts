@@ -7,6 +7,7 @@ interface PrivateUserRecord {
   state: 'new' | 'verified' | 'closed';
   role: 'guest' | 'user' | 'admin';
   steamId?: string;
+  steamVerifiedAt?: Date;
   createdAt: Date;
 }
 
@@ -15,6 +16,7 @@ const findUserByUsernameMock = jest.fn<(username: string) => { id: string } | un
 const toPrivateUserMock = jest.fn<(user: PrivateUserRecord) => PrivateUserRecord>();
 const verifyUserPasswordMock = jest.fn<(user: { id: string }, password: string) => boolean>();
 const debugMock = jest.fn<(value: unknown) => void>();
+const managerAccessMock = jest.fn(async () => ({ serverIds: ['server-1'], confirmedDenied: false }));
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   findUserById: findUserByIdMock,
@@ -28,6 +30,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
     debug: debugMock,
   },
 }));
+jest.unstable_mockModule('../src/service/manager-access-service.js', () => ({ managerAccess: managerAccessMock }));
 
 const {
   authMiddleware,
@@ -104,6 +107,7 @@ describe('auth-token-service', () => {
       state: 'verified',
       role: 'user',
       steamId: 'steam-1',
+      steamVerifiedAt: new Date('2024-01-01T00:00:00.000Z'),
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
     };
     findUserByIdMock.mockReturnValue(user);

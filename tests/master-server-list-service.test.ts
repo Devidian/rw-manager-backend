@@ -73,6 +73,7 @@ describe('master-server-list-service', () => {
     process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '60000';
     state.servers = [];
     state.serverStatistics = [];
+    service.clearMasterOnlyCache();
     writeMock.mockClear();
     errorMock.mockClear();
     debugMock.mockClear();
@@ -95,24 +96,19 @@ describe('master-server-list-service', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => ({ name: 'Live info name', contact: '76561198000000000', description: '[rw-servers]' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({ players: 3 }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          schemaVersion: 1,
-          mapUrl: 'https://map.example.com/',
-          adminUid: '76561198000000000',
-          admins: [],
-        }),
+        json: async () => ({ name: 'Live info name', contact: '76561198000000000', description: '[rw-servers]' }),
       })
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({ plugins: [{ name: 'OZ - Admin Utils' }] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ players: [{ uid: 'player-1', connected: true }] }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -138,23 +134,14 @@ describe('master-server-list-service', () => {
       id: 'server-f8e7fa9ca73fd4b4943db61a',
       steamId: '90285195499304980',
       name: 'Server',
-      label: 'server-f8e7fa9ca73fd4b4943db61a',
+      label: 'Live info name',
       queryUrl: 'http://127.0.0.1:4254',
       mapUrl: 'https://map.example.com/',
       status: 'online',
-      onlinePlayers: [{ uid: 'player-1', connected: true }],
-      knownPlayers: [
-        {
-          uid: 'player-1',
-          platform: 'Standalone',
-          firstseen: expect.any(Number),
-          lastseen: expect.any(Number),
-        },
-      ],
       lastChecked: expect.any(Date),
       adminUid: '76561198000000000',
       data: { players: 3 },
-      info: { schemaVersion: 1, mapUrl: 'https://map.example.com/', adminUid: '76561198000000000', admins: [] },
+      info: { name: 'Live info name', contact: '76561198000000000', description: '[rw-servers]' },
       public: true,
     });
     expect(writeMock).toHaveBeenCalledTimes(2);
@@ -163,11 +150,11 @@ describe('master-server-list-service', () => {
       serverId: 'server-f8e7fa9ca73fd4b4943db61a',
       sampleCount: 1,
       onlineSampleCount: 1,
-      playerSampleTotal: 1,
-      maxPlayers: 1,
-      averagePlayers: 1,
+      playerSampleTotal: 3,
+      maxPlayers: 3,
+      averagePlayers: 3,
       availability: 100,
-      onlinePlayerUids: ['player-1'],
+      onlinePlayerUids: [],
     });
   });
 
@@ -187,8 +174,30 @@ describe('master-server-list-service', () => {
     }) as typeof fetch;
     await service.refreshMasterServerList();
     expect(state.servers[0].id).toBe('oldest');
-    expect(state.servers[1].id).not.toBe('server-f8e7fa9ca73fd4b4943db61a');
-    expect(state.servers[1].ip).toBe('127.0.0.1');
+    expect(state.servers).toHaveLength(1);
+    expect(service.cachedMasterServers()).toMatchObject([{ ip: '127.0.0.1', masterOnly: true }]);
+  });
+
+  test('retains contact and /info name in the transient master cache without a marker', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ successful: true, data: [
+          { ip: '127.0.0.1', port: 4255, name: 'Master name' },
+        ] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: 'Info name', contact: '76561198000000000', description: 'No marker' }),
+      }) as typeof fetch;
+
+    await expect(service.refreshMasterServerList()).resolves.toMatchObject({ inserted: 0 });
+    expect(state.servers).toHaveLength(0);
+    expect(service.cachedMasterServers()).toMatchObject([{
+      label: 'Info name',
+      info: { contact: '76561198000000000' },
+      masterOnly: true,
+    }]);
   });
 
   test('refreshMasterServerList merges existing servers and skips fresh query metadata', async () => {
@@ -304,15 +313,16 @@ describe('master-server-list-service', () => {
 
     await expect(service.refreshMasterServerList()).resolves.toMatchObject({
       fetched: 3,
-      inserted: 1,
-      updated: 1,
+      inserted: 0,
+      updated: 0,
     });
-    expect(state.servers).toHaveLength(1);
-    expect(state.servers[0]).toMatchObject({
+    expect(state.servers).toHaveLength(0);
+    expect(service.cachedMasterServers()[0]).toMatchObject({
       id: 'server-f8e7fa9ca73fd4b4943db61a',
       steamId: '76561198000000001',
       name: 'Valid',
       label: 'server-f8e7fa9ca73fd4b4943db61a',
+      masterOnly: true,
     });
   });
 
@@ -335,6 +345,10 @@ describe('master-server-list-service', () => {
         ok: true,
         text: async () =>
           '{"successful":true,"data":[{"steamid":"76561198000000002","ip":"127.0.0.1","port":4255,"mods":"bad","password":"bad","whitelist":"bad","gm":"bad"}]}',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ description: '[rw-servers]' }),
       })
       .mockRejectedValueOnce(new Error('query failed'))
       .mockResolvedValueOnce({
@@ -379,6 +393,9 @@ describe('master-server-list-service', () => {
       ok: true,
       text: async () =>
         '{"successful":true,"data":[{"steamid":"76561198000000003","ip":"127.0.0.1","port":4255,"name":"Broken Save"}]}',
+    }).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ description: '[rw-servers]' }),
     }) as typeof fetch;
     writeMock.mockRejectedValueOnce(new Error('write failed'));
 
@@ -395,6 +412,7 @@ describe('master-server-list-service', () => {
         adminUid: '76561198000000000',
         mapUrl: 'https://old-map.example/',
         backendUrl: 'https://old-map.example/',
+        onlinePlayers: [], // Consent-filtered list may be empty while players are online.
         queryDataUpdatedAt: 'invalid-date',
         public: true,
         createdAt: new Date().toISOString(),
@@ -411,7 +429,7 @@ describe('master-server-list-service', () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ players: 5 }),
+        json: async () => ({ playercount: 5 }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -424,10 +442,6 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({}),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ players: [{ uid: 'player-5', connected: true }] }),
       }) as typeof fetch;
 
     await expect(service.refreshAllServerQueryData()).resolves.toMatchObject({
@@ -437,17 +451,8 @@ describe('master-server-list-service', () => {
       refreshed: 1,
     });
     expect(state.servers[0]).toMatchObject({
-      data: { players: 5 },
+      data: { playercount: 5 },
       status: 'online',
-      onlinePlayers: [{ uid: 'player-5', connected: true }],
-      knownPlayers: [
-        {
-          uid: 'player-5',
-          platform: 'Standalone',
-          firstseen: expect.any(Number),
-          lastseen: expect.any(Number),
-        },
-      ],
       label: 'Server 1',
       adminUid: '76561198000000000',
       mapUrl: 'https://old-map.example/',
@@ -459,7 +464,7 @@ describe('master-server-list-service', () => {
       serverId: 'server-1',
       sampleCount: 1,
       onlineSampleCount: 1,
-      playerSampleTotal: 1,
+      playerSampleTotal: 5,
     });
     expect(writeMock).toHaveBeenCalled();
   });
@@ -500,10 +505,6 @@ describe('master-server-list-service', () => {
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({ plugins: [{ name: 'OZ - Admin Utils' }] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ players: [] }),
       })
       .mockResolvedValueOnce({
         ok: true,

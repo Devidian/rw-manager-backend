@@ -38,7 +38,7 @@ describe('server map service', () => {
       undefined,
       undefined,
       'server-1',
-      'https://tiles.example/maps',
+      'https://tiles.example/maps/server-1/',
     );
   });
 

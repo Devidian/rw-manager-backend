@@ -109,15 +109,6 @@ describe('server plugin data service', () => {
 
     expect(getCachedServerPlayers('server-1')).toEqual([
       {
-        id: 7,
-        uid: '7',
-        platform: 'Standalone',
-        name: 'Map Only Player',
-        permissiongroup: 'admin',
-        playtime: 42,
-        lastseen: 3000,
-      },
-      {
         id: 8,
         uid: 'uid-8',
         platform: 'Standalone',

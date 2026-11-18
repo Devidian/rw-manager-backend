@@ -9,6 +9,7 @@ const resetServerConnectorCredentialMock = jest.fn(async () => true);
 
 jest.unstable_mockModule('../src/db/manager-store.js', () => ({
   listServers: listServersMock,
+  saveMasterServer: jest.fn(async () => undefined),
   findServerById: jest.fn(async () => undefined),
   updateServer: updateServerMock,
   claimServerConnectorCredential: claimServerConnectorCredentialMock,

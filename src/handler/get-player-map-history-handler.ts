@@ -1,3 +1,4 @@
+import { requestMapLayerAccess } from './map-layer-access.js';
 import type { Request, Response } from 'express';
 import typia from 'typia';
 import type { RequestWithUser } from '../interfaces/request-with-user.js';
@@ -8,8 +9,9 @@ import { prepareServerRoute, serverRouteError } from './server-route-context.js'
 export async function getPlayerMapHistoryHandler(req: Request, res: Response) {
   try {
     const server = await prepareServerRoute(req);
-    const steamId = (req as RequestWithUser).user?.steamId;
-    if (!server || !steamId) return res.status(403).json({ error: 'player map unavailable' });
+    const user = (req as RequestWithUser).user;
+    const steamId = user?.steamId;
+    if (!server || !steamId || !requestMapLayerAccess(user, server.id).manager) return res.status(403).json({ error: 'player map unavailable' });
     const history = await getPlayerMapHistory(server, steamId);
     const response: GetPlayerMapHistoryResponse = {
       schemaVersion: 1,

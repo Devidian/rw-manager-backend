@@ -4,7 +4,6 @@ import {
   refreshAllServerQueryData,
   refreshMasterServerList,
 } from './master-server-list-service.js';
-import { refreshDueServerPlayerLists } from './server-live-status-service.js';
 import { refreshPluginDataForOnlineServers } from './plugin-data-cache-service.js';
 import { refreshOZPluginLatestVersions } from './oz-plugin-release-service.js';
 
@@ -25,15 +24,14 @@ export function startManagerRefreshScheduler(): ManagerRefreshScheduler | null {
     AppConfig.serverQueryRefreshIntervalMs,
     () => refreshAllServerQueryData(),
   );
-  const playerList = startLoop(
-    'player list',
-    AppConfig.activePlayerListRefreshIntervalMs,
-    refreshDueServerPlayerLists,
-  );
   const pluginData = startLoop(
     'plugin data',
     AppConfig.pluginDataRefreshIntervalMs,
-    () => refreshPluginDataForOnlineServers(),
+    async () => {
+      await refreshPluginDataForOnlineServers();
+      const { reconcileManagerAccounts } = await import('./manager-access-service.js');
+      await reconcileManagerAccounts();
+    },
   );
   const pluginReleases = startLoop(
     'OZ plugin releases',
@@ -45,7 +43,6 @@ export function startManagerRefreshScheduler(): ManagerRefreshScheduler | null {
     stop: () => {
       master.stop();
       query.stop();
-      playerList.stop();
       pluginData.stop();
       pluginReleases.stop();
     },

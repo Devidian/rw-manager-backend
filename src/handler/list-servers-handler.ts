@@ -5,12 +5,16 @@ import type { RequestWithUser } from '../interfaces/request-with-user.js';
 import { listServers } from '../service/storage-service.js';
 import { getCachedPluginData } from '../service/plugin-data-cache-service.js';
 import { getCachedOZPluginLatestVersions } from '../service/oz-plugin-release-service.js';
+import { getUserFromBearerToken } from '../service/auth-token-service.js';
+import { managerAccess } from '../service/manager-access-service.js';
 
 export async function listServersHandler(req: Request, res: Response) {
   const request = req as RequestWithUser;
+  const user = request.user ?? await getUserFromBearerToken(req.header('authorization'));
+  const dashboardIds = user?.steamId ? new Set((await managerAccess(user.steamId)).serverIds) : new Set<string>();
   const servers = await listServers({
-    userId: request.user?.id,
-    userSteamId: request.user?.steamId,
+    userId: user?.id,
+    userSteamId: user?.steamVerifiedAt ? user.steamId : undefined,
   });
   const latestOZToolsVersion = getCachedOZPluginLatestVersions()['OZ - Tools'];
   const response: ListServersResponse = {
@@ -21,6 +25,14 @@ export async function listServersHandler(req: Request, res: Response) {
       );
       return {
         ...server,
+        ...(!user ? { onlinePlayers: undefined } : {}),
+        dashboardVisible: !server.masterOnly && dashboardIds.has(server.id),
+        canApprove: server.masterOnly === true && !!user?.steamVerifiedAt && !!user.steamId &&
+          !!server.info && typeof server.info === 'object' &&
+          (server.info as { contact?: unknown }).contact === user.steamId,
+        canDelete: server.masterOnly !== true && !!user?.steamVerifiedAt && !!user.steamId &&
+          !!server.info && typeof server.info === 'object' &&
+          (server.info as { contact?: unknown }).contact === user.steamId,
         pluginListAvailable: inventory !== undefined,
         ozToolsInstalled: ozTools !== undefined,
         ...(ozTools?.version ? { ozToolsVersion: ozTools.version } : {}),

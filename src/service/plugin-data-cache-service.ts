@@ -1,10 +1,12 @@
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
-import { findServerById, listServers, updateServer } from '../db/manager-store.js';
+import { listServers, updateServer } from '../db/manager-store.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { playersFromPluginPayload } from './server-plugin-data-service.js';
-import { mergeKnownPlayers } from './observed-player-service.js';
+import { observePlayers } from './player-identity-service.js';
+import { forgetPlayerFromServer } from './forgotten-player-service.js';
+import { serializePlayerDataWrite } from './player-data-write-queue.js';
 import {
   fetchNativePluginList,
   nativePluginRouteId,
@@ -33,7 +35,7 @@ export interface PluginDataRefreshAllResult {
   skipped: number;
 }
 
-/** The game-owned /playerlist route is the source of online presence. */
+/** Only the consent-filtered plugin export is a source of online player identities. */
 export function onlinePlayersFromEntry(entry: PluginDataCacheEntry): unknown[] | undefined {
   const players = entry.data.__onlinePlayers;
   return Array.isArray(players) ? players : undefined;
@@ -116,7 +118,20 @@ export function clearPluginDataCache(): void {
   cache.clear();
 }
 
+export function clearPluginDataCacheEntry(serverId: string): void {
+  cache.delete(serverId);
+}
+
 export async function refreshPluginDataForServer(
+  server: ServerConfig,
+): Promise<PluginDataRefreshResult> {
+  return serializePlayerDataWrite(server.id, async () => {
+    const { findServerById } = await import('../db/manager-store.js');
+    return fetchPluginDataForServer(await findServerById(server.id) ?? server);
+  });
+}
+
+async function fetchPluginDataForServer(
   server: ServerConfig,
 ): Promise<PluginDataRefreshResult> {
   const pluginQueryUrl = normalizedUrl(server.queryUrl);
@@ -124,10 +139,7 @@ export async function refreshPluginDataForServer(
     return { refreshed: false, skippedReason: 'queryUrlMissing' };
   }
 
-  const [plugins, onlinePlayers] = await Promise.all([
-    fetchNativePluginList(pluginQueryUrl, AppConfig.liveQueryProxyTimeoutMs),
-    fetchOnlinePlayerList(pluginQueryUrl),
-  ]);
+  const plugins = await fetchNativePluginList(pluginQueryUrl, AppConfig.liveQueryProxyTimeoutMs);
   if (!plugins) {
     return { refreshed: false, skippedReason: 'pluginListUnavailable' };
   }
@@ -137,10 +149,13 @@ export async function refreshPluginDataForServer(
       .filter((plugin) => plugin.valid)
       .flatMap((plugin) => plugin.name ? [nativePluginRouteId(plugin.name)] : []),
   );
+  const { hasActiveGameConnectorFeature } = await import('./game-connector-websocket-service.js');
+  const consentExportAvailable = hasActiveGameConnectorFeature(server.id, 'playerConsentRevoked');
   const data = Object.fromEntries(
     (await Promise.all(
       routeSpecs
-        .filter((spec) => availablePlugins.has(spec.pluginRouteId))
+        .filter((spec) => availablePlugins.has(spec.pluginRouteId)
+          && (spec.key !== 'ozadminutils.playerlist' || consentExportAvailable))
         .map(async (spec) => [
           spec.key,
           await fetchPluginRoute(pluginQueryUrl, `plugins/${spec.pluginRouteId}/${spec.path}`, server),
@@ -160,14 +175,28 @@ export async function refreshPluginDataForServer(
   if (nativeInfo && (server.mapUrl !== nativeInfo.mapUrl || server.adminUid !== nativeInfo.adminUid)) {
     await updateServer(server.id, { mapUrl: nativeInfo.mapUrl, adminUid: nativeInfo.adminUid });
   }
+  const playerlist = data['ozadminutils.playerlist'];
+  if (!playerlist || typeof playerlist !== 'object' || (playerlist as { consentVersion?: unknown }).consentVersion !== 1) {
+    delete data['ozadminutils.playerlist'];
+  }
   if (data['ozadminutils.playerlist'] !== undefined) {
-    const players = playersFromPluginPayload(data['ozadminutils.playerlist']);
-    if (players.length) {
-      const stored = await findServerById(server.id);
-      await updateServer(server.id, { knownPlayers: mergeKnownPlayers(stored?.knownPlayers ?? server.knownPlayers, players) });
+    const raw = (data['ozadminutils.playerlist'] as { players?: unknown }).players;
+    if (Array.isArray(raw)) {
+      const players = playersFromPluginPayload(data['ozadminutils.playerlist']);
+      const onlinePlayers = raw.filter((player) =>
+        !!player && typeof player === 'object' && (player as { connected?: unknown }).connected === true);
+      if (players.length) await observePlayers(players, new Date());
+      const nextUids = new Set(players.map((player) => player.uid));
+      const removedUids = [...new Set([
+        ...(server.privacyPendingDeletes ?? []),
+        ...(server.knownPlayers ?? []).map((player) => player.uid).filter((uid) => !nextUids.has(uid)),
+      ])];
+      await updateServer(server.id, { knownPlayers: players, onlinePlayers, privacyPendingDeletes: removedUids });
+      for (const uid of removedUids) await forgetPlayerFromServer(server.id, uid);
+      if (removedUids.length) await updateServer(server.id, { privacyPendingDeletes: [] });
+      data.__onlinePlayers = onlinePlayers;
     }
   }
-  data.__onlinePlayers = onlinePlayers ?? server.onlinePlayers;
 
   const now = Date.now();
   const entry: PluginDataCacheEntry = {
@@ -233,33 +262,10 @@ export async function refreshPluginDataForOnlineServers(): Promise<PluginDataRef
   };
 }
 
-async function fetchOnlinePlayerList(queryUrl: string): Promise<unknown[] | undefined> {
-  const result = await fetchJson(buildRouteUrl(queryUrl, 'playerlist'));
-  if (!result.ok || !result.data || typeof result.data !== 'object') return undefined;
-  const players = (result.data as { players?: unknown }).players;
-  return Array.isArray(players) ? players : undefined;
-}
-
 async function fetchPluginRoute(queryUrl: string, routePath: string, server: ServerConfig): Promise<unknown | undefined> {
   const result = await fetchNativePluginJson(server, buildRouteUrl(queryUrl, routePath));
   if (!result.ok) return undefined;
   return result.data;
-}
-
-async function fetchJson(url: string, authorization?: string): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
-      headers: authorization ? { Authorization: authorization } : undefined,
-    });
-    if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
-    return { ok: true, data: await response.json() };
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
-    };
-  }
 }
 
 function buildRouteUrl(queryUrl: string, routePath: string): string {

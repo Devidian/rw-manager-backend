@@ -1,7 +1,6 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import {
   createUser,
-  deleteUserAndOwnedServers,
   findUserById,
   findUserBySteamId,
   findUserByUsername,
@@ -23,6 +22,7 @@ import { mapPrivateUserToDto } from '../mapper/user-mapper.js';
 import { defaultLogger } from '../utils/logger.js';
 import { getSteamPersonaName } from './steam-profile-service.js';
 import { verifySteamOpenId } from './steam-openid-service.js';
+import { managerAccess } from './manager-access-service.js';
 
 async function nextSteamFallbackUsername(steamId: string): Promise<string> {
   const baseUsername = `steam_${steamId}`;
@@ -97,6 +97,7 @@ export async function connectSteam(
   const steamId = await verifySteamOpenId(input);
 
   const existingSteamUser = await findUserBySteamId(steamId);
+  if (existingSteamUser) await updateUser(existingSteamUser.id, { steamVerifiedAt: new Date() });
   const privateUser = existingSteamUser
     ? (toPrivateUser(existingSteamUser) as PrivateUser)
     : ((await setUserSteamId(userId, steamId)) as PrivateUser | null);
@@ -127,6 +128,14 @@ export async function steamSignIn(
   input: SteamAuthRequest,
 ): Promise<AuthUserTokenResponse> {
   const steamId = await verifySteamOpenId(input);
+  const existingAccount = await findUserBySteamId(steamId);
+  const access = steamId === AppConfig.superAdminId
+    ? { serverIds: existingAccount?.managerServerIds ?? [], confirmedDenied: false, preserveExisting: true }
+    : await managerAccess(steamId, existingAccount?.managerServerIds, true);
+  if (steamId !== AppConfig.superAdminId && access.serverIds.length === 0 &&
+      !(existingAccount && access.preserveExisting)) {
+    throw new Error('MANAGER_ACCESS_DENIED');
+  }
   const existingUser = await findUserBySteamId(steamId);
   const baseUsername = `steam_${steamId}`;
   const displayName = !existingUser || existingUser.username === baseUsername
@@ -135,6 +144,7 @@ export async function steamSignIn(
 
   let user: PrivateUser;
   if (existingUser) {
+    await updateUser(existingUser.id, { steamVerifiedAt: new Date() });
     user = toPrivateUser(existingUser) as PrivateUser;
     // Only migrate the legacy generated name. A name explicitly chosen by a
     // user must never be overwritten by a later Steam sign-in.
@@ -158,8 +168,10 @@ export async function steamSignIn(
         : AppConfig.defaultUserRole,
       steamId === AppConfig.superAdminId ? 'verified' : 'new',
     )) as PrivateUser;
+    await updateUser(user.id, { steamVerifiedAt: new Date() });
   }
   const privateUser = await markUserPresent(user.id);
+  if (access.serverIds.length) await updateUser(user.id, { managerServerIds: access.serverIds });
   const token = createAuthToken(privateUser.id);
   return { user: mapPrivateUserToDto(privateUser), token };
 }
@@ -167,6 +179,12 @@ export async function steamSignIn(
 export async function validateUser(userId: string): Promise<ValidateUserResponse> {
   const user = await findUserById(userId);
   if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+  if (user.steamId && user.steamId !== AppConfig.superAdminId &&
+      (await managerAccess(user.steamId, user.managerServerIds)).confirmedDenied) {
+    const { deleteUserOnly } = await import('../db/manager-store.js');
+    await deleteUserOnly(user.id);
     throw new Error('USER_NOT_FOUND');
   }
   return { user: mapPrivateUserToDto(await markUserPresent(user.id)) };
@@ -197,7 +215,8 @@ export async function renameSelf(
 }
 
 export async function deleteSelf(userId: string): Promise<void> {
-  if (!await deleteUserAndOwnedServers(userId)) {
+  const { deleteUserOnly } = await import('../db/manager-store.js');
+  if (!await deleteUserOnly(userId)) {
     throw new Error('USER_NOT_FOUND');
   }
 }

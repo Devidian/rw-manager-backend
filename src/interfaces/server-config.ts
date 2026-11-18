@@ -30,6 +30,8 @@ export interface ServerConfig {
   status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
   knownPlayers?: DbPlayer[];
+  /** Durable cleanup queue for revoked plugin exports; never sent to clients. */
+  privacyPendingDeletes?: string[];
   blocked?: boolean;
   blockedAt?: Date | string | null;
   lastChecked?: Date | string;

@@ -10,7 +10,7 @@ interface StoredServer {
   info?: unknown;
   status?: 'online' | 'offline' | 'unknown';
   onlinePlayers?: unknown[];
-  knownPlayers?: Array<{ uid: string; name?: string; platform?: string | number; firstseen?: number; lastseen?: number }>;
+  knownPlayers?: Array<{ id?: number; uid: string; name?: string; posx?: number; posy?: number; posz?: number; platform?: string | number; firstseen?: number; lastseen?: number }>;
   lastChecked?: Date | string;
   errorMessage?: string;
   queryDataUpdatedAt?: Date | string;
@@ -37,29 +37,31 @@ describe('server-live-status-service', () => {
     state.serverStatistics = [];
     writeMock.mockClear();
     service.clearServerLiveStatusCache();
+    service.clearServerLiveStatusCacheEntry('server-1');
   });
 
   afterAll(() => { global.fetch = originalFetch; });
 
-  test('fetches game status, game-server overview metadata, native metadata, and game-owned online players', async () => {
+  test('uses the public player list for the count without storing its identities', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({ name: 'Server', playercount: 9 }))
       .mockResolvedValueOnce(response({ name: 'Server overview', shortname: 'Overview', description: 'Info' }))
       .mockResolvedValueOnce(response({ plugins: [{ name: 'OZ - Admin Utils' }] }))
-      .mockResolvedValueOnce(response({ players: [{ uid: '76561198000000000', name: 'Alice' }] }))
       .mockResolvedValueOnce(response({
         schemaVersion: 1,
         mapUrl: 'https://map.example/',
         adminUid: '76561198000000000',
         admins: [],
-      })) as typeof fetch;
+      }))
+      .mockResolvedValueOnce(response({ players: [{ uid: 'public-only', name: 'Online' }, { name: 'Offline', connected: false }] })) as typeof fetch;
     global.fetch = fetchMock;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'online',
       queryData: { name: 'Server', playercount: 9 },
       infoData: { name: 'Server overview', shortname: 'Overview', description: 'Info' },
-      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
+      onlinePlayers: undefined,
+      publicPlayerCount: 1,
     });
     await service.getServerLiveStatus('server-1');
 
@@ -67,27 +69,27 @@ describe('server-live-status-service', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://query.example', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://query.example/info', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://query.example/pluginlist', expect.any(Object));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://query.example/playerlist', expect.any(Object));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://query.example/plugins/oz---admin-utils/info', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://query.example/plugins/oz---admin-utils/info', expect.any(Object));
+    expect(String((fetchMock as jest.MockedFunction<typeof fetch>).mock.calls[4][0])).toBe('http://query.example/playerlist');
+    expect(JSON.stringify(state)).not.toContain('public-only');
     expect(state.servers[0]).toMatchObject({
       mapUrl: 'https://map.example/', adminUid: '76561198000000000', status: 'online',
-      onlinePlayers: [{ uid: '76561198000000000', name: 'Alice' }],
+      onlinePlayers: undefined,
     });
   });
 
-  test('uses the game player list as the online signal when the game query fails', async () => {
+  test('does not use a game-owned player list when the query fails', async () => {
     global.fetch = jest.fn()
       .mockResolvedValueOnce(response({}, 500))
       .mockResolvedValueOnce(response({}, 404))
-      .mockResolvedValueOnce(response({}, 404))
-      .mockResolvedValueOnce(response({ players: [{ uid: 'player-1' }] })) as typeof fetch;
+      .mockResolvedValueOnce(response({}, 404)) as typeof fetch;
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
-      status: 'online', errorMessage: 'HTTP 500', onlinePlayers: [{ uid: 'player-1' }],
+      status: 'offline', errorMessage: 'HTTP 500', onlinePlayers: [],
     });
   });
 
-  test('refreshes active server player lists independently of the full query interval', async () => {
+  test('never refreshes player identities from game-owned routes', async () => {
     state.servers[0].status = 'online';
     state.servers[0].onlinePlayers = [{ uid: 'previous-player' }];
     state.servers[0].lastChecked = new Date(0).toISOString();
@@ -95,11 +97,11 @@ describe('server-live-status-service', () => {
       players: [{ uid: 'current-player', name: 'Current' }],
     })) as typeof fetch;
 
-    await expect(service.refreshDueServerPlayerLists()).resolves.toEqual({ checked: 1, refreshed: 1 });
+    await expect(service.refreshDueServerPlayerLists()).resolves.toEqual({ checked: 0, refreshed: 0 });
 
-    expect(global.fetch).toHaveBeenCalledWith('http://query.example/playerlist', expect.any(Object));
+    expect(global.fetch).not.toHaveBeenCalled();
     expect(state.servers[0]).toMatchObject({
-      onlinePlayers: [{ uid: 'current-player', name: 'Current' }],
+      onlinePlayers: [{ uid: 'previous-player' }],
       status: 'online',
     });
   });
@@ -107,30 +109,74 @@ describe('server-live-status-service', () => {
   test('accepts a bounded connector player-status snapshot into only that server cache', async () => {
     await service.acceptConnectorPlayerStatus('server-1', {
       schemaVersion: 1,
+      consentVersion: 1,
       players: [
-        { uid: 'player-1', name: 'Connected' },
-        { uid: 'player-2', name: 'Disconnected', connected: false },
+        { uid: 'player-1', dbId: 4, name: 'Connected' },
+        { uid: 'player-2', dbId: 5, name: 'Disconnected', connected: false },
       ],
     });
 
     await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
       status: 'online',
-      onlinePlayers: [{ uid: 'player-1', name: 'Connected' }],
+      onlinePlayers: [{ id: 4, uid: 'player-1', name: 'Connected' }],
     });
     expect(state.servers[0]).toMatchObject({
       status: 'online',
-      onlinePlayers: [{ uid: 'player-1', name: 'Connected' }],
+      onlinePlayers: [{ id: 4, uid: 'player-1', name: 'Connected' }],
     });
   });
 
-  test('rejects malformed connector player-status snapshots without changing stored live state', async () => {
+  test('removes a revoked known player immediately but keeps other players', async () => {
+    state.servers[0].knownPlayers = [
+      { id: 4, uid: 'player-1', name: 'First' },
+      { id: 5, uid: 'player-2', name: 'Second' },
+    ];
+    state.servers[0].onlinePlayers = [{ uid: 'player-1' }, { uid: 'player-2' }];
+
+    await service.acceptConnectorPlayerConsentRevoked('server-1', { uid: 'player-1', dbId: 4 });
+
+    expect(state.servers[0].knownPlayers).toEqual([{ id: 5, uid: 'player-2', name: 'Second' }]);
+    expect(state.servers[0].onlinePlayers).toEqual([{ uid: 'player-2' }]);
+    await expect(service.acceptConnectorPlayerConsentRevoked('server-1', { uid: 'player-2', dbId: 999 }))
+      .resolves.toBeUndefined();
+    expect(state.servers[0].knownPlayers).toHaveLength(1);
+    await expect(service.acceptConnectorPlayerConsentRevoked('server-1', { uid: '', dbId: 4 }))
+      .rejects.toThrow('INVALID_CONSENT_REVOKE');
+  });
+
+  test('removes only location fields when map consent is revoked', async () => {
+    state.servers[0].knownPlayers = [
+      { id: 4, uid: 'player-1', name: 'First', posx: 10, posy: 20, posz: 30 },
+      { id: 5, uid: 'player-2', name: 'Second', posx: 40 },
+    ];
+    state.servers[0].onlinePlayers = [{ uid: 'player-1', posx: 10 }, { uid: 'player-2', posx: 40 }];
+
+    await service.acceptConnectorPlayerConsentRevoked('server-1', { uid: 'player-1', dbId: 4, purpose: 'map' });
+
+    expect(state.servers[0].knownPlayers).toEqual([
+      { id: 4, uid: 'player-1', name: 'First' },
+      { id: 5, uid: 'player-2', name: 'Second', posx: 40 },
+    ]);
+    expect(state.servers[0].onlinePlayers).toEqual([{ uid: 'player-1' }, { uid: 'player-2', posx: 40 }]);
+  });
+
+  test('rejects connector players without exportable identity', async () => {
     await expect(service.acceptConnectorPlayerStatus('server-1', {
       schemaVersion: 1,
+      consentVersion: 1,
       players: [{ name: 'Missing UID' }],
     })).rejects.toThrow('INVALID_PLAYER_STATUS');
 
     expect(state.servers[0].onlinePlayers).toBeUndefined();
-    expect(writeMock).not.toHaveBeenCalled();
+    expect(state.servers[0].knownPlayers).toBeUndefined();
+  });
+
+  test('rejects old connector snapshots without consent version', async () => {
+    await expect(service.acceptConnectorPlayerStatus('server-1', {
+      schemaVersion: 1,
+      players: [{ uid: 'old-player', dbId: 4, name: 'Old' }],
+    })).rejects.toThrow('INVALID_PLAYER_STATUS');
+    expect(state.servers[0].onlinePlayers).toBeUndefined();
   });
 
   test('does not accept description markers as native configuration', async () => {

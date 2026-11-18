@@ -1,3 +1,5 @@
+import { requestMapLayerAccess } from './map-layer-access.js';
+import type { RequestWithUser } from '../interfaces/request-with-user.js';
 import type { Request, Response } from 'express';
 import typia from 'typia';
 import type { GetMapMarketplaceOffersResponse } from '../dto/get-map-marketplace-offers-response.js';
@@ -11,6 +13,9 @@ export async function getMapMarketplaceOffersHandler(req: Request, res: Response
   }
   try {
     const server = await prepareServerRoute(req);
+    if (!requestMapLayerAccess((req as RequestWithUser).user, server?.id).manager) {
+      return res.status(403).json({ error: 'map consent required' });
+    }
     const items = server
       ? await getMapMarketplaceOffers(areaId, undefined, server.id)
       : await getMapMarketplaceOffers(areaId);

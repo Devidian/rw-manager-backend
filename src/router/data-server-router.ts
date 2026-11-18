@@ -16,10 +16,8 @@ import { getMapMarketplaceOffersHandler } from '../handler/get-map-marketplace-o
 import { getMapGlobalMarketplaceOffersHandler } from '../handler/get-map-global-marketplace-offers-handler.js';
 import { getPlayerMapHistoryHandler } from '../handler/get-player-map-history-handler.js';
 import { getMapNpcMarketsHandler } from '../handler/get-map-npc-markets-handler.js';
-import { maskGuestSteamIds } from '../service/public-steam-id-service.js';
 
 const dataServerRouter = Router();
-dataServerRouter.use(maskGuestSteamIds);
 
 dataServerRouter.get('/server/:id/header', getServerHeaderHandler);
 
@@ -29,33 +27,33 @@ dataServerRouter.get('/server/name', getServerNameHandler);
 dataServerRouter.get('/server/plugins', listServerPluginsHandler);
 dataServerRouter.get('/server/map', getServerMapHandler);
 dataServerRouter.get('/server/map/layers', getMapLayerCapabilitiesHandler);
-dataServerRouter.get('/server/map/layers/claims', getMapClaimsHandler);
-dataServerRouter.get('/server/map/layers/players', getMapPlayersHandler);
+dataServerRouter.get('/server/map/layers/claims', requireAuth, getMapClaimsHandler);
+dataServerRouter.get('/server/map/layers/players', requireAuth, getMapPlayersHandler);
 dataServerRouter.get('/server/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
-dataServerRouter.get('/server/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
-dataServerRouter.get('/server/map/layers/:kind', getMapNpcMarketsHandler);
+dataServerRouter.get('/server/map/layers/gps-global-markers', requireAuth, getMapGpsGlobalMarkersHandler);
+dataServerRouter.get('/server/map/layers/:kind', requireAuth, getMapNpcMarketsHandler);
 dataServerRouter.get('/server/:id/plugins', listServerPluginsHandler);
 dataServerRouter.get('/server/:id/map', getServerMapHandler);
 dataServerRouter.get('/server/:id/map/layers', getMapLayerCapabilitiesHandler);
-dataServerRouter.get('/server/:id/map/layers/claims', getMapClaimsHandler);
-dataServerRouter.get('/server/:id/map/layers/players', getMapPlayersHandler);
+dataServerRouter.get('/server/:id/map/layers/claims', requireAuth, getMapClaimsHandler);
+dataServerRouter.get('/server/:id/map/layers/players', requireAuth, getMapPlayersHandler);
 dataServerRouter.get('/server/:id/map/layers/player-history', requireAuth, getPlayerMapHistoryHandler);
-dataServerRouter.get('/server/:id/map/layers/gps-global-markers', getMapGpsGlobalMarkersHandler);
-dataServerRouter.get('/server/:id/map/layers/:kind', getMapNpcMarketsHandler);
+dataServerRouter.get('/server/:id/map/layers/gps-global-markers', requireAuth, getMapGpsGlobalMarkersHandler);
+dataServerRouter.get('/server/:id/map/layers/:kind', requireAuth, getMapNpcMarketsHandler);
 dataServerRouter.get(
   '/server/map/layers/marketplaces/global/offers',
-  getMapGlobalMarketplaceOffersHandler,
+  requireAuth, getMapGlobalMarketplaceOffersHandler,
 );
 dataServerRouter.get(
   '/server/:id/map/layers/marketplaces/global/offers',
-  getMapGlobalMarketplaceOffersHandler,
+  requireAuth, getMapGlobalMarketplaceOffersHandler,
 );
 dataServerRouter.get(
   '/server/map/layers/marketplaces/:areaId/offers',
-  getMapMarketplaceOffersHandler,
+  requireAuth, getMapMarketplaceOffersHandler,
 );
 dataServerRouter.get(
   '/server/:id/map/layers/marketplaces/:areaId/offers',
-  getMapMarketplaceOffersHandler,
+  requireAuth, getMapMarketplaceOffersHandler,
 );
 export default dataServerRouter;

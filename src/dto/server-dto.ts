@@ -2,6 +2,11 @@ import type { Format } from 'typia/lib/tags/Format.js';
 
 export interface ServerDto {
   id: string;
+  /** Ephemeral master-list entry. No detail, pin, block or connect action. */
+  masterOnly?: boolean;
+  canApprove?: boolean;
+  canDelete?: boolean;
+  dashboardVisible?: boolean;
   label: string;
   steamId?: string | undefined;
   addr?: string | undefined;

@@ -5,6 +5,7 @@ export interface ServerLiveStatusResponse {
   queryData?: unknown;
   infoData?: unknown;
   onlinePlayers?: unknown[];
+  publicPlayerCount?: number;
   lastChecked: string & Format<'date-time'>;
   errorMessage?: string;
 }
