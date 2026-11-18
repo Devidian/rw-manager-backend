@@ -64,6 +64,13 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.9.2](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.1...rw-manager-backend-v0.9.2) (2026-11-18)
+
+
+### Fixed
+
+* coordinate Manager privacy, consent and server participation ([b5862f0](https://github.com/Devidian/rw-manager-backend/commit/b5862f066367557f38f5d0e91181fc7214212169))
+
 ## [0.9.1](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.0...rw-manager-backend-v0.9.1) (2026-11-13)
 
 
