@@ -209,6 +209,58 @@ describe('server-live-status-service', () => {
     await expect(service.getServerLiveStatus('missing')).rejects.toThrow('SERVER_NOT_FOUND');
     state.servers[0].queryUrl = '';
     await expect(service.getServerLiveStatus('server-1')).rejects.toThrow('QUERY_URL_MISSING');
+    await expect(service.getStoredServerLiveStatus('missing')).rejects.toThrow('SERVER_NOT_FOUND');
+    await expect(service.getStoredServerLiveStatus('server-1')).rejects.toThrow('QUERY_URL_MISSING');
+  });
+
+  test('reuses fresh stored information without persisting the public online list', async () => {
+    Object.assign(state.servers[0], { status: 'unknown', lastChecked: 'invalid', queryDataUpdatedAt: new Date(),
+      data: { name: 'From cache' }, errorMessage: '    ' });
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(response({ players: [{ name: 'Ada', uid: 'private-fallback' }] }));
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({
+      status: 'online', queryData: { name: 'From cache' }, publicPlayerCount: 1,
+      lastChecked: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), errorMessage: undefined,
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(String((global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][0])).toBe('http://query.example/playerlist');
+    expect(writeMock).not.toHaveBeenCalled();
+  });
+
+  test.each([null, { schemaVersion: 2, consentVersion: 1, players: [] },
+    { schemaVersion: 1, consentVersion: 1, players: Array(501).fill(null) },
+    ...[null, [], true, { uid: 'p', dbId: '3' }, { uid: 'p', dbId: 1.1 }, { uid: 'p', dbId: 0 }].map(
+      item => ({ schemaVersion: 1, consentVersion: 1, players: [item] }),
+    ),
+  ])('rejects invalid or oversized live player data', async (payload) => {
+    await expect(service.acceptConnectorPlayerStatus('server-1', payload)).rejects.toThrow('INVALID_PLAYER_STATUS');
+    expect(writeMock).not.toHaveBeenCalled();
+  });
+
+  test('counts players without exporting public-fallback identities to statistics', async () => {
+    state.servers[0].queryDataUpdatedAt = 'invalid';
+    state.servers[0].onlinePlayers = [null, 'legacy', { UID: ' player-1 ' }, { uid: ' ' }, { uid: 3 }];
+    global.fetch = jest.fn<typeof fetch>()
+      .mockResolvedValueOnce(response(null))
+      .mockResolvedValueOnce(response({}, 404))
+      .mockResolvedValueOnce(response({ plugins: [] }))
+      .mockResolvedValueOnce(response({ players: [{ name: 'First' }, { uid: 'public-id', name: 'Second' }] }));
+
+    const status = await Promise.all([service.getServerLiveStatus('server-1'), service.getServerLiveStatus('server-1')]);
+    expect(status[0]).toBe(status[1]);
+    expect(state.serverStatistics).toMatchObject([{ sampleCount: 1, maxPlayers: 2, onlinePlayerUids: ['player-1'] }]);
+    expect(JSON.stringify(state)).not.toContain('public-id');
+  });
+
+  test('records an unreachable game server as offline and clears stale online players', async () => {
+    state.servers[0].onlinePlayers = [{ uid: 'stale' }];
+    global.fetch = jest.fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error('Connection failed'))
+      .mockResolvedValueOnce(response({}, 404))
+      .mockResolvedValueOnce(response({ plugins: [] }));
+    await expect(service.getServerLiveStatus('server-1')).resolves.toMatchObject({ status: 'offline',
+      errorMessage: 'Connection failed', onlinePlayers: [] });
+    expect(state.servers[0].onlinePlayers).toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 });
 

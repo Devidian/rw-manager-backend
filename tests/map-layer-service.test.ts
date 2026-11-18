@@ -16,6 +16,7 @@ const {
   getMapLayerCapabilities,
   getMapMarketplaceOffers,
   getMapPlayers,
+  mapLiveSnapshotFromEntry,
 } = await import('../src/service/map-layer-service.js');
 const {
   clearPluginDataCache,
@@ -31,6 +32,35 @@ describe('map layer service', () => {
     restoreEnv(originalEnv);
     jest.restoreAllMocks();
     global.fetch = originalFetch;
+  });
+
+  test.each([undefined, 'garbage', '0.17.9', '0.18.0', 'v0.23.0'])('checks player-history capability for version %s', (version) => {
+    const snapshot = mapLiveSnapshotFromEntry({
+      serverId: 'test', refreshedAtMs: 0, expiresAtMs: 1,
+      plugins: [{ name: 'OZ - Land Claim', valid: true, version }],
+      data: { 'ozmarketplace.offers.1': {}, 'ozmarketplace.criers': { criers: [] } },
+    });
+    expect(snapshot).toMatchObject({
+      capabilities: { playerHistory: version === '0.18.0' || version === 'v0.23.0', marketCriers: true },
+      claims: [], players: [], gpsGlobalMarkers: [], marketplaceOffers: {}, globalMarketplaceOffers: [],
+    });
+  });
+
+  test('parses marketplace and shop marker capability with empty and malformed offer rows', () => {
+    const npc = { npcId: 17, name: 'Trader', x: 0, y: 15, z: 20 };
+    const offer = { id: 1, itemName: 'Torch', itemVariant: 0, amount: 1, price: 5, currency: 'OZC' };
+    const snapshot = mapLiveSnapshotFromEntry({
+      serverId: 'test', refreshedAtMs: 0, expiresAtMs: 1, plugins: [],
+      data: {
+        'ozmarketplace.criers': { criers: [null, { ...npc, x: '0' }, { ...npc, name: 8 }, { ...npc, npcId: 1.1 }, npc] },
+        'ozshop.traders': { traders: [{ ...npc,
+          balances: [null, { currency: 7, balance: 5 }, { currency: 'OZC', balance: 'many' }],
+          offers: [null, { ...offer, id: null }, { ...offer, itemName: 5 }, { ...offer, itemVariant: 0.1 },
+            { ...offer, amount: 0.5 }, { ...offer, price: '' }, { ...offer, currency: null }, offer],
+        }] },
+      },
+    });
+    expect(snapshot.capabilities).toMatchObject({ marketCriers: true, shopTraders: true });
   });
 
   test('reports unavailable optional capabilities when no plugin cache exists', async () => {
