@@ -22,7 +22,7 @@ Does not own:
 - Preserve the configured Node.js LTS baseline and keep `package.json`, Docker, CI, and docs aligned when runtime changes.
 - Preserve the existing source layering: router, handler, DTO, validator, service, mapper, database adapter, interfaces, utils.
 - Keep TypeScript files in kebab-case.
-- Follow `.codex/agents.toml` for local agent roles, task classes, context loading, and escalation.
+- Follow `.codex/agents/*.toml` for local agent roles, task classes, context loading, and escalation.
 - Follow `docs/policies/repository-policy.md` for reusable governance rules.
 - Keep `README.md`, `CHANGELOG.md` when present, and `PLANS.md` aligned with behavior or structure changes.
 
