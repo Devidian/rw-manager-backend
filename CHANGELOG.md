@@ -66,6 +66,25 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.9.3](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.2...rw-manager-backend-v0.9.3) (2026-11-27)
+
+
+### Changed
+
+* remove the Manager Steam ID masking import cycle ([d621fac](https://github.com/Devidian/rw-manager-backend/commit/d621facfa466bc85961e08d1e735dd30155fe47b))
+* share Manager map publication storage reads ([6061ebb](https://github.com/Devidian/rw-manager-backend/commit/6061ebb1d1e402cd3471ecdb47d9227c3bcd1a91))
+
+
+### Documentation
+
+* **codemap:** add repository navigation and maintenance workflow ([185b404](https://github.com/Devidian/rw-manager-backend/commit/185b404fcb8c4c2bc2f7faec07ebbaab465441ce))
+
+
+### Maintenance
+
+* checkpoint Yarn install state ([ad2f281](https://github.com/Devidian/rw-manager-backend/commit/ad2f281a375a3ea3cdfa172aabe119447eea9a61))
+* **codex:** correct repository workflow references ([38a0164](https://github.com/Devidian/rw-manager-backend/commit/38a01647df1e9669c6b9d9ae62ee66544d89a4b8))
+
 ## [0.9.2](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.1...rw-manager-backend-v0.9.2) (2026-11-18)
 
 
