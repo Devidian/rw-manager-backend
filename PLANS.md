@@ -10,6 +10,7 @@ Server duplicate reconciliation and Development acceptance are tracked in [docs/
 Player identity migration and privacy acceptance are tracked in [docs/active/player-identity-steam-privacy.md](docs/active/player-identity-steam-privacy.md).
 Manager guest access and Steam eligibility are tracked in the root DSGVO implementation plan; API and runtime acceptance remain open.
 
+- [x] Remove the Steam ID masking import cycle. Verify guest and admin projection, cold module loading, and the full WebSocket suite.
 - [x] Handle a connected server's targeted consent-revocation event and purge matching identities/statistics.
 - [ ] Validate connected revocation, disconnect/reconnect reconciliation, and player views on Development.
 

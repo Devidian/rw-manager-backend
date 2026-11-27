@@ -23,6 +23,15 @@ test('masks Steam IDs in nested public responses without changing source data', 
   expect(source.servers[0].onlinePlayers[0].uid).toBe(id);
 });
 
+test('shares the dependency-free mask and preserves legacy values', async () => {
+  const { maskPublicSteamIds: mask } = await import('../src/utils/mask-public-steam-ids.js');
+  expect(maskPublicSteamIds).toBe(mask);
+  const createdAt = new Date(0);
+  const source = { STEAMID: 76561198000000000, count: 1, createdAt, longer: `${id}1` };
+  expect(mask(source)).toEqual({ ...source, STEAMID: masked });
+  expect(mask(createdAt)).toBe(createdAt);
+});
+
 test('REST projection removes Steam IDs for guests and unrelated authenticated users', async () => {
   const json = jest.fn<(body: unknown) => Response>();
   const next = jest.fn<NextFunction>();

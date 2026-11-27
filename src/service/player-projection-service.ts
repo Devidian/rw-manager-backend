@@ -3,7 +3,7 @@ import { findServerById, listServers } from '../db/manager-store.js';
 import { getCachedPluginData } from './plugin-data-cache-service.js';
 import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { stableUid } from './player-identity-service.js';
-import { maskPublicSteamIds } from './public-steam-id-service.js';
+import { maskPublicSteamIds } from '../utils/mask-public-steam-ids.js';
 
 interface ProjectionContext { userSteamId?: string; guest: boolean; serverId?: string; global?: boolean }
 

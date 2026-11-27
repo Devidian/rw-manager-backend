@@ -8,6 +8,7 @@ Collect game and plugin data, project player privacy and publish live status ove
 ## Source and tests
 
 - [Map live publication](../../src/service/map-live-service.ts) reuses storage reads within one publish while evaluating each viewer independently. [Projection tests](../../tests/player-projection-service.test.ts) cover that boundary.
+- [Public Steam ID masking](../../src/utils/mask-public-steam-ids.ts) is a dependency-free transformation applied within player projection. [HTTP middleware](../../src/service/public-steam-id-service.ts) delegates to that projection.
 - [Game connector](../../src/service/game-connector-websocket-service.ts), [plugin cache](../../src/service/plugin-data-cache-service.ts), and [player projection](../../src/service/player-projection-service.ts) handle ingestion and projection. [Connector event subscriber](../../src/service/server-live-status-service.ts) handles Admin Utils player status and consent revocations.
 - [Server status live](../../src/service/server-status-live-service.ts) and [WebSocket routing](../../src/service/websocket-upgrade-router.ts) publish events.
 - [Live integration test](../../tests/server-status-live-integration.test.ts) and [plugin cache test](../../tests/plugin-data-cache-service.test.ts) cover related behavior.

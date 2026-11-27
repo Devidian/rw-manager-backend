@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Isolate public Steam ID masking from HTTP middleware so live projection can load it directly.
+
 - Fetch `/info` for every master-list server, cache unapproved contact owners for Steam eligibility, and use the live `/info.name` as the server label.
 
 - gate Steam account creation on consent-filtered player exports, live verified server contacts, or the superadmin ID; revoke confirmed losses without deleting servers.

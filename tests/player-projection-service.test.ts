@@ -21,9 +21,6 @@ jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
 jest.unstable_mockModule('../src/service/native-admin-utils-info.js', () => ({
   parseNativeAdminUtilsInfo: jest.fn(() => undefined),
 }));
-jest.unstable_mockModule('../src/service/public-steam-id-service.js', () => ({
-  maskPublicSteamIds: (value: unknown) => value,
-}));
 
 const { mapPublicationProjection, projectPlayerData } = await import('../src/service/player-projection-service.js');
 
@@ -111,4 +108,18 @@ test('uses one storage snapshot per publication with independent viewer projecti
   expect(next.onlinePlayers[0]).not.toHaveProperty('uid');
   expect(findServerById).toHaveBeenCalledTimes(2);
   expect(listServers).toHaveBeenCalledTimes(2);
+});
+
+test('masks residual Steam IDs only in the guest view of the same publication', async () => {
+  const id = '76561198000000001';
+  const raw = { note: `Steam user ${id}`, onlinePlayers: servers[1].knownPlayers };
+  const project = mapPublicationProjection('foreign');
+  expect(await project(raw, { guest: true })).toMatchObject({
+    note: 'Steam user 7***************1',
+    onlinePlayers: [{ id: 'foreign:8' }, { id: 'foreign:9' }],
+  });
+  expect(await project(raw, { guest: false, userSteamId: '76561198000000999' })).toMatchObject({
+    note: raw.note,
+    onlinePlayers: [{ uid: id }, { id: 'foreign:9' }],
+  });
 });

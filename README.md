@@ -81,7 +81,8 @@ that player. Player REST and live responses expose the mapping ID but replace
 private or unchecked names and UIDs with `**PRIVATE**`. Only a verified Steam
 admin of the specific server sees those values in server player lists and map
 players. Global views never grant this exception. Guests still see public
-17-digit Steam IDs with only their first and last digits. When
+17-digit Steam IDs with only their first and last digits. REST middleware and
+WebSocket publishers share player projection and its masking rule. When
 `ENABLE_AUTH=false`, player history remains unavailable.
 
 With `SUPER_ADMIN_ID` configured, `GET /api/storage/server/duplicates` proposes
