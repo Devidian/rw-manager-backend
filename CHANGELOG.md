@@ -68,6 +68,18 @@
 * keep proxied map WebSockets alive with ping/pong health checks
 * persist and publish offline status after failed scheduled query attempts
 
+## [0.10.0](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.3...rw-manager-backend-v0.10.0) (2026-11-27)
+
+
+### Added
+
+* collect anonymous global player activity and discover live servers ([33b23e2](https://github.com/Devidian/rw-manager-backend/commit/33b23e2802dbc8a5e4b2bffeec80ab63bb9a408d))
+
+
+### Tests
+
+* cover discovery polling and global statistics validation ([22b1fc6](https://github.com/Devidian/rw-manager-backend/commit/22b1fc600df4e82481d4f0adec7f1fbb8f82a109))
+
 ## [0.9.3](https://github.com/Devidian/rw-manager-backend/compare/rw-manager-backend-v0.9.2...rw-manager-backend-v0.9.3) (2026-11-27)
 
 
