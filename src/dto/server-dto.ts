@@ -4,6 +4,8 @@ export interface ServerDto {
   id: string;
   /** Ephemeral master-list entry. No detail, pin, block or connect action. */
   masterOnly?: boolean;
+  masterOnlyPlayerNames?: string[];
+  masterOnlyLiveUntil?: string & Format<'date-time'>;
   canApprove?: boolean;
   canDelete?: boolean;
   dashboardVisible?: boolean;

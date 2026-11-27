@@ -4,6 +4,7 @@ import {
   refreshAllServerQueryData,
   refreshMasterServerList,
 } from './master-server-list-service.js';
+import { refreshMasterOnlyLive } from './master-only-live-service.js';
 import { refreshPluginDataForOnlineServers } from './plugin-data-cache-service.js';
 import { refreshOZPluginLatestVersions } from './oz-plugin-release-service.js';
 
@@ -19,10 +20,15 @@ export function startManagerRefreshScheduler(): ManagerRefreshScheduler | null {
     AppConfig.masterServerListRefreshIntervalMs,
     () => refreshMasterServerList({ refreshQueryData: false }),
   );
+  const live = startLoop(
+    'master-only live data',
+    AppConfig.activePlayerListRefreshIntervalMs,
+    refreshMasterOnlyLive,
+  );
   const query = startLoop(
     'server query data',
     AppConfig.serverQueryRefreshIntervalMs,
-    () => refreshAllServerQueryData(),
+    () => refreshAllServerQueryData(true),
   );
   const pluginData = startLoop(
     'plugin data',
@@ -42,6 +48,7 @@ export function startManagerRefreshScheduler(): ManagerRefreshScheduler | null {
   return {
     stop: () => {
       master.stop();
+      live.stop();
       query.stop();
       pluginData.stop();
       pluginReleases.stop();

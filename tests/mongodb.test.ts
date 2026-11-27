@@ -150,12 +150,14 @@ describe('db/mongodb', () => {
     const statistics = collection('server_statistics');
     const mappings = collection('player_mappings');
     const suppressed = collection('suppressed_servers');
+    const globalPlayers = collection('global_player_statistics');
     collectionMock
       .mockReturnValueOnce(servers)
       .mockReturnValueOnce(users)
       .mockReturnValueOnce(statistics)
       .mockReturnValueOnce(mappings)
-      .mockReturnValueOnce(suppressed);
+      .mockReturnValueOnce(suppressed)
+      .mockReturnValueOnce(globalPlayers);
 
     const collections = await mongodb.bootstrapMongoDb();
 
@@ -165,12 +167,14 @@ describe('db/mongodb', () => {
       serverStatistics: statistics,
       playerMappings: mappings,
       suppressedServers: suppressed,
+      globalPlayerStatistics: globalPlayers,
     });
     expect(mongoClientConstructorMock).toHaveBeenCalledWith('mongodb://example', {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
     });
     expect(dbMock).toHaveBeenCalledWith('rw-manager-test');
+    expect(globalPlayers.createIndex).toHaveBeenCalledWith({ hourStart: 1 }, { unique: true });
     expect(servers.dropIndex).toHaveBeenCalledWith('steamId_1');
     expect(servers.createIndex).toHaveBeenCalledWith({ id: 1 }, { unique: true });
     expect(servers.createIndex).toHaveBeenCalledWith(
@@ -194,7 +198,7 @@ describe('db/mongodb', () => {
     expect(logMock).toHaveBeenCalledWith('MongoDB connected: rw-manager-test');
 
     await expect(mongodb.bootstrapMongoDb()).resolves.toBe(collections);
-    expect(collectionMock).toHaveBeenCalledTimes(5);
+    expect(collectionMock).toHaveBeenCalledTimes(6);
   });
 
   test('closes failed clients without entering a JSON fallback path', async () => {
@@ -205,12 +209,14 @@ describe('db/mongodb', () => {
     const statistics = collection('server_statistics', 1);
     const mappings = collection('player_mappings');
     const suppressed = collection('suppressed_servers');
+    const globalPlayers = collection('global_player_statistics');
     collectionMock
       .mockReturnValueOnce(servers)
       .mockReturnValueOnce(users)
       .mockReturnValueOnce(statistics)
       .mockReturnValueOnce(mappings)
-      .mockReturnValueOnce(suppressed);
+      .mockReturnValueOnce(suppressed)
+      .mockReturnValueOnce(globalPlayers);
 
     await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
     expect(mongoClientConstructorMock).toHaveBeenCalledWith('mongodb://fallback-var', {
@@ -238,6 +244,7 @@ describe('db/mongodb', () => {
     const statistics = collection('server_statistics');
     const mappings = collection('player_mappings');
     const suppressed = collection('suppressed_servers');
+    const globalPlayers = collection('global_player_statistics');
     const migrations = { findOne: jest.fn(async () => null), insertOne: jest.fn(async () => undefined) };
     collectionMock
       .mockReturnValueOnce(servers)
@@ -245,6 +252,7 @@ describe('db/mongodb', () => {
       .mockReturnValueOnce(statistics)
       .mockReturnValueOnce(mappings)
       .mockReturnValueOnce(suppressed)
+      .mockReturnValueOnce(globalPlayers)
       .mockReturnValueOnce(migrations);
 
     try {
@@ -268,6 +276,7 @@ describe('db/mongodb', () => {
         server_statistics: statistics,
         player_mappings: mappings,
         suppressed_servers: suppressed,
+        global_player_statistics: globalPlayers,
         migrations,
       })[name]);
       await expect(mongodb.bootstrapMongoDb()).resolves.toBeDefined();
@@ -291,6 +300,7 @@ describe('db/mongodb', () => {
     const statistics = collection('server_statistics', 0, [{ ...jsonState.serverStatistics![0], sampleCount: 99, onlineSampleCount: 99, playerSampleTotal: 99, maxPlayers: 99 }]);
     const mappings = collection('player_mappings');
     const suppressed = collection('suppressed_servers');
+    const globalPlayers = collection('global_player_statistics');
     const migrations = { findOne: jest.fn(async () => null), insertOne: jest.fn(async () => undefined) };
     collectionMock
       .mockReturnValueOnce(servers)
@@ -298,6 +308,7 @@ describe('db/mongodb', () => {
       .mockReturnValueOnce(statistics)
       .mockReturnValueOnce(mappings)
       .mockReturnValueOnce(suppressed)
+      .mockReturnValueOnce(globalPlayers)
       .mockReturnValueOnce(migrations);
 
     try {

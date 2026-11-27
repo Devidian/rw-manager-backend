@@ -2,7 +2,20 @@ import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
 
 const counts = new Map<string, { queryUrl: string; count: number; expiresAt: number }>();
-const pending = new Map<string, Promise<string[] | null>>();
+interface PublicOnlinePlayer {
+  name?: string;
+  uid?: string;
+}
+
+const pending = new Map<string, Promise<PublicOnlinePlayer[] | null>>();
+
+function publicUid(value: unknown): string | undefined {
+  // Accept explicit network identities only, never local slot IDs or names.
+  if (typeof value !== 'string') return undefined;
+  const uid = value.trim();
+  return /^\d{17}$|^[a-f0-9]{32}$|^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(uid)
+    ? uid.toLowerCase() : undefined;
+}
 
 export async function hasToolsPlayerStatus(serverId: string): Promise<boolean> {
   const { hasActiveGameConnectorFeature } = await import('./game-connector-websocket-service.js');
@@ -22,36 +35,46 @@ export function clearPublicPlayerCount(serverId: string): void {
 }
 
 export async function readPublicOnlinePlayerNames(server: ServerConfig): Promise<string[] | null> {
+  const players = await readPublicOnlinePlayers(server);
+  return players?.flatMap(({ name }) => name ? [name] : []) ?? null;
+}
+
+export async function readPublicOnlinePlayers(server: Pick<ServerConfig, 'queryUrl'>): Promise<PublicOnlinePlayer[] | null> {
   if (!server.queryUrl) return null;
-  const key = server.queryUrl;
+  const key = server.queryUrl.replace(/\/+$/, '');
   const existing = pending.get(key);
   if (existing) return existing;
-  const request = fetchNames(key).finally(() => pending.delete(key));
+  const request = fetchPlayers(key).finally(() => pending.delete(key));
   pending.set(key, request);
   return request;
 }
 
-async function fetchNames(queryUrl: string): Promise<string[] | null> {
+async function fetchPlayers(queryUrl: string): Promise<PublicOnlinePlayer[] | null> {
   try {
     const response = await fetch(new URL('playerlist', queryUrl.replace(/\/+$/, '') + '/'), {
       signal: AbortSignal.timeout(AppConfig.liveQueryProxyTimeoutMs),
       redirect: 'error',
     });
     if (!response.ok) return null;
-    const payload = await response.json() as { players?: unknown } | null;
+    const payload: { players?: unknown } | null = JSON.parse(await response.text(), (key: string, value: unknown, context?: { source?: string }) =>
+      typeof value === 'number' && /^(uid|steamid)$/i.test(key) && /^\d{17}$/.test(context?.source ?? '')
+        ? context?.source : value,
+    );
     if (!Array.isArray(payload?.players) || payload.players.length > 1000) return null;
-    return payload.players.flatMap((record): string[] => {
-      if (!record || typeof record !== 'object') return [];
-      const row = record as { connected?: unknown; name?: unknown };
-      return row.connected !== false && typeof row.name === 'string' && row.name.trim()
-        ? [row.name.trim()] : [];
+    return payload.players.flatMap((record): PublicOnlinePlayer[] => {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) return [];
+      const row = record as Record<string, unknown>;
+      if (row.connected === false) return [];
+      const name = typeof row.name === 'string' ? row.name.trim() || undefined : undefined;
+      const uid = publicUid(row.uid) ?? publicUid(row.UID) ?? publicUid(row.steamid) ?? publicUid(row.steamId);
+      return name || uid || row.connected === true || Number.isSafeInteger(row.id) ? [{ name, uid }] : [];
     });
   } catch {
     return null;
   }
 }
 
-export async function refreshPublicPlayerCount(server: ServerConfig): Promise<number | undefined> {
+export async function refreshPublicPlayerCount(server: ServerConfig, roster?: Promise<PublicOnlinePlayer[] | null>): Promise<number | undefined> {
   const queryUrl = server.queryUrl;
   if (!queryUrl || server.blocked || server.status === 'offline' || await hasToolsPlayerStatus(server.id)) {
     clearPublicPlayerCount(server.id);
@@ -59,13 +82,14 @@ export async function refreshPublicPlayerCount(server: ServerConfig): Promise<nu
   }
   const cached = cachedPublicPlayerCount(server);
   if (cached !== undefined) return cached;
-  const names = await readPublicOnlinePlayerNames(server);
-  if (names === null || await hasToolsPlayerStatus(server.id)) return undefined;
+  const players = await (roster ?? readPublicOnlinePlayers(server));
+  if (players === null || await hasToolsPlayerStatus(server.id)) return undefined;
+  const count = players.filter(({ name }) => name).length;
   if (counts.size >= 5000) {
     for (const [id, entry] of counts) if (entry.expiresAt <= Date.now()) counts.delete(id);
   }
   if (counts.size < 5000) counts.set(server.id, {
-    queryUrl, count: names.length, expiresAt: Date.now() + AppConfig.activePlayerListRefreshIntervalMs,
+    queryUrl, count, expiresAt: Date.now() + AppConfig.activePlayerListRefreshIntervalMs,
   });
-  return names.length;
+  return count;
 }

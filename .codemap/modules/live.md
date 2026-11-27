@@ -11,6 +11,7 @@ Collect game and plugin data, project player privacy and publish live status ove
 - [Public Steam ID masking](../../src/utils/mask-public-steam-ids.ts) is a dependency-free transformation applied within player projection. [HTTP middleware](../../src/service/public-steam-id-service.ts) delegates to that projection.
 - [Game connector](../../src/service/game-connector-websocket-service.ts), [plugin cache](../../src/service/plugin-data-cache-service.ts), and [player projection](../../src/service/player-projection-service.ts) handle ingestion and projection. [Connector event subscriber](../../src/service/server-live-status-service.ts) handles Admin Utils player status and consent revocations.
 - [Server status live](../../src/service/server-status-live-service.ts) and [WebSocket routing](../../src/service/websocket-upgrade-router.ts) publish events.
+- [Master discovery](../../src/service/master-server-list-service.ts) maintains catalog membership. The [independent live refresh](../../src/service/master-only-live-service.ts) updates [ephemeral observations](../../src/service/master-only-cache-service.ts) for the scheduled [global player total](../../src/service/global-player-observation.ts). The public catalog carries expiring character labels and the native query status, count, map name and version. The server WebSocket contract remains scoped to participating servers.
 - [Live integration test](../../tests/server-status-live-integration.test.ts) and [plugin cache test](../../tests/plugin-data-cache-service.test.ts) cover related behavior.
 
 ## Dependencies

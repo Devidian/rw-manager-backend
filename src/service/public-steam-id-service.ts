@@ -24,6 +24,7 @@ export const maskGuestSteamIds: RequestHandler = async (req, res, next) => {
       void projectPlayerData(body, {
         userSteamId: user?.steamVerifiedAt ? user.steamId : undefined,
         guest: !user,
+        masterOnlyCatalog: path === '/server' || path === '/server/',
         serverId,
         global: path === '/statistics' || path.startsWith('/player/'),
       }).then((projected) => { json(projected); }).catch(() => {

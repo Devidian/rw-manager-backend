@@ -123,3 +123,19 @@ test('masks residual Steam IDs only in the guest view of the same publication', 
     onlinePlayers: [{ uid: id }, { id: 'foreign:9' }],
   });
 });
+
+test('preserves live public character labels only for unexpired master-only catalog rows', async () => {
+  const name = '12345678901234567';
+  const catalog = { masterOnly: true, masterOnlyLiveUntil: new Date(Date.now() + 60_000).toISOString() };
+  const output = await projectPlayerData({ servers: [
+    { id: 'unregistered', ...catalog, masterOnlyPlayerNames: [name, name, { uid: name }] },
+    { id: 'foreign', ...catalog, masterOnlyPlayerNames: ['Stale after registration'], onlinePlayers: [{ uid: name, name }] },
+    { id: 'expired', ...catalog, masterOnlyLiveUntil: new Date(0).toISOString(), masterOnlyPlayerNames: ['Expired'] },
+  ] }, { guest: true, masterOnlyCatalog: true }) as { servers: Array<Record<string, unknown>> };
+  expect(output.servers[0].masterOnlyPlayerNames).toEqual([name, name]);
+  expect(output.servers[1]).not.toHaveProperty('masterOnlyPlayerNames');
+  expect(output.servers[1].onlinePlayers).toEqual([{ name: '1***************7' }]);
+  expect(output.servers[2]).not.toHaveProperty('masterOnlyPlayerNames');
+  await expect(projectPlayerData({ id: 'unregistered', ...catalog, masterOnlyPlayerNames: [name] },
+    { guest: false, serverId: 'unregistered' })).resolves.not.toHaveProperty('masterOnlyPlayerNames');
+});

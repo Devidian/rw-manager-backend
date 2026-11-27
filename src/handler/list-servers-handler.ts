@@ -11,14 +11,15 @@ import { managerAccess } from '../service/manager-access-service.js';
 export async function listServersHandler(req: Request, res: Response) {
   const request = req as RequestWithUser;
   const user = request.user ?? await getUserFromBearerToken(req.header('authorization'));
-  const dashboardIds = user?.steamId ? new Set((await managerAccess(user.steamId)).serverIds) : new Set<string>();
+  const masterOnly = req.query?.masterOnly === 'true';
+  const dashboardIds = !masterOnly && user?.steamId ? new Set((await managerAccess(user.steamId)).serverIds) : new Set<string>();
   const servers = await listServers({
     userId: user?.id,
     userSteamId: user?.steamVerifiedAt ? user.steamId : undefined,
   });
   const latestOZToolsVersion = getCachedOZPluginLatestVersions()['OZ - Tools'];
   const response: ListServersResponse = {
-    servers: servers.map((server) => {
+    servers: servers.filter(server => !masterOnly || server.masterOnly).map((server) => {
       const inventory = getCachedPluginData(server.id);
       const ozTools = inventory?.plugins.find(
         (plugin) => plugin.valid && plugin.name?.trim().toLowerCase() === 'oz - tools',

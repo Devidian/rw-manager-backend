@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Show live status, counts, and public character names for discovered servers and collect separate anonymous hourly player statistics.
+
 - Isolate public Steam ID masking from HTTP middleware so live projection can load it directly.
 
 - Fetch `/info` for every master-list server, cache unapproved contact owners for Steam eligibility, and use the live `/info.name` as the server label.

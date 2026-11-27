@@ -1,4 +1,6 @@
 import { jest } from '@jest/globals';
+import express from 'express';
+import request from 'supertest';
 
 interface StoredServer {
   id: string;
@@ -36,6 +38,8 @@ const errorMock = jest.fn();
 const debugMock = jest.fn();
 const warnMock = jest.fn();
 
+jest.unstable_mockModule('typia', () => ({ default: { assert: (value: unknown) => value } }));
+
 jest.unstable_mockModule('../src/db/non-storage-store.js', () => ({
   nonStorageDb: {
     data: state,
@@ -52,6 +56,9 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 }));
 
 const service = await import('../src/service/master-server-list-service.js');
+const { refreshMasterOnlyLive } = await import('../src/service/master-only-live-service.js');
+const { listGlobalPlayerBuckets } = await import('../src/db/global-player-statistics-store.js');
+const { default: storageRouter } = await import('../src/router/storage-router.js');
 
 function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
   for (const key of Object.keys(process.env)) {
@@ -198,6 +205,158 @@ describe('master-server-list-service', () => {
       info: { contact: '76561198000000000' },
       masterOnly: true,
     }]);
+  });
+
+  test('samples persisted and master-only observations without retaining live identifiers', async () => {
+    const sampledAt = new Date('2026-11-27T11:15:00Z');
+    jest.useFakeTimers({
+      now: sampledAt,
+      doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate', 'clearImmediate',
+        'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    try {
+      const stored = '192.0.2.10';
+      const transient = '192.0.2.20';
+      const unreachable = '192.0.2.30';
+      state.servers = [{
+        id: 'stored', label: 'Stored', ip: stored, port: 4255, catalogIdPinned: true,
+        queryUrl: `http://${stored}:4254`, createdAt: sampledAt.toISOString(), public: true,
+      }];
+      const fetchMock = jest.fn<typeof fetch>().mockImplementation(async input => {
+        const url = new URL(String(input));
+        if (url.hostname === 'master.example.com') {
+          return Response.json({ successful: true, data: [stored, transient, transient, unreachable].map(ip => ({ ip, port: 4255 })) });
+        }
+        if (url.hostname === unreachable) throw new Error('Timed out');
+        if (url.pathname === '/info') return Response.json({ name: url.hostname });
+        if (url.pathname === '/playerlist') {
+          return url.hostname === stored
+            ? new Response('{"players":[{"uid":76561198000000001},{"uid":76561198000000001}]}')
+            : Response.json({ players: [
+              { uid: '76561198000000001', id: 2, name: 'Same name' },
+              { uid: '76561198000000002', id: 3, name: 'Same name' },
+              { id: 4, connected: true },
+              { id: 5, name: 'Left', connected: false },
+            ] });
+        }
+        return Response.json(url.pathname === '/' ? {
+          playercount: url.hostname === stored ? 4 : 3,
+          maxplayers: 12,
+          map: 'Meadow',
+          version: '0.9.3.2',
+          ...(url.hostname === transient ? { steamid: '76561198000000001' } : {}),
+        } : {});
+      });
+      global.fetch = fetchMock;
+
+      await service.refreshMasterServerList();
+      await refreshMasterOnlyLive();
+      expect(service.cachedMasterServers()).toMatchObject([
+        { ip: transient, status: 'online', queryData: { playercount: 3 }, masterOnlyPlayerNames: ['Same name', 'Same name'] },
+        { ip: unreachable, status: 'unknown' },
+      ]);
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes(`${transient}:4254`))).toHaveLength(3);
+      expect(state.servers).toHaveLength(1);
+      expect(state.serverStatistics).toHaveLength(0);
+
+      const api = request(express().use('/api/storage', storageRouter));
+      const catalog = await api.get('/api/storage/server?masterOnly=true').expect(200);
+      expect(catalog.body.servers).toHaveLength(2);
+      const discovered = catalog.body.servers.find((server: { ip: string }) => server.ip === transient);
+      expect(discovered.masterOnlyPlayerNames).toEqual(['Same name', 'Same name']);
+      expect(discovered.queryData).toEqual({
+        playercount: 3, maxplayers: 12, map: 'Meadow', version: '0.9.3.2',
+      });
+      expect(discovered).not.toHaveProperty('onlinePlayers');
+      expect(JSON.stringify(discovered)).not.toContain('76561198000000001');
+      await api.get(`/api/storage/server/${discovered.id}/statistics`).expect(404);
+
+      await service.refreshAllServerQueryData(true);
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes(`${stored}:4254/playerlist`))).toHaveLength(1);
+      expect(state.serverStatistics).toEqual([expect.objectContaining({ serverId: 'stored', playerSampleTotal: 4 })]);
+      expect(JSON.stringify(state)).not.toContain('Same name');
+      expect(JSON.stringify(state)).not.toContain('76561198000000001');
+      const from = new Date('2026-11-27T11:00:00Z');
+      const to = new Date('2026-11-27T12:00:00Z');
+      await expect(listGlobalPlayerBuckets(from, to)).resolves.toEqual([
+        { hourStart: from.toISOString(), sampleCount: 1, minPlayers: 5, maxPlayers: 5, averagePlayers: 5 },
+      ]);
+
+      const history = await api.get('/api/storage/statistics').expect(200);
+      expect(history.body.buckets).toEqual([expect.objectContaining({ serverId: 'stored' })]);
+      expect(history.body.globalPlayerBuckets).toEqual([
+        { hourStart: from.toISOString(), sampleCount: 1, minPlayers: 5, maxPlayers: 5, averagePlayers: 5 },
+      ]);
+
+      jest.setSystemTime(new Date(sampledAt.getTime() + 120_000));
+      expect(service.cachedMasterServers()[0]).toMatchObject({ status: 'unknown' });
+      expect(service.cachedMasterServers()[0]).not.toHaveProperty('masterOnlyPlayerNames');
+      fetchMock.mockRejectedValue(new Error('All queries unavailable'));
+      await service.refreshMasterServerList();
+      await refreshMasterOnlyLive();
+      await service.refreshAllServerQueryData(true);
+      await expect(listGlobalPlayerBuckets(from, to)).resolves.toEqual([
+        { hourStart: from.toISOString(), sampleCount: 1, minPlayers: 5, maxPlayers: 5, averagePlayers: 5 },
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('renews live rows during a slow discovery and preserves them when it completes', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-26T11:00:00Z') });
+    try {
+      const ip = '192.0.2.40';
+      let players = [{ name: 'First player' }];
+      let pauseInfo = false;
+      let releaseInfo: (() => void) | undefined;
+      let infoStarted: (() => void) | undefined;
+      const infoPending = new Promise<void>(resolve => { infoStarted = resolve; });
+      const fetchMock = jest.fn<typeof fetch>().mockImplementation(async input => {
+        const url = new URL(String(input));
+        if (url.hostname === 'master.example.com') return Response.json({ successful: true, data: [{ ip, port: 4255 }] });
+        if (url.pathname === '/info') {
+          if (pauseInfo) {
+            infoStarted?.();
+            await new Promise<void>(resolve => { releaseInfo = resolve; });
+          }
+          return Response.json({ name: 'Discovered server' });
+        }
+        if (url.pathname === '/playerlist') return Response.json({ players });
+        return Response.json({ playercount: players.length });
+      });
+      global.fetch = fetchMock;
+      await service.refreshMasterServerList();
+      await refreshMasterOnlyLive();
+      const original = service.cachedMasterServers()[0];
+      expect(original.masterOnlyPlayerNames).toEqual(['First player']);
+
+      jest.advanceTimersByTime(60_000);
+      pauseInfo = true;
+      const discovery = service.refreshMasterServerList();
+      await infoPending;
+      players = [{ name: 'Current player' }];
+      await refreshMasterOnlyLive();
+      const current = service.cachedMasterServers()[0];
+      expect(current.status).toBe('online');
+      expect(current.masterOnlyPlayerNames).toEqual(['Current player']);
+      expect(Date.parse(current.masterOnlyLiveUntil!)).toBeGreaterThan(Date.parse(original.masterOnlyLiveUntil!));
+
+      releaseInfo?.();
+      await discovery;
+      jest.advanceTimersByTime(30_000);
+      expect(service.cachedMasterServers()[0]).toMatchObject({
+        status: 'online', masterOnlyPlayerNames: ['Current player'],
+      });
+
+      players = [];
+      await refreshMasterOnlyLive();
+      expect(service.cachedMasterServers()[0]).toMatchObject({
+        status: 'online', queryData: { playercount: 0 }, masterOnlyPlayerNames: [],
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('refreshMasterServerList merges existing servers and skips fresh query metadata', async () => {

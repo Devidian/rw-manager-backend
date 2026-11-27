@@ -193,11 +193,35 @@ GET /api/storage/server/:id/statistics
 GET /api/storage/server/:id/statistics?from=2026-06-25T00:00:00.000Z&to=2026-06-26T00:00:00.000Z
 ```
 
+The existing `GET /api/storage/statistics` field `buckets` covers participating servers.
+The additive `globalPlayerBuckets` field contains UTC-hour aggregates for participating
+and discovered servers. Each bucket returns `hourStart`, `sampleCount`,
+`minPlayers`, `maxPlayers`, and `averagePlayers`. An empty array indicates that the selected range has no observations.
+The field can be absent if the global statistics store is unavailable.
+
+The scheduled query refresh records one total when at least one usable count exists.
+Unreachable servers can reduce coverage. A successful query count takes precedence
+over the public roster, which can provide a partial count when the count is unavailable.
+Overlapping server endpoints and reliable player UIDs are deduplicated in memory.
+MongoDB stores only timestamp/count samples in the separate
+`global_player_statistics` collection. It follows the existing statistics retention
+model, with no expiry index or historical backfill.
+
+`GET /api/storage/server` exposes fresh status, player count, map name and game
+version for discovered, unregistered rows when the native query supplies them.
+Optional `masterOnlyPlayerNames` and `masterOnlyLiveUntil` provide public
+character labels and their expiry. The `masterOnly=true` query
+parameter limits the catalog response to discovered rows. The live refresh runs
+independently of the master discovery loop, and a catalog refresh preserves
+observations for unchanged endpoints. These labels carry no player
+identity references and stay in memory. Existing detail routes and WebSocket
+subscriptions remain scoped to registered servers.
+
 The stored server catalog is public, including offline participating servers.
 `GET /api/storage/server/:id/guest-online-players` reads current names and count
 from the native player list without persisting them. Steam login requires a
 consented player export, a live verified server contact, or the superadmin ID.
-Dashboard data, statistics, map overlays, market offers, and live channels
+Dashboard data, protected map overlays, market offers, and live channels
 require an authenticated Manager account.
 
 Superadmins can force-refresh stored query `data` and `info`:

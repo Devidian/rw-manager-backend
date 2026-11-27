@@ -1,3 +1,5 @@
+import { defaultLogger } from '../utils/logger.js';
+import { listGlobalPlayerBuckets } from '../db/global-player-statistics-store.js';
 import { findServerById } from '../db/manager-store.js';
 import { listGlobalStatisticsBuckets, listServerStatisticsBuckets } from '../db/server-statistics-store.js';
 import type { GlobalStatisticsResponse } from '../dto/global-statistics-response.js';
@@ -56,10 +58,17 @@ export async function getGlobalStatistics(params: {
     throw new Error('DATE_RANGE_INVALID');
   }
 
-  const buckets = await listGlobalStatisticsBuckets({ from, to });
+  const [buckets, globalPlayerBuckets] = await Promise.all([
+    listGlobalStatisticsBuckets({ from, to }),
+    listGlobalPlayerBuckets(from, to).catch(error => {
+      defaultLogger.error('Global player statistics unavailable:', error);
+      return undefined;
+    }),
+  ]);
   return {
     from: from?.toISOString(),
     to: to?.toISOString(),
+    globalPlayerBuckets,
     buckets: buckets.map(({ onlinePlayerUids: _uids, onlinePlayerIds: _ids, ...bucket }) => bucket),
   };
 }

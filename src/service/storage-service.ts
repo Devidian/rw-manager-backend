@@ -185,13 +185,13 @@ function normalizedQueryUrl(value: unknown): string | undefined {
 }
 
 export async function listServers(context: StorageRequestContext): Promise<ServerDto[]> {
-  const stored = (await listStoredServers())
-    .flatMap((server): ServerDto[] => {
-      if (!canListServer(server, context)) return [];
-      const queryUrl = normalizedQueryUrl(server.queryUrl);
-      return queryUrl ? [mapServerToDto({ ...server, queryUrl })] : [];
-    });
-  return [...stored, ...cachedMasterServers()];
+  const servers = await listStoredServers();
+  const stored = servers.flatMap((server): ServerDto[] => {
+    if (!canListServer(server, context)) return [];
+    const queryUrl = normalizedQueryUrl(server.queryUrl);
+    return queryUrl ? [mapServerToDto({ ...server, queryUrl })] : [];
+  });
+  return [...stored, ...cachedMasterServers(servers)];
 }
 
 export async function createServer(

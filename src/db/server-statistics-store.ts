@@ -1,3 +1,4 @@
+import { clampToHour } from '../utils/clamp-to-hour.js';
 import { nonStorageDb as db } from './non-storage-store.js';
 import { getMongoCollections } from './mongodb.js';
 import { mappingByUids } from '../service/player-identity-service.js';
@@ -5,12 +6,6 @@ import type {
   ServerStatisticsBucket,
   ServerStatisticsSample,
 } from '../interfaces/server-statistics.js';
-
-function clampToHour(date: Date): Date {
-  const hour = new Date(date);
-  hour.setUTCMinutes(0, 0, 0);
-  return hour;
-}
 
 function bucketId(serverId: string, hourStart: string): string {
   return `${serverId}:${hourStart}`;

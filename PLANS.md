@@ -1,5 +1,7 @@
 # PLANS.md
 
+- [x] Add transient master-list observations and anonymous global player activity history.
+
 - [x] Refresh every master-list `/info` contact and name, keep unapproved contacts in memory, and use `/info.name` as the catalog label.
 - [ ] Confirm both contact-owned servers and approval after signed-in V30 acceptance.
 

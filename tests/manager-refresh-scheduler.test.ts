@@ -4,6 +4,7 @@ const refreshMasterServerListMock =
   jest.fn<(options?: { refreshQueryData?: boolean }) => Promise<unknown>>();
 const refreshAllServerQueryDataMock =
   jest.fn<() => Promise<unknown>>();
+const refreshMasterOnlyLiveMock = jest.fn<() => Promise<void>>();
 const refreshPluginDataForOnlineServersMock =
   jest.fn<() => Promise<unknown>>();
 const reconcileManagerAccountsMock =
@@ -12,6 +13,9 @@ const reconcileManagerAccountsMock =
 jest.unstable_mockModule('../src/service/master-server-list-service.js', () => ({
   refreshMasterServerList: refreshMasterServerListMock,
   refreshAllServerQueryData: refreshAllServerQueryDataMock,
+}));
+jest.unstable_mockModule('../src/service/master-only-live-service.js', () => ({
+  refreshMasterOnlyLive: refreshMasterOnlyLiveMock,
 }));
 jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   refreshPluginDataForOnlineServers: refreshPluginDataForOnlineServersMock,
@@ -40,6 +44,7 @@ describe('manager refresh scheduler', () => {
     restoreEnv(originalEnv);
     jest.useFakeTimers();
     refreshMasterServerListMock.mockReset().mockResolvedValue({});
+    refreshMasterOnlyLiveMock.mockReset().mockResolvedValue(undefined);
     refreshAllServerQueryDataMock.mockReset().mockResolvedValue({});
     refreshPluginDataForOnlineServersMock.mockReset().mockResolvedValue({});
     reconcileManagerAccountsMock.mockReset().mockResolvedValue({});
@@ -64,18 +69,22 @@ describe('manager refresh scheduler', () => {
     process.env.ENABLE_STORAGE = 'true';
     process.env.MASTER_SERVER_LIST_REFRESH_INTERVAL_MS = '60000';
     process.env.SERVER_QUERY_REFRESH_INTERVAL_MS = '120000';
+    process.env.ACTIVE_PLAYERLIST_REFRESH_INTERVAL_MS = '30000';
     process.env.PLUGIN_DATA_REFRESH_INTERVAL_MS = '30000';
 
     const scheduler = startManagerRefreshScheduler();
     await jest.advanceTimersByTimeAsync(0);
 
     expect(refreshMasterServerListMock).toHaveBeenCalledWith({ refreshQueryData: false });
+    expect(refreshMasterOnlyLiveMock).toHaveBeenCalledTimes(1);
+    expect(refreshAllServerQueryDataMock).toHaveBeenCalledWith(true);
     expect(refreshAllServerQueryDataMock).toHaveBeenCalledTimes(1);
     expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(1);
     expect(reconcileManagerAccountsMock).toHaveBeenCalledTimes(1);
 
     await jest.advanceTimersByTimeAsync(30000);
     expect(refreshMasterServerListMock).toHaveBeenCalledTimes(1);
+    expect(refreshMasterOnlyLiveMock).toHaveBeenCalledTimes(2);
     expect(refreshAllServerQueryDataMock).toHaveBeenCalledTimes(1);
     expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(2);
     expect(reconcileManagerAccountsMock).toHaveBeenCalledTimes(2);
@@ -92,8 +101,10 @@ describe('manager refresh scheduler', () => {
     expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(5);
     expect(reconcileManagerAccountsMock).toHaveBeenCalledTimes(5);
 
+    expect(refreshMasterOnlyLiveMock).toHaveBeenCalledTimes(5);
     scheduler?.stop();
     await jest.advanceTimersByTimeAsync(120000);
+    expect(refreshMasterOnlyLiveMock).toHaveBeenCalledTimes(5);
     expect(refreshMasterServerListMock).toHaveBeenCalledTimes(3);
     expect(refreshAllServerQueryDataMock).toHaveBeenCalledTimes(2);
     expect(refreshPluginDataForOnlineServersMock).toHaveBeenCalledTimes(5);

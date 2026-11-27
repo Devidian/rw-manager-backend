@@ -5,7 +5,7 @@ import { parseNativeAdminUtilsInfo } from './native-admin-utils-info.js';
 import { stableUid } from './player-identity-service.js';
 import { maskPublicSteamIds } from '../utils/mask-public-steam-ids.js';
 
-interface ProjectionContext { userSteamId?: string; guest: boolean; serverId?: string; global?: boolean }
+interface ProjectionContext { userSteamId?: string; guest: boolean; serverId?: string; global?: boolean; masterOnlyCatalog?: boolean }
 
 interface ProjectionReads {
   findServer: typeof findServerById;
@@ -70,7 +70,7 @@ async function projectPlayerDataWithReads(
     const item = node as Record<string, unknown>;
     const result: Record<string, unknown> = {};
     for (const [key, part] of Object.entries(item)) {
-      if (key === 'playerMappingId') continue;
+      if (key === 'playerMappingId' || key === 'masterOnlyPlayerNames') continue;
       if (key === 'knownPlayers' && !member) { result[key] = []; continue; }
       result[key] = walk(part, Array.isArray(part) ? key : undefined);
     }
@@ -113,6 +113,15 @@ async function projectPlayerDataWithReads(
     }
     return result;
   }
-  const projected = walk(value);
-  return context.guest ? maskPublicSteamIds(projected) : projected;
+  const walked = walk(value);
+  const projected = context.guest ? maskPublicSteamIds(walked) : walked;
+  if (context.masterOnlyCatalog && !server && projected && typeof projected === 'object' &&
+      value && typeof value === 'object') {
+    const catalog = value as { masterOnly?: boolean; masterOnlyLiveUntil?: string; masterOnlyPlayerNames?: unknown };
+    if (catalog.masterOnly === true && Date.parse(catalog.masterOnlyLiveUntil ?? '') > Date.now() &&
+        Array.isArray(catalog.masterOnlyPlayerNames)) {
+      return { ...projected, masterOnlyPlayerNames: catalog.masterOnlyPlayerNames.filter(name => typeof name === 'string') };
+    }
+  }
+  return projected;
 }

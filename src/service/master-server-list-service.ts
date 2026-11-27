@@ -1,4 +1,4 @@
-import { cachedPublicPlayerCount, clearPublicPlayerCount, refreshPublicPlayerCount } from './public-online-player-service.js';
+import { cachedPublicPlayerCount, clearPublicPlayerCount, readPublicOnlinePlayers, refreshPublicPlayerCount } from './public-online-player-service.js';
 import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import {
@@ -12,6 +12,7 @@ import {
   saveServer,
 } from '../db/manager-store.js';
 import { recordServerStatisticsSample } from '../db/server-statistics-store.js';
+import { recordGlobalPlayerSample } from '../db/global-player-statistics-store.js';
 import type { MasterServerListEntry, MasterServerListResponse } from '../interfaces/master-server-list.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import { AppConfig } from '../utils/app-config.js';
@@ -21,10 +22,12 @@ import { fetchNativePluginJson } from './native-plugin-request-service.js';
 import { fetchNativePluginList, hasNativePluginRoute } from './native-plugin-list.js';
 import { clearServerLiveStatusCacheEntry, storedLiveStatusResponse } from './server-live-status-service.js';
 import { closeGameConnectorSession } from './game-connector-websocket-service.js';
-import { replaceMasterOnlyCache } from './master-only-cache-service.js';
+import { cachedMasterObservations, replaceMasterOnlyCache } from './master-only-cache-service.js';
 import { isServerSuppressed } from './server-suppression-service.js';
 export { cachedMasterServers, clearMasterOnlyCache } from './master-only-cache-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
+import { observedPlayerCount, playerObservation, serverObservationKeys, totalObservedPlayers, type PlayerObservation } from './global-player-observation.js';
+import { refreshMasterOnlyLive } from './master-only-live-service.js';
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
 const NATIVE_ADMIN_UTILS_ROUTE = 'plugins/oz---admin-utils';
@@ -130,7 +133,7 @@ async function fetchMasterServerList(): Promise<MasterServerListResponse | undef
   }
 }
 
-async function refreshQueryData(server: ServerConfig, now: Date, requireExisting = false): Promise<boolean> {
+async function refreshQueryData(server: ServerConfig, now: Date, requireExisting = false, collectGlobal = false): Promise<false | { observation?: PlayerObservation }> {
   if (!server.queryUrl || !shouldRefreshQueryData(server, now)) return false;
 
   const [data, info, plugins] = await Promise.all([
@@ -160,10 +163,17 @@ async function refreshQueryData(server: ServerConfig, now: Date, requireExisting
     server.adminUid = parsedNativeInfo?.adminUid ?? server.adminUid;
     server.mapUrl = parsedNativeInfo?.mapUrl ?? server.mapUrl;
   }
+  let observation: PlayerObservation | undefined;
   if (server.status === 'offline') {
     server.onlinePlayers = [];
     clearPublicPlayerCount(server.id);
-  } else await refreshPublicPlayerCount(server);
+  } else {
+    const payload = data.ok ? data.data : undefined;
+    const count = observedPlayerCount(payload);
+    const roster = collectGlobal && count !== 0 ? readPublicOnlinePlayers(server) : undefined;
+    await refreshPublicPlayerCount(server, roster);
+    if (collectGlobal) observation = playerObservation(count, await roster ?? null);
+  }
   server.queryDataUpdatedAt = now;
 
   await recordServerStatisticsSample({
@@ -176,7 +186,7 @@ async function refreshQueryData(server: ServerConfig, now: Date, requireExisting
 
   // A completed attempt also produces a meaningful offline snapshot when all
   // three game-server endpoints fail. Persist and publish that transition.
-  return true;
+  return { observation };
 }
 
 function applyMasterEntry(server: ServerConfig, entry: MasterServerListEntry, now: Date): void {
@@ -220,10 +230,9 @@ async function runMasterServerListRefresh(options: {
       ? response.data as MasterServerListEntry[]
       : [];
     const infoByQueryUrl = new Map<string, Awaited<ReturnType<typeof fetchJson>>>();
-    for (let offset = 0; offset < entries.length; offset += 8) {
-      await Promise.all(entries.slice(offset, offset + 8).map(async (entry) => {
-        const queryUrl = queryUrlFor(entry);
-        if (!queryUrl) return;
+    const queryUrls = [...new Set(entries.map(queryUrlFor).filter((url): url is string => !!url))];
+    for (let offset = 0; offset < queryUrls.length; offset += 8) {
+      await Promise.all(queryUrls.slice(offset, offset + 8).map(async (queryUrl) => {
         infoByQueryUrl.set(queryUrl,
           await fetchJson(new URL('info', `${queryUrl.replace(/\/+$/, '')}/`).toString()));
       }));
@@ -234,10 +243,14 @@ async function runMasterServerListRefresh(options: {
     let refreshed = 0;
     const nextCache = new Map<string, ServerConfig>();
 
+    const entriesById = new Map<string, MasterServerListEntry>();
     for (const entry of entries) {
+      const id = serverIdFor(entry);
+      if (id && queryUrlFor(entry)) entriesById.set(id, entry);
+    }
+    for (const [serverId, entry] of entriesById) {
       const queryUrl = queryUrlFor(entry);
-      const serverId = serverIdFor(entry);
-      if (!serverId || !queryUrl) continue;
+      if (!queryUrl) continue;
       const ip = stringOrUndefined(entry.ip);
       const port = numberOrUndefined(entry.port);
       if (!ip || port === undefined) continue;
@@ -333,19 +346,50 @@ export async function refreshMasterServerList(options: {
   return request;
 }
 
-export async function refreshAllServerQueryData(): Promise<MasterServerListSyncResult> {
+export async function refreshAllServerQueryData(collectGlobal = false): Promise<MasterServerListSyncResult> {
   const startedAt = Date.now();
   defaultLogger.debug('Server query data refresh started');
-  const now = new Date();
   try {
     let refreshed = 0;
+    if (collectGlobal && masterServerListRefreshInFlight && cachedMasterObservations().length === 0) {
+      // Let initial discovery contribute to the first scheduled sample.
+      await masterServerListRefreshInFlight.catch(() => undefined);
+      await refreshMasterOnlyLive();
+    }
     const servers = await listServers();
+    const now = new Date();
+    const transient = collectGlobal ? cachedMasterObservations(servers) : [];
+    const observed: Array<{ server: ServerConfig; value: PlayerObservation }> = [];
     for (const server of servers) {
-      if (await refreshQueryData(server, now, true)) {
+      const didRefresh = await refreshQueryData(server, now, true, collectGlobal);
+      let value = didRefresh ? didRefresh.observation : undefined;
+      if (didRefresh) {
         refreshed += 1;
         await saveServer(server);
         publishServerLiveUpdate(server.id, storedLiveStatusResponse(server));
+      } else if (collectGlobal && server.status === 'online' && !server.errorMessage &&
+        server.lastChecked && server.queryDataUpdatedAt &&
+        new Date(server.lastChecked).getTime() === new Date(server.queryDataUpdatedAt).getTime() &&
+        !shouldRefreshQueryData(server, now)) {
+        // An on-demand check may already have refreshed this server for this interval.
+        const count = observedPlayerCount(server.data);
+        value = playerObservation(count, count === 0 ? null : await readPublicOnlinePlayers(server));
       }
+      if (value) observed.push({ server, value });
+    }
+    if (collectGlobal) {
+      for (const { server, live } of transient) {
+        if (live?.observation) observed.push({ server, value: live.observation });
+      }
+      const keys = new Set<string>();
+      const observations = observed.flatMap(({ server, value }) => {
+        const candidateKeys = serverObservationKeys(server);
+        const duplicate = candidateKeys.some(key => keys.has(key));
+        candidateKeys.forEach(key => keys.add(key));
+        return duplicate ? [] : [value];
+      });
+      const total = totalObservedPlayers(observations);
+      if (total !== undefined) await recordGlobalPlayerSample(now, total);
     }
     const result = { fetched: servers.length, inserted: 0, updated: 0, refreshed };
     defaultLogger.debug('Server query data refresh completed:', {

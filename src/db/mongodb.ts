@@ -6,12 +6,14 @@ import { defaultLogger } from '../utils/logger.js';
 import type { ServerConfig } from '../interfaces/server-config.js';
 import type { JsonDbUser } from '../interfaces/app-user.js';
 import type { ServerStatisticsBucket } from '../interfaces/server-statistics.js';
+import type { GlobalPlayerHour } from '../interfaces/global-player-statistics.js';
 
 export interface MongoCollections {
   servers: Collection<ServerConfig & Document>;
   users: Collection<JsonDbUser & Document>;
   serverStatistics: Collection<ServerStatisticsBucket & Document>;
   playerMappings: Collection<PlayerMapping & Document>;
+  globalPlayerStatistics: Collection<GlobalPlayerHour>;
   suppressedServers: Collection<{ endpoint: string; suppressedAt: Date } & Document>;
 }
 
@@ -84,6 +86,7 @@ export async function bootstrapMongoDb(): Promise<MongoCollections | undefined> 
       serverStatistics: database.collection<ServerStatisticsBucket & Document>('server_statistics'),
       playerMappings: database.collection<PlayerMapping & Document>('player_mappings'),
       suppressedServers: database.collection<{ endpoint: string; suppressedAt: Date } & Document>('suppressed_servers'),
+      globalPlayerStatistics: database.collection<GlobalPlayerHour>('global_player_statistics'),
     };
     await ensureIndexes(collections);
     if (AppConfig.enableStorage) await migrateLegacyJson(collections);
@@ -339,6 +342,7 @@ async function ensureIndexes(next: MongoCollections): Promise<void> {
     next.serverStatistics.createIndex({ id: 1 }, { unique: true }),
     next.serverStatistics.createIndex({ serverId: 1, hourStart: 1 }, { unique: true }),
     next.suppressedServers.createIndex({ endpoint: 1 }, { unique: true }),
+    next.globalPlayerStatistics.createIndex({ hourStart: 1 }, { unique: true }),
     next.playerMappings.createIndex({ uid: 1 }, { unique: true }),
     next.playerMappings.createIndex({ globalLastSeen: 1, steamCheckedAt: 1 }),
   ]);
