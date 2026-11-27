@@ -7,6 +7,25 @@ import { maskPublicSteamIds } from './public-steam-id-service.js';
 
 interface ProjectionContext { userSteamId?: string; guest: boolean; serverId?: string; global?: boolean }
 
+interface ProjectionReads {
+  findServer: typeof findServerById;
+  listServers: typeof listServers;
+}
+
+const directReads: ProjectionReads = { findServer: findServerById, listServers };
+
+/** Share storage reads only for one map publication. Every viewer is still projected independently. */
+export function mapPublicationProjection(serverId: string) {
+  let server: ReturnType<typeof findServerById> | undefined;
+  let servers: ReturnType<typeof listServers> | undefined;
+  const reads: ProjectionReads = {
+    findServer: (id) => id === serverId ? (server ??= findServerById(serverId)) : findServerById(id),
+    listServers: () => (servers ??= listServers()),
+  };
+  return (value: unknown, viewer: Pick<ProjectionContext, 'userSteamId' | 'guest'>) =>
+    projectPlayerDataWithReads(value, { ...viewer, serverId }, reads);
+}
+
 function adminOf(server: ServerConfig, steamId: string): boolean {
   if (server.info && typeof server.info === 'object' &&
       (server.info as { contact?: unknown }).contact === steamId) return true;
@@ -17,19 +36,25 @@ function adminOf(server: ServerConfig, steamId: string): boolean {
 
 /** Applied to REST and both client WebSocket channels before serialization. */
 export async function projectPlayerData(value: unknown, context: ProjectionContext): Promise<unknown> {
+  return projectPlayerDataWithReads(value, context, directReads);
+}
+
+async function projectPlayerDataWithReads(
+  value: unknown, context: ProjectionContext, reads: ProjectionReads,
+): Promise<unknown> {
   if (value && typeof value === 'object' && Array.isArray((value as { servers?: unknown }).servers)) {
     const root = value as { servers: Array<Record<string, unknown>> };
     return { ...root, servers: await Promise.all(root.servers.map((item) =>
-      projectPlayerData(item, { ...context, serverId: String(item.id) }))) };
+      projectPlayerDataWithReads(item, { ...context, serverId: String(item.id) }, reads))) };
   }
 
-  const server = context.serverId ? await findServerById(context.serverId) : undefined;
+  const server = context.serverId ? await reads.findServer(context.serverId) : undefined;
   const viewerUid = context.userSteamId;
   const member = !!viewerUid && server?.knownPlayers?.some((player) => player.uid === viewerUid) === true;
   const serverAdmin = !!viewerUid && !!server && adminOf(server, viewerUid);
   const knownToAdmin = new Set<string>();
   if (viewerUid) {
-    for (const candidate of await listServers()) {
+    for (const candidate of await reads.listServers()) {
       if (!adminOf(candidate, viewerUid)) continue;
       for (const player of candidate.knownPlayers ?? []) knownToAdmin.add(player.uid);
     }

@@ -25,7 +25,7 @@ import {
 } from './plugin-data-cache-service.js';
 import { storedLiveStatusResponse } from './server-live-status-service.js';
 import { publishServerLiveUpdate } from './server-live-update-service.js';
-import { projectPlayerData } from './player-projection-service.js';
+import { mapPublicationProjection } from './player-projection-service.js';
 import { subscribePlayerVisibilityChanges } from './player-identity-service.js';
 
 export type MapLiveLayer =
@@ -278,6 +278,7 @@ async function publishChanges(
 ): Promise<void> {
   const generatedAt = new Date();
   const messages: Array<{ socket: WebSocket; layers: MapLiveLayer[]; changes: MapLiveChanges }> = [];
+  const projectViewer = mapPublicationProjection(serverId);
   for (const [socket, subscriber] of subscription.subscribers) {
     const access = mapLayerAccess(entry, subscriber.userSteamId);
     const raw = mapLiveSnapshotFromEntry(entry, generatedAt, subscriber.userSteamId);
@@ -289,7 +290,7 @@ async function publishChanges(
       raw.globalMarketplaceOffers = [];
     }
     if (!access.players) raw.players = [];
-    const next = await projectPlayerData(raw, { serverId, userSteamId: subscriber.userSteamId,
+    const next = await projectViewer(raw, { userSteamId: subscriber.userSteamId,
       guest: !subscriber.authenticated }) as MapLiveSnapshot;
     const previous = subscriber.snapshot;
     subscriber.snapshot = next;

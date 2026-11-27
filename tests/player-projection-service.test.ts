@@ -12,10 +12,9 @@ const servers = [
 jest.unstable_mockModule('../src/service/player-identity-service.js', () => ({
   stableUid: (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : undefined,
 }));
-jest.unstable_mockModule('../src/db/manager-store.js', () => ({
-  findServerById: jest.fn(async (id: string) => servers.find((server) => server.id === id)),
-  listServers: jest.fn(async () => servers),
-}));
+const findServerById = jest.fn(async (id: string) => servers.find((server) => server.id === id));
+const listServers = jest.fn(async () => servers);
+jest.unstable_mockModule('../src/db/manager-store.js', () => ({ findServerById, listServers }));
 jest.unstable_mockModule('../src/service/plugin-data-cache-service.js', () => ({
   getCachedPluginData: jest.fn(() => undefined),
 }));
@@ -26,7 +25,7 @@ jest.unstable_mockModule('../src/service/public-steam-id-service.js', () => ({
   maskPublicSteamIds: (value: unknown) => value,
 }));
 
-const { projectPlayerData } = await import('../src/service/player-projection-service.js');
+const { mapPublicationProjection, projectPlayerData } = await import('../src/service/player-projection-service.js');
 
 test('guests receive server DBIDs without UIDs or database players', async () => {
   const output = await projectPlayerData({
@@ -87,4 +86,29 @@ test.each([
   expect(output.servers[1].onlinePlayers[0]).toEqual(userSteamId?.endsWith('001') || userSteamId?.endsWith('002')
     ? { name: 'Alice', ping: 42, platform: 'Steam' }
     : { name: 'Alice' });
+});
+
+
+test('uses one storage snapshot per publication with independent viewer projection', async () => {
+  findServerById.mockClear();
+  listServers.mockClear();
+  const admin = { userSteamId: '76561198000000999', guest: false };
+  const member = { userSteamId: '76561198000000001', guest: false };
+  const raw = { onlinePlayers: servers[1].knownPlayers };
+  const first = mapPublicationProjection('foreign');
+  expect(await first(raw, { guest: true })).toMatchObject({ onlinePlayers: [{ name: 'Alice' }, { name: 'Bob' }] });
+  expect(listServers).not.toHaveBeenCalled();
+  const memberResult = await first(raw, member) as { onlinePlayers: Array<Record<string, unknown>> };
+  const adminResult = await first(raw, admin) as { onlinePlayers: Array<Record<string, unknown>> };
+  expect(memberResult.onlinePlayers[0]).not.toHaveProperty('uid');
+  expect(adminResult.onlinePlayers[0].uid).toBe('76561198000000001');
+  expect(raw.onlinePlayers[0].uid).toBe('76561198000000001');
+  expect(findServerById).toHaveBeenCalledTimes(1);
+  expect(listServers).toHaveBeenCalledTimes(1);
+
+  listServers.mockResolvedValueOnce([servers[1]]);
+  const next = await mapPublicationProjection('foreign')(raw, admin) as typeof adminResult;
+  expect(next.onlinePlayers[0]).not.toHaveProperty('uid');
+  expect(findServerById).toHaveBeenCalledTimes(2);
+  expect(listServers).toHaveBeenCalledTimes(2);
 });
