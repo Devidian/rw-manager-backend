@@ -58,7 +58,10 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 const service = await import('../src/service/master-server-list-service.js');
 const { refreshMasterOnlyLive } = await import('../src/service/master-only-live-service.js');
 const { listGlobalPlayerBuckets } = await import('../src/db/global-player-statistics-store.js');
-const { default: storageRouter } = await import('../src/router/storage-router.js');
+const { listServersHandler } = await import('../src/handler/list-servers-handler.js');
+const { getGlobalStatisticsHandler } = await import('../src/handler/get-global-statistics-handler.js');
+const { getServerStatisticsHandler } = await import('../src/handler/get-server-statistics-handler.js');
+const { maskGuestSteamIds } = await import('../src/service/public-steam-id-service.js');
 
 function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
   for (const key of Object.keys(process.env)) {
@@ -259,7 +262,12 @@ describe('master-server-list-service', () => {
       expect(state.servers).toHaveLength(1);
       expect(state.serverStatistics).toHaveLength(0);
 
-      const api = request(express().use('/api/storage', storageRouter));
+      const routes = express.Router();
+      routes.use(maskGuestSteamIds);
+      routes.get('/server', listServersHandler);
+      routes.get('/statistics', getGlobalStatisticsHandler);
+      routes.get('/server/:id/statistics', getServerStatisticsHandler);
+      const api = request(express().use('/api/storage', routes));
       const catalog = await api.get('/api/storage/server?masterOnly=true').expect(200);
       expect(catalog.body.servers).toHaveLength(2);
       const discovered = catalog.body.servers.find((server: { ip: string }) => server.ip === transient);
@@ -282,6 +290,11 @@ describe('master-server-list-service', () => {
         { hourStart: from.toISOString(), sampleCount: 1, minPlayers: 5, maxPlayers: 5, averagePlayers: 5 },
       ]);
 
+      await api.get('/api/storage/statistics?from=invalid').expect(400, { error: 'FROM_INVALID' });
+      await api.get('/api/storage/statistics?to=invalid').expect(400, { error: 'TO_INVALID' });
+      await api.get('/api/storage/statistics?from=2026-11-28&to=2026-11-27')
+        .expect(400, { error: 'DATE_RANGE_INVALID' });
+      await api.get('/api/storage/server/stored/statistics?from=invalid').expect(400, { error: 'FROM_INVALID' });
       const history = await api.get('/api/storage/statistics').expect(200);
       expect(history.body.buckets).toEqual([expect.objectContaining({ serverId: 'stored' })]);
       expect(history.body.globalPlayerBuckets).toEqual([
